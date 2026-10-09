@@ -2,10 +2,11 @@
 // Ogdoad server (/api) and Horos (/horos). Horos runs it as a server, after the Ogdoad server.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { handleCenter } from "./center.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
 import { Keeper } from "./keeper.js";
@@ -68,14 +69,32 @@ function notify(title: string, body: string): void {
   fetch(`${HOROS_URL}/v1/notifications`, { method: "POST", headers: { "content-type": "application/json", ...horos.headers!() }, body: JSON.stringify({ title, body, level: "info" }) }).catch(() => {});
 }
 
-const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) =>
-  notify("Ogdoad is locked", `${why.charAt(0).toUpperCase()}${why.slice(1)}. Your password or recovery phrase opens it again.`));
+// The live stream: open pages hear when anything changes (and when the vault locks), so every zone
+// of the control center stays current without polling.
+const streams = new Set<ServerResponse>();
+function broadcast(event: string, data: unknown): void {
+  const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const s of streams) s.write(chunk);
+}
+setInterval(() => {
+  for (const s of streams) s.write(": still here\n\n");
+}, 25_000).unref();
+
+const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
+  broadcast("locked", { why });
+  for (const s of streams) s.end();
+  streams.clear();
+  notify("Ogdoad is locked", `${why.charAt(0).toUpperCase()}${why.slice(1)}. Your password or recovery phrase opens it again.`);
+});
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   try {
     if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", unlocked: keeper.status().unlocked });
     checkRequest(req, ALLOWED_ORIGINS);
+    // A change that went through tells every open page, once it has.
+    const area = /^\/ogdoad\/(money|flow|practice)\//.exec(`${url.pathname}/`)?.[1];
+    if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => res.statusCode < 400 && broadcast("changed", { area }));
 
     // Open to anyone on this machine: what the app is, and the way in.
     if (url.pathname === "/ogdoad/app" && req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, realAppPort: 3101 });
@@ -103,10 +122,21 @@ const server = createServer(async (req, res) => {
       keeper.vault!.changePassword(String(body.oldPassword ?? ""), String(body.newPassword ?? ""));
       return sendJson(res, 200, { ok: true });
     }
+    if (url.pathname === "/ogdoad/stream" && req.method === "GET") {
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" });
+      res.write("retry: 3000\n\n");
+      streams.add(res);
+      req.on("close", () => streams.delete(res));
+      return;
+    }
     const money = keeper.money;
     if (url.pathname.startsWith("/ogdoad/money/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleMoney(money, req, res, url);
+    }
+    if (/^\/ogdoad\/(flow|signals|artifacts|monthly)(\/|$)/.test(url.pathname)) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      if (await handleCenter(money, req, res, url)) return;
     }
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });

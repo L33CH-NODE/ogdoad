@@ -220,6 +220,14 @@ export class Horos {
   }
 
   /** The kept hires, without their briefs and env (the roster file has those). */
+  /** Live sessions, each with its place on the roster (a server, what it provides, whether it's kept). */
+  listHires() {
+    return [...this.hires.values()].map((h) => {
+      const e = this.roster.find((r) => r.id === h.id);
+      return { ...h.info(), kept: !!e, role: e?.role ?? "hire", provides: e?.provides ?? null, onDemand: !!e?.onDemand };
+    });
+  }
+
   listRoster() {
     return this.roster.map(({ brief: _brief, env: _env, ...e }) => {
       const hire = this.hires.get(e.id);
@@ -729,6 +737,11 @@ export function startServer(horos: Horos, opts: HorosServerOptions) {
       if (parts[1] === "events" && req.method === "GET") return horos.subscribe(res);
       if (parts[1] === "detect" && req.method === "GET") return send(res, 200, await detect());
       if (parts[1] === "roster" && req.method === "GET") return send(res, 200, horos.listRoster());
+      // Deep work: GET says whether it's on; POST {on} turns it on or off. Only errors pop up meanwhile.
+      if (parts[1] === "quiet" && parts.length === 2) {
+        if (req.method === "POST") horos.notifier.setQuiet(Boolean((await readJson(req)).on));
+        if (req.method === "GET" || req.method === "POST") return send(res, 200, horos.notifier.quiet);
+      }
       // POST /v1/shutdown {graceful?: true}: graceful lets work finish and quits each hire cleanly.
       if (parts[1] === "shutdown" && req.method === "POST") {
         const body = await readJson(req);
@@ -792,7 +805,7 @@ export function startServer(horos: Horos, opts: HorosServerOptions) {
       }
 
       if (parts[1] === "hires" && parts.length === 2) {
-        if (req.method === "GET") return send(res, 200, [...horos.hires.values()].map((h) => h.info()));
+        if (req.method === "GET") return send(res, 200, horos.listHires());
         if (req.method === "POST") {
           const body = (await readJson(req)) as SpawnBody;
           if (!body.harness || !body.cwd) throw new HorosError("bad_request", "harness and cwd are required.");

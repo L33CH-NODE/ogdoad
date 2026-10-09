@@ -55,6 +55,9 @@ export class Notifier {
   private lastToastAt = 0;
   private readonly pulse = new Map<string, string>();
   private pulseTimer: NodeJS.Timeout | null = null;
+  /** Deep work: only errors pop up; everything else is recorded and counted for later. */
+  private quietOn = false;
+  private heldCount = 0;
 
   constructor(private readonly opts: NotifierOptions = {}) {
     if (!opts.file) return;
@@ -117,6 +120,19 @@ export class Notifier {
     if (this.opts.file) writeFileSync(`${this.opts.file}.read`, String(this.lastRead), "utf8");
   }
 
+  get quiet(): { on: boolean; held: number } {
+    return { on: this.quietOn, held: this.heldCount };
+  }
+
+  /** Deep work on or off. Coming back, one toast says how much waited (it's all in the feed). */
+  setQuiet(on: boolean): void {
+    if (this.quietOn && !on && this.heldCount && this.opts.toast) {
+      this.opts.toast("Welcome back", `${this.heldCount} alert${this.heldCount === 1 ? "" : "s"} waited while you were in deep work. They're in Signals.`);
+    }
+    if (on !== this.quietOn) this.heldCount = 0;
+    this.quietOn = on;
+  }
+
   close(): void {
     if (this.toastTimer) clearTimeout(this.toastTimer);
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
@@ -125,6 +141,7 @@ export class Notifier {
 
   private queueToast(n: Notification): void {
     if (!this.opts.toast) return;
+    if (this.quietOn && n.level !== "error") return void this.heldCount++;
     this.toastQueue.push(n);
     if (!this.toastTimer) this.toastTimer = setTimeout(() => this.flushToasts(), Math.max(0, this.lastToastAt + TOAST_GAP_MS - Date.now()));
   }
@@ -144,7 +161,7 @@ export class Notifier {
   }
 
   private queuePulse(n: Notification): void {
-    if (!this.opts.toast || !this.opts.pulseDigestMs) return;
+    if (!this.opts.toast || !this.opts.pulseDigestMs || this.quietOn) return;
     this.pulse.set(n.hireId ?? n.title, n.title);
     if (!this.pulseTimer) this.pulseTimer = setTimeout(() => this.flushPulse(), this.opts.pulseDigestMs);
   }

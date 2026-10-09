@@ -56,3 +56,24 @@ test("a burst becomes one toast led by the worst, and pulses arrive as a digest"
   const pulse = toasts.find((t) => t[0] === "Team pulse");
   assert.deepEqual(pulse?.[1], "Ledger idle · Scout working", "latest state per hire");
 });
+
+test("deep work: only errors pop up, everything is still recorded, and coming back says how much waited", async () => {
+  const toasts: Array<[string, string]> = [];
+  const n = new Notifier({ toast: (t, b) => toasts.push([t, b]), pulseDigestMs: 100 });
+  n.setQuiet(true);
+  n.push({ level: "warn", kind: "needs_you", title: "Scout needs you", body: "" });
+  n.push({ level: "info", kind: "job_done", title: "Ledger finished a job", body: "" });
+  n.push({ level: "pulse", kind: "status", title: "Ledger idle", body: "", hireId: "l" });
+  await sleep(200);
+  assert.equal(toasts.length, 0, "nothing pops up");
+  n.push({ level: "error", kind: "hire_down", title: "Scribe is down", body: "" });
+  await sleep(50);
+  assert.deepEqual(toasts.map((t) => t[0]), ["Scribe is down"], "an error still does");
+  assert.deepEqual(n.quiet, { on: true, held: 2 });
+  assert.equal(n.list().length, 4, "everything is in the feed");
+  n.setQuiet(false);
+  assert.equal(toasts.at(-1)?.[0], "Welcome back");
+  assert.match(toasts.at(-1)?.[1] ?? "", /2 alerts waited/);
+  assert.deepEqual(n.quiet, { on: false, held: 0 });
+  n.close();
+});

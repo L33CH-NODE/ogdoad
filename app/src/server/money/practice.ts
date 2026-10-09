@@ -2,6 +2,7 @@
 // trying everything (issuing, voiding, payments, bank statements) without touching the real books.
 // Nothing here is real: every name, number and amount is invented.
 
+import { Flow } from "../flow/flow.js";
 import { addDays, type Money } from "./service.js";
 
 const CLIENTS = [
@@ -16,7 +17,7 @@ export function resetPractice(money: Money): void {
   const db = money.db;
   db.exec("BEGIN");
   try {
-    for (const table of ["bank_line_payments", "bank_lines", "payments", "invoice_lines", "invoices", "clients", "events"]) db.exec(`DELETE FROM ${table}`);
+    for (const table of ["tasks", "bank_line_payments", "bank_lines", "payments", "invoice_lines", "invoices", "clients", "events"]) db.exec(`DELETE FROM ${table}`);
     db.exec("UPDATE settings SET default_account_id = NULL");
     db.exec("DELETE FROM payment_accounts");
     db.exec("COMMIT");
@@ -55,6 +56,10 @@ export function seedPractice(money: Money): void {
     }
   }
   money.createDraft({ clientId: clients[1].id, lines: [{ description: "Support work: daily living", quantity: 3, unitCents: 6547 }] }, actor);
+  // A couple of the operator's own tasks, so Flow has more than Money's work in it.
+  const flow = new Flow(money);
+  flow.add({ title: "Ring Harbour about next month's roster", context: "Pat Example asked for the November shifts by Friday." });
+  flow.add({ title: "Renew the first-aid certificate", context: "It runs out at the end of the month. Book a course." });
 }
 
 /**

@@ -74,7 +74,7 @@ export class Keeper {
     const check = new Set<number>();
     while (check.size < 3) check.add(1 + randomBytes(1)[0] % 24);
     const phrase = Vault.newPhrase();
-    this.pending = { login: login.trim(), password, phrase, check: [...check].sort((a, b) => a - b), until: Date.now() + 30 * 60_000 };
+    this.pending = { login: login.trim(), password, phrase, check: [...check].sort((a, b) => a - b), until: Date.now() + 2 * 60 * 60_000 };
     return { phrase, check: this.pending.check };
   }
 

@@ -3,8 +3,8 @@
     "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "rootDir": "src/server",
-    "outDir": "dist/server",
+    "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,6 +19,7 @@
     }
   },
   "include": [
-    "src/server/**/*.ts"
+    "src/server/**/*.ts",
+    "src/shared/**/*.ts"
   ]
 }

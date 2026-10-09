@@ -230,6 +230,10 @@ table.table { width: 100%; border-collapse: collapse; }
 .words li { display: flex; gap: 8px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--faint); font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 14px; }
 .words li span { color: var(--muted); font-size: 11px; width: 18px; }
 @media (max-width: 600px) { .words { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.plate-preview { width: 100%; height: auto; display: block; }
+.plate-preview polygon { fill: var(--faint); stroke: var(--edge); stroke-width: 0.4; }
+.plate-preview rect { fill: var(--fg); }
+.plate-preview .plate-mark { fill: var(--primary); stroke: none; }
 .geo-spin { animation: geo-spin 30s linear infinite; transform-origin: center; }
 .geo-spin-slow { animation: geo-spin 240s linear infinite; transform-origin: 200px 200px; }
 @keyframes geo-spin { to { transform: rotate(360deg); } }

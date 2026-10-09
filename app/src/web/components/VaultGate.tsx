@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { api, ApiError, type VaultStatus } from "../lib/api";
 import { Halo, Octagram } from "./Geometry";
+import { PlateOffer } from "./Plate";
 
 export function VaultGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<VaultStatus | null>(null);
@@ -128,6 +129,7 @@ function Onboarding({ onDone }: { onDone: () => void }) {
           <ol className="words">
             {phrase.map((w, i) => <li key={i}><span>{i + 1}</span>{w}</li>)}
           </ol>
+          <PlateOffer words={phrase} />
           <label className="row" style={{ gap: 10, cursor: "pointer" }}><input type="checkbox" checked={wrote} onChange={(e) => setWrote(e.target.checked)} style={{ width: 18, height: 18 }} /> I've written them down, in order.</label>
           <div className="row"><span className="spacer" /><button className="btn primary" disabled={!wrote} onClick={() => setStep("confirm")}>Next</button></div>
         </div>
@@ -136,7 +138,7 @@ function Onboarding({ onDone }: { onDone: () => void }) {
       {step === "confirm" ? (
         <form className="stack" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); void confirm(); }}>
           <h2 className="stage-title">Check three of them</h2>
-          <p className="muted">From your paper, not from memory. Your key is made once these match.</p>
+          <p className="muted">From your paper or your plate, not from memory. Your key is made once these match.</p>
           {check.map((n, i) => (
             <label key={n} className="field">Word {n}
               <input className="input mono" value={answers[n] ?? ""} autoComplete="off" autoFocus={i === 0} spellCheck={false} onChange={(e) => setAnswers({ ...answers, [n]: e.target.value })} />

@@ -14,7 +14,11 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? "error", data?.message ?? `The app server answered ${res.status}.`);
+  if (!res.ok) {
+    // The vault locked (idle timeout, or locked elsewhere): tell the app to show the lock.
+    if (res.status === 401 && data?.error === "locked") window.dispatchEvent(new Event("ogdoad:locked"));
+    throw new ApiError(res.status, data?.error ?? "error", data?.message ?? `The app server answered ${res.status}.`);
+  }
   return data as T;
 }
 
@@ -57,6 +61,7 @@ export interface Overview {
 }
 
 export interface AppInfo { practice: boolean; realAppPort: number }
+export interface VaultStatus { practice: boolean; exists: boolean; unlocked: boolean; login: string | null; lockMinutes: number }
 
 let appInfo: Promise<AppInfo> | null = null;
 /** Whether this is the practice copy (asked once per page load). */

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import "./styles/app.css";
 import { Shell } from "./components/Shell";
+import { VaultGate } from "./components/VaultGate";
 import { match, usePath } from "./lib/router";
 import { BankPage } from "./pages/Bank";
 import { ClientPage, ClientsPage } from "./pages/Clients";
@@ -26,8 +27,10 @@ function Routes() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Shell>
-      <Routes />
-    </Shell>
+    <VaultGate>
+      <Shell>
+        <Routes />
+      </Shell>
+    </VaultGate>
   </StrictMode>,
 );

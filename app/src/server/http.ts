@@ -4,6 +4,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { MoneyError } from "./money/service.js";
+import { VaultError } from "./vault.js";
 
 export class HttpError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
@@ -52,6 +53,10 @@ export function checkRequest(req: IncomingMessage, allowedOrigins: Set<string>):
 
 export function sendError(res: ServerResponse, err: unknown): void {
   if (err instanceof HttpError) return sendJson(res, err.status, { error: err.code, message: err.message });
+  if (err instanceof VaultError) {
+    const status = err.code === "wrong_password" || err.code === "wrong_phrase" ? 401 : err.code === "exists" ? 409 : err.code === "locked" ? 423 : 400;
+    return sendJson(res, status, { error: err.code, message: err.message });
+  }
   if (err instanceof MoneyError) {
     const status = err.code.startsWith("no_") && /invoice|client|account/.test(err.code) ? 404 : 400;
     return sendJson(res, status, { error: err.code, message: err.message });

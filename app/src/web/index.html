@@ -9,7 +9,7 @@
       // Paint the chosen skin before anything renders, so there's no flash of the wrong one.
       try {
         var skin = localStorage.getItem("ogdoad.skin");
-        if (skin) document.documentElement.dataset.skin = skin;
+        document.documentElement.dataset.skin = skin || "ogdoad-dark";
       } catch (e) {}
     </script>
   </head>

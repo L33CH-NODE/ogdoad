@@ -84,7 +84,7 @@ test("importing again updates in place instead of duplicating", () => {
   assert.deepEqual(again.clients, { created: 0, updated: 2 });
   assert.deepEqual(again.invoices, { created: 0, updated: 3, drafts: 0 });
   assert.equal(money.invoices().length, 3);
-  assert.equal(money.db.prepare("SELECT COUNT(*) AS n FROM payments").get()!.n, 2);
+  assert.equal((money.db.prepare("SELECT COUNT(*) AS n FROM payments").get() as { n: number }).n, 2);
 });
 
 test("a file that isn't the export is refused", () => {

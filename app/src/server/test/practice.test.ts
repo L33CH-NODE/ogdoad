@@ -25,6 +25,6 @@ test("practice books fill up, their statement tries every bank path, and reset s
   assert.equal(s.debitsSkipped, 1);
 
   resetPractice(money);
-  assert.equal(money.db.prepare("SELECT COUNT(*) AS n FROM bank_lines").get()!.n, 0);
+  assert.equal((money.db.prepare("SELECT COUNT(*) AS n FROM bank_lines").get() as { n: number }).n, 0);
   assert.equal(money.settings().nextNumber, 501 + money.invoices().filter((i) => i.status === "issued").length);
 });

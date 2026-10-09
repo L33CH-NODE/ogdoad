@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import { sealFile } from "../vault.js";
 import { MONEY_DIR } from "./db.js";
 import { MoneyError, type Money } from "./service.js";
 
@@ -191,13 +192,18 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
   return doc.save();
 }
 
-/** Save an issued invoice's PDF beside the database and remember where. */
+/**
+ * Save an issued invoice's PDF beside the database and remember where. While the vault is unlocked
+ * the copy is sealed at rest (it carries client details); the UI always renders a fresh one anyway.
+ */
 export async function saveIssuedPdf(m: Money, invoiceId: string, dir = PDF_DIR): Promise<string> {
   const inv = m.invoice(invoiceId);
   if (!inv || inv.status !== "issued") throw new MoneyError("not_issued", "Only issued invoices are saved as PDFs.");
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, `Invoice ${inv.number}.pdf`);
-  writeFileSync(path, await renderInvoicePdf(m, invoiceId));
+  const bytes = await renderInvoicePdf(m, invoiceId);
+  const path = join(dir, `Invoice ${inv.number}.pdf${m.fileKey ? ".sealed" : ""}`);
+  if (m.fileKey) sealFile(path, bytes, m.fileKey);
+  else writeFileSync(path, bytes);
   m.setPdfPath(invoiceId, path);
   return path;
 }

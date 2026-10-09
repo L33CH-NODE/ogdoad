@@ -212,6 +212,28 @@ table.table { width: 100%; border-collapse: collapse; }
 .tabs button { min-height: 34px; padding: 0 12px; border-radius: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
 .tabs button[aria-pressed="true"] { background: var(--panel-solid); color: var(--fg); box-shadow: 0 1px 3px oklch(0 0 0 / .12); }
 
+/* ---------- The way in: onboarding and the lock ---------- */
+
+.stage { min-height: 100vh; display: grid; place-items: center; padding: 32px 16px; position: relative; overflow: hidden; }
+.stage .halo { position: absolute; width: min(1100px, 140vw); aspect-ratio: 1; color: var(--primary); pointer-events: none; }
+.stage-card { position: relative; width: min(520px, 100%); background: var(--panel-solid); border: 1px solid var(--edge); border-radius: 24px; padding: 30px; box-shadow: 0 40px 100px -40px oklch(0 0 0 / .55), var(--glow); }
+.stage-card.wide { width: min(720px, 100%); }
+.stage-card h1 { font-size: 32px; letter-spacing: -0.02em; }
+.stage-title { font-size: 24px; color: var(--fg); }
+.stage-card p { margin: 0; line-height: 1.55; }
+.mark { color: var(--primary); display: inline-flex; }
+.steps { display: flex; gap: 10px; margin-bottom: 18px; }
+.step { width: 10px; height: 10px; border-radius: 50%; background: var(--edge); transition: background .4s, box-shadow .4s; }
+.step.done { background: var(--primary); }
+.step.here { background: var(--primary); box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 20%, transparent); }
+.words { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.words li { display: flex; gap: 8px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--faint); font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 14px; }
+.words li span { color: var(--muted); font-size: 11px; width: 18px; }
+@media (max-width: 600px) { .words { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.geo-spin { animation: geo-spin 30s linear infinite; transform-origin: center; }
+.geo-spin-slow { animation: geo-spin 240s linear infinite; transform-origin: 200px 200px; }
+@keyframes geo-spin { to { transform: rotate(360deg); } }
+
 /* ---------- The practice copy: impossible to mistake for the real books ---------- */
 
 .practice-ribbon {

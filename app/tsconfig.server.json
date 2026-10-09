@@ -9,7 +9,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "better-sqlite3-multiple-ciphers": [
+        "./node_modules/better-sqlite3-multiple-ciphers/index.d.ts"
+      ]
+    }
   },
-  "include": ["src/server/**/*.ts"]
+  "include": [
+    "src/server/**/*.ts"
+  ]
 }

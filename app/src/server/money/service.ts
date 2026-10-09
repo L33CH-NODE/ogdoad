@@ -3,7 +3,7 @@
 // Integer cents throughout; dates are ISO 'YYYY-MM-DD' in the business's timezone.
 
 import { randomUUID } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
+import type { MoneyDb } from "./db.js";
 
 export class MoneyError extends Error {
   constructor(readonly code: string, message: string) {
@@ -202,7 +202,10 @@ const now = () => new Date().toISOString();
 // --- the service -------------------------------------------------------------------------------
 
 export class Money {
-  constructor(readonly db: DatabaseSync) {}
+  /** Set while the vault is unlocked: seals issued PDFs at rest. */
+  fileKey: Buffer | null = null;
+
+  constructor(readonly db: MoneyDb) {}
 
   /** Run several statements as one: all of them happen, or none do. */
   private tx<T>(fn: () => T): T {

@@ -7,10 +7,12 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
-import { openMoneyDb, OGDOAD_HOME } from "./money/db.js";
-import { practiceStatement, resetPractice, seedPractice } from "./money/practice.js";
+import { readJson } from "./http.js";
+import { Keeper } from "./keeper.js";
+import { OGDOAD_HOME } from "./money/db.js";
+import { practiceStatement, resetPractice } from "./money/practice.js";
 import { handleMoney } from "./money/routes.js";
-import { Money } from "./money/service.js";
+import { Vault } from "./vault.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
 
 const PORT = Number(process.env.OGDOAD_APP_PORT ?? 3101);
@@ -61,19 +63,54 @@ function readSophia(): { companyId: string; companyName: string; agentId: string
   }
 }
 
-const money = new Money(openMoneyDb());
-if (PRACTICE && !money.invoices().length) seedPractice(money);
+/** Tell the operator through Horos's feed (and a desktop alert). Best effort. */
+function notify(title: string, body: string): void {
+  fetch(`${HOROS_URL}/v1/notifications`, { method: "POST", headers: { "content-type": "application/json", ...horos.headers!() }, body: JSON.stringify({ title, body, level: "info" }) }).catch(() => {});
+}
+
+const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) =>
+  notify("Ogdoad is locked", `${why.charAt(0).toUpperCase()}${why.slice(1)}. Your password or recovery phrase opens it again.`));
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   try {
-    if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", money: true });
+    if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", unlocked: keeper.status().unlocked });
     checkRequest(req, ALLOWED_ORIGINS);
-    if (url.pathname.startsWith("/ogdoad/money/")) return await handleMoney(money, req, res, url);
-    if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
+
+    // Open to anyone on this machine: what the app is, and the way in.
     if (url.pathname === "/ogdoad/app" && req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, realAppPort: 3101 });
-    if (PRACTICE && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });
-    if (PRACTICE && url.pathname === "/ogdoad/practice/statement.csv" && req.method === "GET") {
+    if (url.pathname === "/ogdoad/vault" && req.method === "GET") return sendJson(res, 200, keeper.status());
+    if (url.pathname.startsWith("/ogdoad/vault/") && req.method === "POST") {
+      const action = url.pathname.slice("/ogdoad/vault/".length);
+      const body = await readJson(req);
+      if (action === "prepare") return sendJson(res, 200, keeper.prepare(String(body.login ?? ""), String(body.password ?? "")));
+      if (action === "confirm") {
+        res.setHeader("set-cookie", keeper.confirm(body.words && typeof body.words === "object" ? body.words : {}));
+        notify("Your vault is made", "Ogdoad's data is now encrypted with your key. Keep your recovery phrase safe.");
+        return sendJson(res, 201, keeper.status());
+      }
+      if (action === "unlock") return res.setHeader("set-cookie", await keeper.unlock(String(body.login ?? ""), String(body.password ?? ""))), sendJson(res, 200, keeper.status());
+      if (action === "recover") return res.setHeader("set-cookie", keeper.recover(String(body.phrase ?? ""), String(body.newPassword ?? ""))), sendJson(res, 200, keeper.status());
+      if (action === "lock") return keeper.lock("locked by you"), res.setHeader("set-cookie", Keeper.clearCookie()), sendJson(res, 200, keeper.status());
+    }
+
+    // Everything else needs an unlocked session. The page itself still loads, so it can show the lock.
+    const isPage = (req.method === "GET" || req.method === "HEAD") && !/^\/(api|horos|ogdoad)(\/|$)/.test(url.pathname);
+    if (!isPage && !keeper.allows(req)) throw new HttpError(401, "locked", "Ogdoad is locked. Unlock it with your password.");
+
+    if (url.pathname === "/ogdoad/vault/password" && req.method === "POST") {
+      const body = await readJson(req);
+      keeper.vault!.changePassword(String(body.oldPassword ?? ""), String(body.newPassword ?? ""));
+      return sendJson(res, 200, { ok: true });
+    }
+    const money = keeper.money;
+    if (url.pathname.startsWith("/ogdoad/money/")) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      return await handleMoney(money, req, res, url);
+    }
+    if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
+    if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });
+    if (PRACTICE && money && url.pathname === "/ogdoad/practice/statement.csv" && req.method === "GET") {
       res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="practice-statement.csv"', "cache-control": "no-store" });
       return void res.end(practiceStatement(money));
     }
@@ -92,21 +129,22 @@ server.on("upgrade", (req, socket, head) => {
   } catch {
     return socket.destroy();
   }
+  if (!keeper.allows(req)) return socket.destroy();
   const path = req.url ?? "/";
   if (path.startsWith("/api/")) return proxyUpgrade(paperclip, req, socket as import("node:net").Socket, head);
   socket.destroy();
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`Ogdoad ${PRACTICE ? "PRACTICE copy" : "app"} on http://127.0.0.1:${PORT} (Money: ${money.invoices().length} invoices)`));
+server.listen(PORT, "127.0.0.1", () => console.log(`Ogdoad ${PRACTICE ? "PRACTICE copy" : "app"} on http://127.0.0.1:${PORT} (${keeper.status().exists ? "locked until unlocked" : "no vault yet: first launch"})`));
 
 // Horos's stop hook (or Ctrl+C) asks for an orderly stop: finish requests, close the database.
 const stop = () => {
   server.close(() => {
-    money.db.close();
+    keeper.lock("stopped");
     process.exit(0);
   });
   setTimeout(() => {
-    money.db.close();
+    keeper.lock("stopped");
     process.exit(0);
   }, 3000).unref();
 };

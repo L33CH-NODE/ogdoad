@@ -50,7 +50,7 @@ const SKINS = [
 ];
 
 function SkinPicker() {
-  const [skin, setSkin] = useState(() => document.documentElement.dataset.skin ?? "ogdoad");
+  const [skin, setSkin] = useState(() => document.documentElement.dataset.skin ?? "ogdoad-dark");
   const pick = (id: string) => {
     document.documentElement.dataset.skin = id;
     try {

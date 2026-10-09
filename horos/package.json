@@ -1,5 +1,5 @@
 {
-  "name": "@ogdoad/herd",
+  "name": "@ogdoad/horos",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
   "license": "MIT",
   "author": "L33CH-NODE",
   "bin": {
-    "ogdoad-herd": "./dist/cli.js"
+    "horos": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

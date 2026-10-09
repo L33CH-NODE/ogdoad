@@ -1,24 +1,24 @@
 #!/usr/bin/env node
-// ogdoad-herd: run the herd daemon, or drive it.
-//   ogdoad-herd start                       (herd in the background, logging to ~/.ogdoad/herd/herd.log)
-//   ogdoad-herd stop [--now]                (graceful: work finishes, each hire quits with its own /exit;
-//                                            --now stops at once. Kept hires come back on the next start)
-//   ogdoad-herd notifications [--limit 20] [--read]   (the operator's feed: errors, needs-you, jobs, restarts)
-//   ogdoad-herd wake <id>                   (start a resting kept hire now)
-//   ogdoad-herd serve [--port 3198]         (herd in this terminal)
-//   ogdoad-herd detect
-//   ogdoad-herd ls
-//   ogdoad-herd spawn <harness> --cwd <dir> [--label name] [--brief-file f] [--keep] [-- harness args...]
-//   ogdoad-herd roster                      (kept hires: brought back after a restart)
-//   ogdoad-herd screen <id> [--lines 60]
-//   ogdoad-herd prompt <id> <text...> [--wait]
-//   ogdoad-herd keys <id> <key...>          (enter, esc, up, down, tab, ctrl+c, or literal text)
-//   ogdoad-herd kill <id>                   (lets the hire go: stopped, unseated, dropped from the roster)
-//   ogdoad-herd seat <hireId> --agent <paperclip agent id>   (jobs for that agent flow into the hire)
-//   ogdoad-herd seats
-//   ogdoad-herd done <jobId> --agent <agentId> [--summary "..."] [--fail]
-//   ogdoad-herd sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes] [--no-browser] [--show]
-//   ogdoad-herd events
+// horos: run the Horos daemon, or drive it.
+//   horos start                  (Horos in the background, logging to ~/.ogdoad/horos/horos.log)
+//   horos stop [--now]           (graceful: work finishes, each hire quits with its own /exit;
+//                                 --now stops at once. Kept hires come back on the next start)
+//   horos notifications [--limit 20] [--read]   (the operator's feed: errors, needs-you, jobs, restarts)
+//   horos wake <id>              (start a resting kept hire now)
+//   horos serve [--port 3198]    (Horos in this terminal)
+//   horos detect
+//   horos ls
+//   horos spawn <harness> --cwd <dir> [--label name] [--brief-file f] [--keep] [-- harness args...]
+//   horos roster                 (kept hires: brought back after a restart)
+//   horos screen <id> [--lines 60]
+//   horos prompt <id> <text...> [--wait]
+//   horos keys <id> <key...>     (enter, esc, up, down, tab, ctrl+c, or literal text)
+//   horos kill <id>              (lets the hire go: stopped, unseated, dropped from the roster)
+//   horos seat <hireId> --agent <paperclip agent id>   (jobs for that agent flow into the hire)
+//   horos seats
+//   horos done <jobId> --agent <agentId> [--summary "..."] [--fail]
+//   horos sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes] [--no-browser] [--show]
+//   horos events
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -26,8 +26,8 @@ import { resolve } from "node:path";
 import { LOG_FILE, startDetached } from "./daemon.js";
 import { detect } from "./harnesses.js";
 import { NOTIFICATIONS_FILE, Notifier } from "./notify.js";
-import { DEFAULT_PORT, TOKEN_FILE, readOrCreateToken } from "./paths.js";
-import { Herd, startServer } from "./server.js";
+import { DEFAULT_PORT, TOKEN_FILE, migrateFromHerd, readOrCreateToken } from "./paths.js";
+import { Horos, startServer } from "./server.js";
 import { desktopToast } from "./toast.js";
 import { readSophiaState, runWizard } from "./sophia/wizard.js";
 
@@ -51,7 +51,7 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
     headers: { authorization: `Bearer ${readOrCreateToken()}`, "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   }).catch(() => {
-    throw new Error(`herd isn't running on ${base}. Start it with: ogdoad-herd serve`);
+    throw new Error(`horos isn't running on ${base}. Start it with: horos serve`);
   });
   const json = (await res.json()) as any;
   if (!res.ok) throw new Error(`${json.error}: ${json.message ?? ""}`.trim());
@@ -59,23 +59,24 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
 }
 
 async function main(): Promise<void> {
+  migrateFromHerd();
   switch (command) {
     case "serve": {
       // Every notification lands in the feed; the ones that matter now also pop up on the desktop,
       // and status flips arrive as a digest at most once a minute.
       const notifier = new Notifier({ file: NOTIFICATIONS_FILE, toast: desktopToast(), pulseDigestMs: 60_000 });
-      const herd = new Herd({ notifier, log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
+      const horos = new Horos({ notifier, log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
       const exit = () => {
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), 2000).unref();
       };
-      const server = startServer(herd, { port, token: readOrCreateToken(), onShutdown: exit });
+      const server = startServer(horos, { port, token: readOrCreateToken(), onShutdown: exit });
       server.on("listening", () => {
-        console.log(`${new Date().toISOString()} herd listening on ${base} (token: ${TOKEN_FILE}, pid ${process.pid})`);
-        void herd.restore();
+        console.log(`${new Date().toISOString()} Horos listening on ${base} (token: ${TOKEN_FILE}, pid ${process.pid})`);
+        void horos.restore();
       });
       const shutdown = () => {
-        herd.shutdown();
+        horos.shutdown();
         exit();
       };
       process.on("SIGINT", shutdown);
@@ -84,22 +85,22 @@ async function main(): Promise<void> {
     }
     case "start": {
       const { pid, already } = await startDetached(port);
-      console.log(already ? `herd is already running on ${base}` : `herd started on ${base} (pid ${pid}, log ${LOG_FILE})`);
+      console.log(already ? `horos is already running on ${base}` : `horos started on ${base} (pid ${pid}, log ${LOG_FILE})`);
       return;
     }
     case "stop": {
       if (has("now")) {
         await api("POST", "/v1/shutdown");
-        return console.log("herd stopped");
+        return console.log("Horos stopped");
       }
       await api("POST", "/v1/shutdown", { graceful: true });
       console.log("Shutting down gracefully: running work finishes, then each hire quits cleanly.");
-      // Herd answers health until the last hire has quit.
+      // Horos answers health until the last hire has quit.
       for (let i = 0; i < 20 * 60; i++) {
-        if (!(await fetch(`${base}/v1/health`).then((r) => r.ok, () => false))) return console.log("herd stopped");
+        if (!(await fetch(`${base}/v1/health`).then((r) => r.ok, () => false))) return console.log("Horos stopped");
         await new Promise((r) => setTimeout(r, 1000));
       }
-      return console.log("Still shutting down after 20 minutes; check: ogdoad-herd notifications");
+      return console.log("Still shutting down after 20 minutes; check: horos notifications");
     }
     case "notifications": {
       if (has("read")) {

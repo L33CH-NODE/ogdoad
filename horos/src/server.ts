@@ -1,5 +1,5 @@
-// Herd's API: localhost only, every call carries the per-install token.
-// Paperclip's local-trusted mode treats any loopback request as the operator, so herd adds its own
+// Horos's API: localhost only, every call carries the per-install token.
+// Paperclip's local-trusted mode treats any loopback request as the operator, so Horos adds its own
 // check: a process (or a web page) that can reach 127.0.0.1 still can't drive hires without the token.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -7,7 +7,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 
 import { HARNESSES, detect, resolveCommand } from "./harnesses.js";
-import { Hire, HerdError, type HireSpec } from "./hire.js";
+import { Hire, HorosError, type HireSpec } from "./hire.js";
 import { Notifier, type NotificationInput } from "./notify.js";
 import { planRestart } from "./restart.js";
 import { loadRoster, resumeArgsFor, saveRoster, type RosterEntry } from "./roster.js";
@@ -16,11 +16,11 @@ import { Seat } from "./seat.js";
 
 const DEFAULT_MAILBOX = process.env.LIVE_AGENT_MAILBOX ?? "http://127.0.0.1:3199";
 
-export interface HerdServerOptions {
+export interface HorosServerOptions {
   port: number;
   host?: string;
   token: string;
-  /** Called once herd has stopped (after POST /v1/shutdown). */
+  /** Called once Horos has stopped (after POST /v1/shutdown). */
   onShutdown?: () => void;
 }
 
@@ -33,7 +33,7 @@ interface SpawnBody {
   env?: Record<string, string>;
   /** Text to paste as the first prompt once the hire is ready (a role brief, for example). */
   brief?: string;
-  /** Keep this hire: herd brings it back after a restart and when its session ends on its own. */
+  /** Keep this hire: Horos brings it back after a restart and when its session ends on its own. */
   keep?: boolean;
 }
 
@@ -47,7 +47,7 @@ interface LaunchSpec {
   env?: Record<string, string>;
 }
 
-export interface HerdOptions {
+export interface HorosOptions {
   rosterFile?: string;
   log?: (event: string, data: unknown) => void;
   /** Where the operator hears about everything; defaults to a quiet in-memory feed. */
@@ -56,7 +56,7 @@ export interface HerdOptions {
 
 const STATE_WORDS: Partial<Record<HireState, string>> = { working: "working", idle: "idle", done: "finished, result unread" };
 
-export class Herd {
+export class Horos {
   readonly hires = new Map<string, Hire>();
   /** Seats by Paperclip agent id. */
   readonly seats = new Map<string, Seat>();
@@ -71,7 +71,7 @@ export class Herd {
   private readonly pendingRestart = new Map<string, NodeJS.Timeout>();
   private shuttingDown = false;
 
-  constructor(private readonly opts: HerdOptions = {}) {
+  constructor(private readonly opts: HorosOptions = {}) {
     this.roster = loadRoster(opts.rosterFile);
     this.notifier = opts.notifier ?? new Notifier();
   }
@@ -85,7 +85,7 @@ export class Herd {
   bindSeat(agentId: string, hireId: string, mailbox = DEFAULT_MAILBOX): Seat {
     const hire = this.hires.get(hireId) ?? null;
     const entry = this.roster.find((e) => e.id === hireId);
-    if (!hire && !entry) throw new HerdError("no_such_hire", `No hire ${hireId}.`);
+    if (!hire && !entry) throw new HorosError("no_such_hire", `No hire ${hireId}.`);
     this.seats.get(agentId)?.stop();
     const seat = new Seat({
       agentId, hireId, hire: hire && hire.state !== "exited" ? hire : null, cwd: hire?.cwd ?? entry!.cwd, mailboxUrl: mailbox,
@@ -138,7 +138,7 @@ export class Herd {
     }
   }
 
-  /** A hire told herd its session id: record how to resume it. */
+  /** A hire told Horos its session id: record how to resume it. */
   noteSession(hire: Hire): void {
     if (!hire.sessionId && !hire.resumeArgs) return;
     this.updateEntry(hire.id, (e) => (e.resumeArgs = hire.resumeArgs ?? resumeArgsFor(harnessSpec(e.harness)?.resumeArgs, e.args, hire.sessionId)));
@@ -167,7 +167,7 @@ export class Herd {
     }
   }
 
-  /** On herd start: bring every kept hire back, resumed where possible, and re-bind its seat. */
+  /** On horos start: bring every kept hire back, resumed where possible, and re-bind its seat. */
   async restore(): Promise<void> {
     const back: string[] = [];
     const resting: string[] = [];
@@ -180,7 +180,7 @@ export class Herd {
           if (entry.seat) this.bindSeat(entry.seat.agentId, entry.id, entry.seat.mailbox);
           resting.push(name);
         } else {
-          this.revive(entry, false, "back after herd restarted", { quiet: true });
+          this.revive(entry, false, "back after Horos restarted", { quiet: true });
           back.push(name);
         }
       } catch (err) {
@@ -189,7 +189,7 @@ export class Herd {
       await sleep(500);
     }
     const parts = [back.length ? `Back: ${back.join(", ")}.` : "", resting.length ? `Resting until work arrives: ${resting.join(", ")}.` : ""].filter(Boolean);
-    this.notify({ level: "info", kind: "herd_started", title: "Herd is running", body: parts.join(" ") || "No kept hires yet." });
+    this.notify({ level: "info", kind: "horos_started", title: "Horos is running", body: parts.join(" ") || "No kept hires yet." });
   }
 
   /** Stop every hire at once, without letting any go: they come back on the next start. */
@@ -273,9 +273,9 @@ export class Herd {
   private launch(o: LaunchSpec): Hire {
     const spec = harnessSpec(o.harness);
     const command = o.command ?? spec?.commands[0];
-    if (!command) throw new HerdError("unknown_harness", `Unknown harness "${o.harness}" and no command given.`);
+    if (!command) throw new HorosError("unknown_harness", `Unknown harness "${o.harness}" and no command given.`);
     const resolved = resolveCommand(command);
-    if (!resolved) throw new HerdError("not_installed", `"${command}" isn't on PATH.`);
+    if (!resolved) throw new HorosError("not_installed", `"${command}" isn't on PATH.`);
     mkdirSync(o.cwd, { recursive: true });
 
     const hireSpec: HireSpec = {
@@ -293,7 +293,7 @@ export class Herd {
       this.broadcast("status_changed", { id: hire.id, label: hire.label, state });
       if (state === "exited") return this.onExit(hire);
       if (state === "blocked") {
-        this.notify({ level: "warn", kind: "needs_you", title: `${hire.label} needs you`, body: `It's waiting on a decision. See it with: ogdoad-herd screen ${hire.id}`, hireId: hire.id, dedupeKey: `blocked:${hire.id}`, dedupeMs: 5_000 });
+        this.notify({ level: "warn", kind: "needs_you", title: `${hire.label} needs you`, body: `It's waiting on a decision. See it with: horos screen ${hire.id}`, hireId: hire.id, dedupeKey: `blocked:${hire.id}`, dedupeMs: 5_000 });
       } else if (STATE_WORDS[state]) {
         this.notify({ level: "pulse", kind: "status", title: `${hire.label} ${STATE_WORDS[state]}`, body: "", hireId: hire.id });
       }
@@ -318,11 +318,11 @@ export class Herd {
     if (plan.action === "rest") {
       entry.dormant = true;
       this.saveRoster();
-      const wakes = entry.seat ? "It starts again when a task is assigned to it." : `Start it again with: ogdoad-herd wake ${hire.id}`;
+      const wakes = entry.seat ? "It starts again when a task is assigned to it." : `Start it again with: horos wake ${hire.id}`;
       if (plan.why === "signed_off") {
         this.notify({ level: "info", kind: "hire_signed_off", title: `${hire.label} signed off`, body: `It exited cleanly and is resting. ${wakes}`, hireId: hire.id });
       } else {
-        this.notify({ level: "error", kind: "hire_down", title: `${hire.label} is down`, body: `It crashed ${history.length + 1} times in 10 minutes (last: ${code}), so herd stopped restarting it. ${wakes}`, hireId: hire.id });
+        this.notify({ level: "error", kind: "hire_down", title: `${hire.label} is down`, body: `It crashed ${history.length + 1} times in 10 minutes (last: ${code}), so Horos stopped restarting it. ${wakes}`, hireId: hire.id });
       }
       return;
     }
@@ -335,7 +335,7 @@ export class Herd {
     this.notify({ level: plan.fresh ? "error" : "warn", kind: plan.fresh ? "hire_resume_failed" : "hire_restarting", title: plan.fresh ? `${hire.label} couldn't resume` : `${hire.label} stopped`, body, hireId: hire.id });
     this.pendingRestart.set(hire.id, setTimeout(() => {
       this.pendingRestart.delete(hire.id);
-      // Still ours to bring back? The operator may have let it go, or herd may be stopping.
+      // Still ours to bring back? The operator may have let it go, or Horos may be stopping.
       if (this.shuttingDown || this.hires.get(hire.id) !== hire || !this.roster.includes(entry)) return;
       try {
         this.revive(entry, plan.fresh, "is back");
@@ -366,10 +366,10 @@ export class Herd {
         else this.notify({ level: "error", kind: "job_failed", title: `${who}'s job failed`, body: d.summary ? String(d.summary) : "The seat reported a failure.", ...refs });
         break;
       case "seat_job_cancel_requested":
-        this.notify({ level: "info", kind: "job_cancelled", title: `${who}'s job was cancelled`, body: "Herd pressed Esc in its session.", ...refs });
+        this.notify({ level: "info", kind: "job_cancelled", title: `${who}'s job was cancelled`, body: "Horos pressed Esc in its session.", ...refs });
         break;
       case "seat_mailbox_unreachable":
-        this.notify({ level: "error", kind: "mailbox_down", title: `Can't reach ${who}'s job mailbox`, body: `${d.error ?? "No answer"}. Is Ogdoad running? Herd keeps retrying.`, ...refs, dedupeKey: `mailbox:${d.agentId}`, dedupeMs: 60 * 60_000 });
+        this.notify({ level: "error", kind: "mailbox_down", title: `Can't reach ${who}'s job mailbox`, body: `${d.error ?? "No answer"}. Is Ogdoad running? Horos keeps retrying.`, ...refs, dedupeKey: `mailbox:${d.agentId}`, dedupeMs: 60 * 60_000 });
         break;
       case "seat_mailbox_reachable":
         if (this.notifier.clear(`mailbox:${d.agentId}`)) this.notify({ level: "info", kind: "mailbox_back", title: `${who}'s job mailbox is back`, body: "Jobs flow again.", ...refs });
@@ -444,14 +444,14 @@ async function readJson(req: IncomingMessage): Promise<any> {
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 1_000_000) throw new HerdError("too_large", "Request body over 1 MB.");
+    if (size > 1_000_000) throw new HorosError("too_large", "Request body over 1 MB.");
     chunks.push(chunk as Buffer);
   }
   if (!chunks.length) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new HerdError("bad_json", "Request body isn't valid JSON.");
+    throw new HorosError("bad_json", "Request body isn't valid JSON.");
   }
 }
 
@@ -460,7 +460,7 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-export function startServer(herd: Herd, opts: HerdServerOptions) {
+export function startServer(horos: Horos, opts: HorosServerOptions) {
   const host = opts.host ?? "127.0.0.1";
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}`);
@@ -469,7 +469,7 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
       const origin = req.headers.origin;
       if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) return send(res, 403, { error: "origin_not_allowed" });
 
-      if (url.pathname === "/v1/health") return send(res, 200, { ok: true, protocol: "ogdoad-herd/1", hires: herd.hires.size });
+      if (url.pathname === "/v1/health") return send(res, 200, { ok: true, protocol: "horos/1", hires: horos.hires.size });
 
       const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? null;
       // EventSource can't set headers, so the event stream also accepts ?token=.
@@ -479,18 +479,18 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
       const parts = url.pathname.split("/").filter(Boolean); // ["v1", "hires", ":id", "action"]
       if (parts[0] !== "v1") return send(res, 404, { error: "not_found" });
 
-      if (parts[1] === "events" && req.method === "GET") return herd.subscribe(res);
+      if (parts[1] === "events" && req.method === "GET") return horos.subscribe(res);
       if (parts[1] === "detect" && req.method === "GET") return send(res, 200, await detect());
-      if (parts[1] === "roster" && req.method === "GET") return send(res, 200, herd.listRoster());
+      if (parts[1] === "roster" && req.method === "GET") return send(res, 200, horos.listRoster());
       // POST /v1/shutdown {graceful?: true}: graceful lets work finish and quits each hire cleanly.
       if (parts[1] === "shutdown" && req.method === "POST") {
         const body = await readJson(req);
         if (body.graceful) {
           send(res, 202, { ok: true, graceful: true });
-          void herd.gracefulShutdown().finally(() => opts.onShutdown?.());
+          void horos.gracefulShutdown().finally(() => opts.onShutdown?.());
         } else {
           send(res, 200, { ok: true });
-          herd.shutdown();
+          horos.shutdown();
           opts.onShutdown?.();
         }
         return;
@@ -499,35 +499,35 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
         if (parts.length === 2 && req.method === "GET") {
           const after = Number(url.searchParams.get("after") ?? 0);
           const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 500);
-          return send(res, 200, { unread: herd.notifier.unread(), items: herd.notifier.list({ after, limit }) });
+          return send(res, 200, { unread: horos.notifier.unread(), items: horos.notifier.list({ after, limit }) });
         }
         if (parts[2] === "read" && req.method === "POST") {
           const body = await readJson(req);
-          herd.notifier.markRead(body.upTo === undefined ? undefined : Number(body.upTo));
-          return send(res, 200, { unread: herd.notifier.unread() });
+          horos.notifier.markRead(body.upTo === undefined ? undefined : Number(body.upTo));
+          return send(res, 200, { unread: horos.notifier.unread() });
         }
         // Hires (SOPHIA, say) can put something in front of the operator too.
         if (parts.length === 2 && req.method === "POST") {
           const body = await readJson(req);
-          if (typeof body.title !== "string" || !body.title.trim()) throw new HerdError("bad_request", "title is required.");
+          if (typeof body.title !== "string" || !body.title.trim()) throw new HorosError("bad_request", "title is required.");
           const level = body.level === "warn" ? "warn" : "info";
-          herd.notify({ level, kind: "from_hire", title: body.title.slice(0, 120), body: String(body.body ?? "").slice(0, 600), hireId: body.hireId ? String(body.hireId) : undefined });
+          horos.notify({ level, kind: "from_hire", title: body.title.slice(0, 120), body: String(body.body ?? "").slice(0, 600), hireId: body.hireId ? String(body.hireId) : undefined });
           return send(res, 201, { ok: true });
         }
       }
       if (parts[1] === "roster" && parts[2] && parts[3] === "wake" && req.method === "POST") {
-        const hire = await herd.wake(parts[2], "operator");
-        return hire ? send(res, 200, hire.info()) : send(res, 404, { error: "not_kept", message: "No kept hire with that id (or herd is shutting down)." });
+        const hire = await horos.wake(parts[2], "operator");
+        return hire ? send(res, 200, hire.info()) : send(res, 404, { error: "not_kept", message: "No kept hire with that id (or Horos is shutting down)." });
       }
 
       if (parts[1] === "seats") {
-        if (parts.length === 2 && req.method === "GET") return send(res, 200, [...herd.seats.values()].map((s) => s.info()));
+        if (parts.length === 2 && req.method === "GET") return send(res, 200, [...horos.seats.values()].map((s) => s.info()));
         if (parts.length === 2 && req.method === "POST") {
           const body = await readJson(req);
-          if (!body.agentId || !body.hireId) throw new HerdError("bad_request", "agentId and hireId are required.");
-          return send(res, 201, herd.bindSeat(String(body.agentId), String(body.hireId), body.mailbox).info());
+          if (!body.agentId || !body.hireId) throw new HorosError("bad_request", "agentId and hireId are required.");
+          return send(res, 201, horos.bindSeat(String(body.agentId), String(body.hireId), body.mailbox).info());
         }
-        const seat = herd.seats.get(parts[2] ?? "");
+        const seat = horos.seats.get(parts[2] ?? "");
         if (!seat) return send(res, 404, { error: "no_such_seat" });
         // POST /v1/seats/:agentId/jobs/:jobId/done  {ok?, summary?}
         if (parts[3] === "jobs" && parts[4] && parts[5] === "done" && req.method === "POST") {
@@ -536,27 +536,27 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
           return send(res, closed ? 200 : 409, closed ? { ok: true } : { error: "not_current_job" });
         }
         if (parts.length === 3 && req.method === "DELETE") {
-          herd.unbindSeat(seat.agentId);
+          horos.unbindSeat(seat.agentId);
           return send(res, 200, { ok: true });
         }
       }
 
       if (parts[1] === "hires" && parts.length === 2) {
-        if (req.method === "GET") return send(res, 200, [...herd.hires.values()].map((h) => h.info()));
+        if (req.method === "GET") return send(res, 200, [...horos.hires.values()].map((h) => h.info()));
         if (req.method === "POST") {
           const body = (await readJson(req)) as SpawnBody;
-          if (!body.harness || !body.cwd) throw new HerdError("bad_request", "harness and cwd are required.");
-          return send(res, 201, herd.spawn(body).info());
+          if (!body.harness || !body.cwd) throw new HorosError("bad_request", "harness and cwd are required.");
+          return send(res, 201, horos.spawn(body).info());
         }
       }
 
       if (parts[1] === "hires" && parts[2]) {
-        const hire = herd.hires.get(parts[2]);
+        const hire = horos.hires.get(parts[2]);
         if (!hire) return send(res, 404, { error: "no_such_hire" });
         const action = parts[3];
         if (!action && req.method === "GET") return send(res, 200, hire.info());
         if (!action && req.method === "DELETE") {
-          herd.release(hire.id);
+          horos.release(hire.id);
           return send(res, 200, { ok: true });
         }
         if (action === "screen" && req.method === "GET") {
@@ -565,27 +565,27 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
         }
         if (action === "prompt" && req.method === "POST") {
           const body = await readJson(req);
-          if (typeof body.text !== "string" || !body.text) throw new HerdError("bad_request", "text is required.");
+          if (typeof body.text !== "string" || !body.text) throw new HorosError("bad_request", "text is required.");
           const state = await hire.prompt(body.text, { wait: Boolean(body.wait), timeoutMs: body.timeoutMs });
           return send(res, 200, { state });
         }
         if (action === "keys" && req.method === "POST") {
           const body = await readJson(req);
-          if (!Array.isArray(body.keys)) throw new HerdError("bad_request", "keys must be an array.");
+          if (!Array.isArray(body.keys)) throw new HorosError("bad_request", "keys must be an array.");
           hire.keys(body.keys.map(String));
           return send(res, 200, { ok: true });
         }
         if (action === "report" && req.method === "POST") {
           const body = await readJson(req);
-          if (!["working", "blocked", "idle"].includes(body.state)) throw new HerdError("bad_request", "state must be working, blocked or idle.");
+          if (!["working", "blocked", "idle"].includes(body.state)) throw new HorosError("bad_request", "state must be working, blocked or idle.");
           const accepted = hire.report({ state: body.state, source: String(body.source ?? "self"), seq: Number(body.seq ?? Date.now()), sessionId: body.sessionId, resumeArgs: body.resumeArgs });
-          herd.noteSession(hire);
+          horos.noteSession(hire);
           return send(res, 200, { accepted, state: hire.state });
         }
       }
       return send(res, 404, { error: "not_found" });
     } catch (err) {
-      if (err instanceof HerdError) {
+      if (err instanceof HorosError) {
         const status = err.code === "hire_blocked" ? 409 : err.code === "not_installed" || err.code === "unknown_harness" ? 422 : err.code === "prompt_stalled" ? 504 : 400;
         return send(res, status, { error: err.code, message: err.message });
       }

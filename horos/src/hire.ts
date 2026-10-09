@@ -1,5 +1,5 @@
 // One hire: a harness running in a real terminal (ConPTY on Windows), mirrored into a headless
-// terminal so herd reads what a person would see, plus the state machine that watches it.
+// terminal so Horos reads what a person would see, plus the state machine that watches it.
 
 import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
@@ -19,7 +19,7 @@ const PROMPT_ENTER_DELAY_MS = 300;
 const PROMPT_START_TIMEOUT_MS = 5000;
 
 /**
- * Session-scoped variables a hire must never inherit when herd itself runs under a Claude Code
+ * Session-scoped variables a hire must never inherit when Horos itself runs under a Claude Code
  * session: nesting markers (claude refuses to start, or turns transcripts off) and that session's
  * messaging credentials (a hire holding them could act as the parent session). Configuration such
  * as CLAUDE_CONFIG_DIR is left alone.
@@ -113,7 +113,7 @@ export class Hire extends EventEmitter {
       this.stabilizer.markExited();
       this.emitState();
       // A session that ends on its own still holds its ConPTY host (conhost) open on Windows;
-      // close it, or every crash leaks a console and keeps herd's event loop alive.
+      // close it, or every crash leaks a console and keeps Horos's event loop alive.
       setTimeout(() => {
         try {
           this.pty.kill();
@@ -160,8 +160,8 @@ export class Hire extends EventEmitter {
 
   /** Type text into the hire as a paste, then press Enter. Refuses while the hire waits on a decision. */
   async prompt(text: string, opts: { wait?: boolean; timeoutMs?: number } = {}): Promise<HireState> {
-    if (this.state === "blocked") throw new HerdError("hire_blocked", "The hire is waiting on a decision; answer it with keys first.");
-    if (this.state === "exited") throw new HerdError("hire_exited", "The hire has exited.");
+    if (this.state === "blocked") throw new HorosError("hire_blocked", "The hire is waiting on a decision; answer it with keys first.");
+    if (this.state === "exited") throw new HorosError("hire_exited", "The hire has exited.");
     this.stabilizer.markPrompted();
     const bracketed = this.term.modes.bracketedPasteMode;
     this.pty.write(bracketed ? `\x1b[200~${text}\x1b[201~` : text);
@@ -170,7 +170,7 @@ export class Hire extends EventEmitter {
     if (!opts.wait) return this.state;
 
     const started = await this.waitFor((s) => s === "working" || s === "blocked" || s === "exited", PROMPT_START_TIMEOUT_MS);
-    if (!started) throw new HerdError("prompt_stalled", "The hire didn't start working within 5 s of the prompt.");
+    if (!started) throw new HorosError("prompt_stalled", "The hire didn't start working within 5 s of the prompt.");
     await this.waitFor((s) => s === "idle" || s === "done" || s === "blocked" || s === "exited", opts.timeoutMs ?? 30 * 60_000);
     return this.state;
   }
@@ -190,7 +190,7 @@ export class Hire extends EventEmitter {
     for (const k of sequence) this.pty.write(KEYS[k.toLowerCase()] ?? k);
   }
 
-  /** A hire reporting its own state (over the mailbox or herd's API). */
+  /** A hire reporting its own state (over the mailbox or Horos's API). */
   report(r: { state: SelfReport["state"]; source: string; seq: number; sessionId?: string; resumeArgs?: string[] }): boolean {
     if (r.sessionId) this.sessionId = r.sessionId;
     if (r.resumeArgs) this.resumeArgs = r.resumeArgs;
@@ -280,7 +280,7 @@ export class Hire extends EventEmitter {
   }
 }
 
-export class HerdError extends Error {
+export class HorosError extends Error {
   constructor(readonly code: string, message: string) {
     super(message);
   }

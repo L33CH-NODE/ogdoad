@@ -18,8 +18,9 @@ Ogdoad's changes to core/ are listed in core/OGDOAD_CHANGES.md.
 ----------------------------------------------------------------------------
 Herdr (reserved)
 ----------------------------------------------------------------------------
-Ogdoad's agent-session manager is being designed with reference to Herdr
-(https://github.com/herdrdev/herdr). If any Herdr code or data (such as its
+Ogdoad's agent-session manager, Horos (horos/), is designed with reference to
+Herdr (https://github.com/herdrdev/herdr). It is Ogdoad's own code and contains
+no Herdr code or data today. If any Herdr code or data (such as its
 agent-detection rule files) is copied in, it will be taken only from a release
 at v0.8.0 or later (Apache-2.0), kept under its original notices, accompanied
 by the Apache-2.0 license text, and marked as modified where changed.

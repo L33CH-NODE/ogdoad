@@ -1,4 +1,4 @@
-// Detection rules: how herd tells, from what a hire's terminal shows, whether it is working,
+// Detection rules: how Horos tells, from what a hire's terminal shows, whether it is working,
 // waiting on a decision (blocked), or idle. Rules are data so they can be tested and updated as
 // harnesses change their UI. These are Ogdoad's own; the shape follows Herdr's rule engine
 // (regions, any/all/none, priority), credited in NOTICE.

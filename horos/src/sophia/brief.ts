@@ -6,9 +6,9 @@ export interface BriefContext {
   companyId: string;
   agentId: string;
   apiUrl: string;
-  herdUrl: string;
-  herdTokenFile: string;
-  herdCli: string;
+  horosUrl: string;
+  horosTokenFile: string;
+  horosCli: string;
   trust: "private" | "balanced" | "power";
 }
 
@@ -36,9 +36,9 @@ Talk to Ogdoad with those credentials: \`Authorization: Bearer <PAPERCLIP_API_KE
 
 Your company id is \`${c.companyId}\` and your agent id is \`${c.agentId}\`.
 
-## Hiring and watching your team (herd)
+## Hiring and watching your team (Horos)
 
-You hire by starting other agent harnesses through **herd** at \`${c.herdUrl}\`. Its token is in \`${c.herdTokenFile}\`; send it as \`Authorization: Bearer <token>\`. The CLI \`node "${c.herdCli}"\` wraps the same API:
+You hire by starting other agent harnesses through **Horos** at \`${c.horosUrl}\`. Its token is in \`${c.horosTokenFile}\`; send it as \`Authorization: Bearer <token>\`. The CLI \`node "${c.horosCli}"\` wraps the same API:
 - \`detect\` shows which harnesses and local models this machine has
 - \`spawn <harness> --cwd <folder> --label <name>\` starts a hire; \`ls\` lists hires with their state
 - \`screen <id>\` shows what a hire's terminal shows; \`prompt <id> <text> --wait\` gives it work and waits
@@ -47,7 +47,7 @@ You hire by starting other agent harnesses through **herd** at \`${c.herdUrl}\`.
 
 - \`POST /v1/notifications\` with \`{ "title": "...", "body": "...", "level": "info" | "warn" }\` puts something in front of the operator right away (a desktop alert plus their notification feed). Use it for things they'd want to know now, not for routine progress.
 
-The operator hears about every error and status in the team from herd on its own (hires that need them, crashes, restarts, finished and failed jobs), so you don't need to relay those.
+The operator hears about every error and status in the team from Horos on its own (hires that need them, crashes, restarts, finished and failed jobs), so you don't need to relay those.
 
 When a hire is **blocked**, read its screen before you answer. Anything that spends money, sends a message outside the company, deletes data, or changes how the operator is protected needs the operator's yes first: ask them in the task thread and wait.
 

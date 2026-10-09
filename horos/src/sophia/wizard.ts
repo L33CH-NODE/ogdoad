@@ -1,5 +1,5 @@
 // First launch: choose SOPHIA, the CEO, then brief her, seat her and open the UI.
-//   ogdoad-herd sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes]
+//   horos sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes]
 // Interactive by default; the flags let it run unattended (tests, scripted installs).
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -16,9 +16,9 @@ import { DEFAULT_PORT, OGDOAD_HOME, TOKEN_FILE, readOrCreateToken } from "../pat
 import { renderBrief } from "./brief.js";
 import { candidatesFrom, recommendSophia, type Candidate, type Trust } from "./recommend.js";
 
-const HERD_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
+const HOROS_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
 const OGDOAD_URL = (process.env.OGDOAD_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, "");
-const HERD_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
+const HOROS_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
 export interface WizardOptions {
   companyId?: string;
@@ -40,14 +40,14 @@ async function ogdoad(method: string, path: string, body?: unknown): Promise<any
   return text ? JSON.parse(text) : null;
 }
 
-async function herd(method: string, path: string, body?: unknown): Promise<any> {
-  const res = await fetch(`${HERD_URL}${path}`, {
+async function horos(method: string, path: string, body?: unknown): Promise<any> {
+  const res = await fetch(`${HOROS_URL}${path}`, {
     method,
     headers: { "content-type": "application/json", authorization: `Bearer ${readOrCreateToken()}` },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = (await res.json()) as any;
-  if (!res.ok) throw new Error(`herd ${method} ${path}: ${json.error} ${json.message ?? ""}`);
+  if (!res.ok) throw new Error(`horos ${method} ${path}: ${json.error} ${json.message ?? ""}`);
   return json;
 }
 
@@ -104,7 +104,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     }
 
     // 2. Who could be SOPHIA, and how much does the operator trust the cloud?
-    const inventory = (await herd("GET", "/v1/detect")) as Inventory;
+    const inventory = (await horos("GET", "/v1/detect")) as Inventory;
     const candidates = candidatesFrom(inventory);
     if (!candidates.length) throw new Error("No agent harnesses or local models found. Install Claude Code, Codex, grok, opencode or Ollama, then run this again.");
     let trust = opts.trust;
@@ -138,7 +138,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
       title: "CEO",
       adapterType: "live_agent",
       adapterConfig: {},
-      capabilities: `CEO seat, run by ${pick.name} through herd.`,
+      capabilities: `CEO seat, run by ${pick.name} through Horos.`,
     });
     ensureAgentKey(agent.id);
 
@@ -147,7 +147,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     mkdirSync(seatDir, { recursive: true });
     const brief = renderBrief({
       companyName: company.name, companyId: company.id, agentId: agent.id, apiUrl: OGDOAD_URL,
-      herdUrl: HERD_URL, herdTokenFile: TOKEN_FILE, herdCli: HERD_CLI, trust,
+      horosUrl: HOROS_URL, horosTokenFile: TOKEN_FILE, horosCli: HOROS_CLI, trust,
     });
     const briefFile = join(seatDir, "SOPHIA.md");
     writeFileSync(briefFile, brief, "utf8");
@@ -166,8 +166,8 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     } else {
       spawnBody = { harness: pick.id, args: [], brief };
     }
-    // Kept: herd brings SOPHIA back (resumed, same seat) whenever it restarts.
-    const hire = await herd("POST", "/v1/hires", {
+    // Kept: Horos brings SOPHIA back (resumed, same seat) whenever it restarts.
+    const hire = await horos("POST", "/v1/hires", {
       ...spawnBody,
       keep: true,
       cwd: seatDir,
@@ -176,8 +176,8 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     });
     say(`\nSOPHIA is starting on ${pick.name} (hire ${hire.id}).`);
 
-    // 6. Seat her, then give her the setup task; Paperclip wakes her and the job flows through herd.
-    await herd("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id });
+    // 6. Seat her, then give her the setup task; Paperclip wakes her and the job flows through Horos.
+    await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id });
     const task = await ogdoad("POST", `/api/companies/${company.id}/issues`, {
       title: "Set up the company with SOPHIA",
       description: `SOPHIA interviews the operator with multiple-choice questions about ${company.name} and about how Ogdoad should be set up, then writes a company profile and proposes the first hires.`,

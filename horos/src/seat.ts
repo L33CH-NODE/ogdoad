@@ -1,16 +1,16 @@
-// A seat binds a Paperclip agent on the live-agent adapter to a herd hire. The bridge long-polls
+// A seat binds a Paperclip agent on the live-agent adapter to a Horos hire. The bridge long-polls
 // that agent's mailbox, hands each job to the hire's live session, keeps the lease alive, and
 // closes the job when the hire reports back (or, as a fallback, when the hire settles).
 // A kept hire's seat outlives its sessions: while the hire rests, the seat keeps listening, and a
-// new job wakes the hire again. The mailbox key stays with herd; hires only see per-job credentials.
+// new job wakes the hire again. The mailbox key stays with horos; hires only see per-job credentials.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Herd's own CLI, called by absolute path so hires don't need it on PATH. */
-const HERD_CLI = fileURLToPath(new URL("./cli.js", import.meta.url));
+/** Horos's own CLI, called by absolute path so hires don't need it on PATH. */
+const HOROS_CLI = fileURLToPath(new URL("./cli.js", import.meta.url));
 
 import type { Hire } from "./hire.js";
 import type { HireState } from "./rules.js";
@@ -33,7 +33,7 @@ interface JobControl {
   settled: boolean;
 }
 
-/** How long after the hire settles herd waits for it to close the job itself before closing it. */
+/** How long after the hire settles Horos waits for it to close the job itself before closing it. */
 const SELF_CLOSE_GRACE_MS = 45_000;
 
 export function mailboxKeyFor(agentId: string): string {
@@ -264,7 +264,7 @@ export function deliveryNote(job: MailboxJob, promptFile: string, envFile: strin
     `Read the job: ${promptFile}`,
     `This job's run credentials (PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_RUN_ID): ${envFile}`,
     `Do the work and reply on the task with those credentials. Then close the job:`,
-    `  node "${HERD_CLI}" done ${job.jobId} --agent ${job.agentId} --summary "<one line>"`,
+    `  node "${HOROS_CLI}" done ${job.jobId} --agent ${job.agentId} --summary "<one line>"`,
   ].join(" ");
 }
 

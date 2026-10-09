@@ -4,8 +4,8 @@ Ogdoad needs no provider logins. The company's CEO, **SOPHIA**, is a seat that t
 
 ## The flow
 
-1. **Start.** `npx ogdoad` (or `OGDOAD-START.bat`) starts the Ogdoad server and the **herd** backend (Ogdoad's agent-session manager, see `HERD.md`).
-2. **Detect.** Herd finds what is installed:
+1. **Start.** `npx ogdoad` (or `OGDOAD-START.bat`) starts the Ogdoad server and the **Horos** backend (Ogdoad's agent-session manager, see `HOROS.md`).
+2. **Detect.** Horos finds what is installed:
    - cloud CLIs: Claude Code, Codex, grok, opencode, Gemini CLI, Hermes
    - local models: Ollama (`127.0.0.1:11434`), llama-server and LM Studio endpoints
 3. **Ask.** In the terminal:
@@ -15,10 +15,10 @@ Ogdoad needs no provider logins. The company's CEO, **SOPHIA**, is a seat that t
    - **Private**: nothing leaves this machine.
    - **Balanced**: cloud is fine for planning, but keep company data local.
    - **Power**: use the strongest model available.
-4. **Recommend.** Depending on that answer, herd suggests either the most private capable local model or the most powerful cloud CLI found, and says why. The operator confirms or picks another.
-5. **Spawn and brief.** Herd launches the chosen harness in its own terminal session (working directory `~/.ogdoad/seats/sophia`). It pastes in the SOPHIA role brief, which covers:
+4. **Recommend.** Depending on that answer, Horos suggests either the most private capable local model or the most powerful cloud CLI found, and says why. The operator confirms or picks another.
+5. **Spawn and brief.** Horos launches the chosen harness in its own terminal session (working directory `~/.ogdoad/seats/sophia`). It pastes in the SOPHIA role brief, which covers:
    - who she is
-   - how to hire through herd
+   - how to hire through Horos
    - how to watch hires
    - the Ogdoad API and mailbox
    - what needs the operator's yes
@@ -40,14 +40,14 @@ Ogdoad is a full code instance, and SOPHIA is allowed to change any part of the 
 
 ## Later launches
 
-If SOPHIA's seat is already assigned, herd resumes her session (with the harness's own `--resume <id>` where it has one) and opens the UI. To hand SOPHIA to a different harness, the operator re-runs the chooser: `npx ogdoad sophia`.
+If SOPHIA's seat is already assigned, Horos resumes her session (with the harness's own `--resume <id>` where it has one) and opens the UI. To hand SOPHIA to a different harness, the operator re-runs the chooser: `npx ogdoad sophia`.
 
 ## Line of sight
 
-SOPHIA hires through herd, so she sees each hire's live state (working, blocked, idle, done), can read their screens, and can prompt them. The operator sees the same picture in the Ogdoad UI, updated live over a localhost event stream.
+SOPHIA hires through horos, so she sees each hire's live state (working, blocked, idle, done), can read their screens, and can prompt them. The operator sees the same picture in the Ogdoad UI, updated live over a localhost event stream.
 
 ## Defaults that protect the operator
 
 - Local models are offered first whenever trust is "Private", and are never silently swapped for cloud.
-- Herd's API listens on 127.0.0.1 only and requires a per-install token file readable only by the operator's account.
-- Herd answers no permission prompts on its own. A blocked hire waits for SOPHIA or the operator.
+- Horos's API listens on 127.0.0.1 only and requires a per-install token file readable only by the operator's account.
+- Horos answers no permission prompts on its own. A blocked hire waits for SOPHIA or the operator.

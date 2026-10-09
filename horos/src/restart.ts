@@ -1,6 +1,6 @@
-// What herd does when a kept hire's session ends on its own: a crash, the harness quitting, or
+// What Horos does when a kept hire's session ends on its own: a crash, the harness quitting, or
 // someone typing /exit in the hire's terminal (or over Remote Control). Hires the operator lets go
-// of (`kill`) and hires stopped with herd itself never come through here. Every outcome is
+// of (`kill`) and hires stopped with Horos itself never come through here. Every outcome is
 // reported to the operator; this only decides what happens next.
 
 export interface ExitFacts {
@@ -8,7 +8,7 @@ export interface ExitFacts {
   exitCode: number | null;
   /** How long the session ran before it ended. */
   ranForMs: number;
-  /** When herd restarted this hire before, newest last (epoch ms). */
+  /** When Horos restarted this hire before, newest last (epoch ms). */
   recentRestarts: number[];
   /** Whether the session that just ended was a resume of an earlier one. */
   wasResume: boolean;

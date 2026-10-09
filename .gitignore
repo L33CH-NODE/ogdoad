@@ -2,4 +2,4 @@ node_modules/
 *.log
 dist/
 runtime/node_modules/
-herd/dist/
+horos/dist/

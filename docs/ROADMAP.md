@@ -21,7 +21,7 @@ Frontier intelligence without handing over the business.
 ## Core
 
 - **Own codebase.** Paperclip v2026.1005.0 lives in `core/` as a snapshot, credited in `NOTICE`; every change is listed in `core/OGDOAD_CHANGES.md`.
-- **No logins, ever.** Seats are handed to the operator's own harnesses (live-agent mailbox now, herd next). See `HERD.md`.
+- **No logins, ever.** Seats are handed to the operator's own harnesses (live-agent mailbox now, Horos next). See `HOROS.md`.
 - **Local EI drives by default.** When the operator wants more power, they hand a role to the CLI of their favourite EI.
 - **First launch: choose SOPHIA, the CEO.** She is briefed automatically, the UI opens itself, and she runs a multiple-choice setup interview. See `FIRST-LAUNCH.md`.
 - **SOPHIA can reshape the UI.** Live appearance changes (skin, text size, font, tokens) apply instantly, and code changes show via hot reload. Only the server-side human gates are protected.
@@ -40,7 +40,7 @@ Frontier intelligence without handing over the business.
 
 - **Abilities belong to the hire.** Every skill, plugin and tool an agent uses is its own harness's native ability (Claude Code skills and MCP servers, Codex tools, ...), unless the operator gives it in chat or tells the agent to learn and load it in its own harness. Trust is managed by the operator per hire: for a new ability, hire a different kind of EI from another provider. Ogdoad's own features (invoices, dashboards, the privacy membrane) are operator-side apps that agents reach over the API, not agent abilities.
 - **The operator is on the pulse of everything.** Every error and status in the team reaches the operator as a notification: desktop alerts now, plus the UI's notification centre and the Team pulse panel.
-- **Graceful shutdown button in the UI.** Running work finishes and saves, each hire quits through its own `/exit`, then the server stops cleanly, so Postgres is never killed mid-write. Herd's side is done. The server side is next: herd runs the Ogdoad server in a terminal of its own, so the shutdown can press Ctrl+C on it last, after every agent has exited.
+- **Graceful shutdown button in the UI.** Running work finishes and saves, each hire quits through its own `/exit`, then the server stops cleanly, so Postgres is never killed mid-write. Horos's side is done. The server side is next: Horos runs the Ogdoad server in a terminal of its own, so the shutdown can press Ctrl+C on it last, after every agent has exited.
 
 ## Look and feel
 

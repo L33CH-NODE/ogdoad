@@ -1,4 +1,4 @@
-// The roster: hires herd brings back after it restarts (a reboot, a crash, the operator closing
+// The roster: hires Horos brings back after it restarts (a reboot, a crash, the operator closing
 // a window). Each kept hire is saved with how to start it again: resumed where the harness can
 // pick its own session back up (Claude Code, Codex), otherwise fresh with its brief re-delivered.
 // Seats are saved with their hire, so jobs keep flowing to the same agent.
@@ -6,9 +6,9 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { HERD_DIR } from "./paths.js";
+import { HOROS_DIR } from "./paths.js";
 
-export const ROSTER_FILE = join(HERD_DIR, "roster.json");
+export const ROSTER_FILE = join(HOROS_DIR, "roster.json");
 
 export interface RosterEntry {
   /** The hire id, kept across restarts so seats and saved state still point at it. */
@@ -26,7 +26,7 @@ export interface RosterEntry {
   /** Re-delivered on a fresh start, so a hire that can't resume still knows its role. */
   brief?: string;
   seat?: { agentId: string; mailbox?: string };
-  /** Resting: left down on purpose (/exit, or a crash loop). Herd won't start it until work arrives. */
+  /** Resting: left down on purpose (/exit, or a crash loop). Horos won't start it until work arrives. */
   dormant?: boolean;
   keptAt: string;
 }

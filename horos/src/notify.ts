@@ -1,4 +1,4 @@
-// The operator's pulse: every error, status and decision herd sees becomes a notification. All of
+// The operator's pulse: every error, status and decision Horos sees becomes a notification. All of
 // them go into one feed (notifications.jsonl, the record the UI's bell and SOPHIA can read), and
 // the ones that matter right now also pop up on the desktop. Status flips (working, idle) are too
 // frequent to pop up one by one, so they arrive as a digest at most once per interval.
@@ -6,10 +6,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { HERD_DIR } from "./paths.js";
+import { HOROS_DIR } from "./paths.js";
 import type { ToastFn } from "./toast.js";
 
-export const NOTIFICATIONS_FILE = join(HERD_DIR, "notifications.jsonl");
+export const NOTIFICATIONS_FILE = join(HOROS_DIR, "notifications.jsonl");
 
 /** error: something broke. warn: something needs the operator, or went wrong and is being handled.
  *  info: something happened. pulse: a status change, digested. */
@@ -38,7 +38,7 @@ export interface NotifierOptions {
   file?: string;
   toast?: ToastFn | null;
   pulseDigestMs?: number;
-  /** Called for every notification recorded (herd streams them to the UI). */
+  /** Called for every notification recorded (Horos streams them to the UI). */
   onNotify?: (n: Notification) => void;
 }
 

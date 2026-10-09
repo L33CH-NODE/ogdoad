@@ -12,7 +12,7 @@ import { Notifier } from "../notify.js";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test("the feed persists, counts unread (not pulses), and survives a restart", () => {
-  const file = join(mkdtempSync(join(tmpdir(), "herd-notify-")), "notifications.jsonl");
+  const file = join(mkdtempSync(join(tmpdir(), "horos-notify-")), "notifications.jsonl");
   const a = new Notifier({ file });
   a.push({ level: "error", kind: "hire_down", title: "SOPHIA is down", body: "x" });
   a.push({ level: "pulse", kind: "status", title: "SOPHIA idle", body: "" });

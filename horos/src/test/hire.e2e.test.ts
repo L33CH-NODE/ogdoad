@@ -1,5 +1,5 @@
 // End to end on a real PTY (ConPTY on Windows): a fake harness that idles at a prompt, works,
-// asks a yes/no question, then finishes. Herd should follow it through every state.
+// asks a yes/no question, then finishes. Horos should follow it through every state.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -28,8 +28,8 @@ rl.on("line", async (line) => {
 });
 `;
 
-test("herd follows a hire: idle -> working -> blocked -> done -> idle -> exited", { timeout: 40_000 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), "herd-e2e-"));
+test("Horos follows a hire: idle -> working -> blocked -> done -> idle -> exited", { timeout: 40_000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "horos-e2e-"));
   const script = join(dir, "fake-harness.mjs");
   writeFileSync(script, FAKE_HARNESS);
 

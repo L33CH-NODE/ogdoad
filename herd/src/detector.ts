@@ -36,6 +36,7 @@ export class Stabilizer {
   private idleChecks = 0;
   private lastIdleCheckAt = 0;
   private workedSinceSeen = false;
+  private prompted = false;
   private report: SelfReport | null = null;
 
   constructor(private readonly startedAt: number) {}
@@ -50,7 +51,16 @@ export class Stabilizer {
   /** Mark the current result as seen (someone read the screen), turning "done" back into "idle". */
   acknowledge(): void {
     this.workedSinceSeen = false;
+    this.prompted = false;
     if (this.state === "done") this.state = "idle";
+  }
+
+  /**
+   * Someone asked the hire for something (a prompt or keys). Until then, screen activity such as a
+   * TUI drawing itself isn't work and won't produce "done"; a working rule match always counts.
+   */
+  markPrompted(): void {
+    this.prompted = true;
   }
 
   /** Feed one observation; returns the (possibly unchanged) state. */
@@ -64,7 +74,8 @@ export class Stabilizer {
     if (raw !== "idle") {
       this.idleSince = null;
       this.idleChecks = 0;
-      if (raw === "working") this.workedSinceSeen = true;
+      const evidentWork = o.rule?.state === "working" || this.report?.state === "working";
+      if (raw === "working" && (evidentWork || this.prompted)) this.workedSinceSeen = true;
       return (this.state = raw);
     }
 

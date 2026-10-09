@@ -20,6 +20,25 @@ test("claude: an empty prompt box with the shortcuts footer is idle", () => {
   assert.equal(classify(rulesFor("claude"), view(screen))?.state, "idle");
 });
 
+test("claude 2.1.x: a selection menu is blocked even though the idle footer is visible", () => {
+  const screen = [
+    "✻ Churned for 2s · done 3:22 PM",
+    "  Teach auto mode about your environment?",
+    "  ❯ 1. Yes",
+    "    2. Not now",
+    "    3. Don't show again",
+    "  Enter to confirm · Esc to cancel",
+    "❯ ",
+    "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 3 agents",
+  ].join("\n");
+  assert.equal(classify(rulesFor("claude"), view(screen))?.state, "blocked");
+});
+
+test("claude 2.1.x: the permission-mode footer marks an idle prompt", () => {
+  const screen = "────────\n❯ Try \"refactor <filepath>\"\n────────\n  ⏵⏵ auto mode on (shift+tab to cycle)";
+  assert.equal(classify(rulesFor("claude"), view(screen))?.state, "idle");
+});
+
 test("generic yes/no prompts are blocked for any harness", () => {
   assert.equal(classify(rulesFor("some-new-cli"), view("Overwrite config? (y/n)"))?.state, "blocked");
   assert.equal(classify(rulesFor("grok"), view("Apply changes [Y/n]"))?.state, "blocked");

@@ -18,8 +18,13 @@ const CONFIRM_TICK_MS = 100;
 const PROMPT_ENTER_DELAY_MS = 300;
 const PROMPT_START_TIMEOUT_MS = 5000;
 
-/** Env vars a harness must not inherit from a parent Claude Code session, or `claude` refuses to start. */
-const NESTING_VARS = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION", "CLAUDE_CODE_PARENT_SESSION"];
+/**
+ * Session-scoped variables a hire must never inherit when herd itself runs under a Claude Code
+ * session: nesting markers (claude refuses to start, or turns transcripts off) and that session's
+ * messaging credentials (a hire holding them could act as the parent session). Configuration such
+ * as CLAUDE_CONFIG_DIR is left alone.
+ */
+const PARENT_SESSION_VAR = /^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_(ENTRYPOINT|SESSION(_\w+)?|CHILD_SESSION|PARENT_SESSION|BRIDGE_SESSION_ID|MESSAGING_\w+))$/;
 
 export interface HireSpec {
   id?: string;
@@ -91,8 +96,9 @@ export class Hire extends EventEmitter {
     this.term = new Terminal({ cols, rows, scrollback: 2000, allowProposedApi: true });
     this.term.onTitleChange((title) => (this.title = title));
 
-    const env: Record<string, string> = { ...(process.env as Record<string, string>), ...spec.env, OGDOAD_HIRE_ID: this.id };
-    for (const name of NESTING_VARS) delete env[name];
+    const env: Record<string, string> = {};
+    for (const [name, value] of Object.entries(process.env)) if (value !== undefined && !PARENT_SESSION_VAR.test(name)) env[name] = value;
+    Object.assign(env, spec.env, { OGDOAD_HIRE_ID: this.id });
 
     this.pty = pty.spawn(spec.file, spec.args, { name: "xterm-256color", cols, rows, cwd: spec.cwd, env });
     this.pty.onData((data) => {
@@ -145,6 +151,7 @@ export class Hire extends EventEmitter {
   async prompt(text: string, opts: { wait?: boolean; timeoutMs?: number } = {}): Promise<HireState> {
     if (this.state === "blocked") throw new HerdError("hire_blocked", "The hire is waiting on a decision; answer it with keys first.");
     if (this.state === "exited") throw new HerdError("hire_exited", "The hire has exited.");
+    this.stabilizer.markPrompted();
     const bracketed = this.term.modes.bracketedPasteMode;
     this.pty.write(bracketed ? `\x1b[200~${text}\x1b[201~` : text);
     await sleep(PROMPT_ENTER_DELAY_MS);
@@ -159,6 +166,8 @@ export class Hire extends EventEmitter {
 
   /** Send named keys ("enter", "esc", "down", "ctrl+c") or literal text, in order. */
   keys(sequence: string[]): void {
+    // Answering a question or typing counts as asking for work, same as a prompt.
+    this.stabilizer.markPrompted();
     for (const k of sequence) this.pty.write(KEYS[k.toLowerCase()] ?? k);
   }
 

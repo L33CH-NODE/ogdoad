@@ -19,8 +19,17 @@ test("startup output doesn't count as work: a quiet hire after startup is idle, 
   assert.equal(s.observe({ now: STARTUP_GRACE_MS + 2000, rule: null, lastOutputAt: 400 }), "idle");
 });
 
+test("unprompted activity (a TUI drawing itself) reads as working but settles to idle, not done", () => {
+  const s = new Stabilizer(0);
+  const t = STARTUP_GRACE_MS + 100;
+  assert.equal(s.observe({ now: t, rule: null, lastOutputAt: t }), "working");
+  assert.equal(s.observe({ now: t + ACTIVITY_WINDOW_MS + IDLE_CONFIRM_CAP_MS + 20, rule: null, lastOutputAt: t }), "working");
+  assert.equal(s.observe({ now: t + ACTIVITY_WINDOW_MS + IDLE_CONFIRM_CAP_MS * 2 + 40, rule: null, lastOutputAt: t }), "idle");
+});
+
 test("output means working; silence settles to done after confirmation; reading it makes it idle", () => {
   const s = new Stabilizer(0);
+  s.markPrompted();
   let t = STARTUP_GRACE_MS + 100;
   assert.equal(s.observe({ now: t, rule: null, lastOutputAt: t }), "working");
   t += ACTIVITY_WINDOW_MS + 10; // quiet now
@@ -36,6 +45,7 @@ test("output means working; silence settles to done after confirmation; reading 
 
 test("visible idle chrome settles at once, without confirmations", () => {
   const s = new Stabilizer(0);
+  s.markPrompted();
   const t = STARTUP_GRACE_MS + 100;
   s.observe({ now: t, rule: null, lastOutputAt: t });
   assert.equal(s.observe({ now: t + ACTIVITY_WINDOW_MS + 10, rule: idleChrome, lastOutputAt: t }), "done");
@@ -43,6 +53,7 @@ test("visible idle chrome settles at once, without confirmations", () => {
 
 test("the 700 ms cap settles idle even if checks come slowly", () => {
   const s = new Stabilizer(0);
+  s.markPrompted();
   let t = STARTUP_GRACE_MS + 100;
   s.observe({ now: t, rule: null, lastOutputAt: t });
   t += ACTIVITY_WINDOW_MS + 10;

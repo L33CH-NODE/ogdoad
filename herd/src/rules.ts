@@ -57,8 +57,22 @@ export const BUILTIN_RULES: Record<string, Rule[]> = {
       },
       note: "permission and plan-approval dialogs",
     },
+    {
+      state: "blocked",
+      priority: 100,
+      region: { bottom: 12 },
+      match: { all: ["enter to confirm", "esc to cancel"] },
+      note: "any selection menu waiting for an answer (e.g. 'Teach auto mode about your environment?')",
+    },
     { state: "working", priority: 80, region: { bottom: 8 }, match: { any: ["esc to interrupt"] }, note: "status line while thinking or running tools" },
-    { state: "idle", priority: 50, region: { bottom: 6 }, match: { any: ["? for shortcuts"], none: ["esc to interrupt"] }, note: "empty prompt box footer" },
+    {
+      state: "idle",
+      priority: 50,
+      region: { bottom: 6 },
+      // Footers differ by version: "? for shortcuts" (older), the permission-mode line (2.1.x).
+      match: { any: ["? for shortcuts", "shift+tab to cycle"], none: ["esc to interrupt"] },
+      note: "empty prompt box footer",
+    },
     ...GENERIC,
   ],
   codex: [

@@ -32,6 +32,12 @@ export interface RosterEntry {
   role?: "server";
   /** For a server: the URL that answers 2xx once it is up. */
   health?: string;
+  /** For a server: not started with Horos; started when a hire needs what it provides, rested when unused. */
+  onDemand?: boolean;
+  /** For a server: the capability it provides to hires (e.g. "ollama"). */
+  provides?: string;
+  /** For a hire: capabilities it needs running first (e.g. ["ollama"]). */
+  needs?: string[];
   keptAt: string;
 }
 

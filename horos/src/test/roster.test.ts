@@ -166,6 +166,42 @@ test("a server starts first and stops last, through its own shutdown (stop hook,
   }
 });
 
+test("an on-demand server starts only when a hire needs it, and rests when nothing does", { timeout: 60_000 }, async () => {
+  const { dir, script, rosterFile } = fixture();
+  const serverScript = join(dir, "server.mjs");
+  writeFileSync(serverScript, FAKE_SERVER);
+  const port = 40000 + Math.floor(Math.random() * 20000);
+  const health = `http://127.0.0.1:${port}/health`;
+  saveRoster([
+    { id: "models01", harness: "generic", command: "node", cwd: dir, label: "local models", args: [serverScript, String(port)], resumeArgs: null, keptAt: new Date().toISOString(), role: "server", health, onDemand: true, provides: "fakeai" },
+  ], rosterFile);
+
+  const notifier = new Notifier();
+  const horos = new Horos({ rosterFile, notifier, onDemandIdleMs: 500 });
+  try {
+    await horos.restore();
+    assert.equal(horos.hires.get("models01"), undefined, "not started with Horos");
+
+    // What the API does for a new hire: its needs first, then the hire.
+    await horos.ensureNeeds(["fakeai"], "local seat");
+    assert.ok((await fetch(health)).ok, "started for the hire, and answering");
+    const seat = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, label: "local seat", needs: ["fakeai"] });
+    assert.ok(await seat.waitFor((s) => s === "idle", 10_000));
+
+    horos.release(seat.id);
+    const server = horos.hires.get("models01")!;
+    assert.ok(await server.waitFor((s) => s === "exited", 15_000), "rested once nothing needed it");
+    assert.ok(notifier.list().some((n) => n.kind === "server_rested"), "and the operator is told");
+    assert.ok(!notifier.list().some((n) => n.kind === "hire_restarting"), "resting isn't a crash");
+
+    await horos.ensureNeeds(["fakeai"], "local seat");
+    assert.ok((await fetch(health)).ok, "and comes back on the next need");
+    await assert.rejects(() => horos.ensureNeeds(["nothing-provides-this"], "x"), /Nothing on the roster provides/);
+  } finally {
+    horos.shutdown();
+  }
+});
+
 test("graceful shutdown waits for each hire, quits it, and keeps it on the roster", { timeout: 40_000 }, async () => {
   const { dir, script, rosterFile, horos, kinds } = fixture();
   const hire = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, keep: true });

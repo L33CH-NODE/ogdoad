@@ -11,6 +11,9 @@
 //   horos spawn <harness> --cwd <dir> [--label name] [--brief-file f] [--keep] [-- harness args...]
 //   horos spawn generic --command node --server --health <url> --cwd <dir> --label "Ogdoad server" -- <server args...>
 //                                (a server: started first and up before hires, stopped last with Ctrl+C)
+//   horos spawn generic --command wsl --server --on-demand --provides ollama --health <url> --cwd <dir> --label "Ollama" -- <args>
+//                                (on call: registered now, started when a hire needs it, rested when unused)
+//   horos spawn <harness> --needs ollama ...   (a hire that needs a capability: its provider starts first)
 //   horos roster                 (kept hires: brought back after a restart)
 //   horos screen <id> [--lines 60]
 //   horos prompt <id> <text...> [--wait]
@@ -130,7 +133,11 @@ async function main(): Promise<void> {
     case "roster": {
       const roster = await api("GET", "/v1/roster");
       if (!roster.length) return console.log("No kept hires.");
-      for (const e of roster) console.log(`${e.id}  ${(e.running ? "running" : e.dormant ? "resting" : "down").padEnd(8)} ${(e.resumable ? "resumes" : "fresh").padEnd(8)} ${(e.label ?? e.harness).padEnd(16)} ${e.seat ? `seat ${e.seat.agentId}` : "no seat"}`);
+      for (const e of roster) {
+        const status = e.running ? "running" : e.onDemand ? "on call" : e.dormant ? "resting" : "down";
+        const what = e.role === "server" ? `server${e.provides ? `, provides ${e.provides}` : ""}` : e.seat ? `seat ${e.seat.agentId}` : "no seat";
+        console.log(`${e.id}  ${status.padEnd(8)} ${(e.resumable ? "resumes" : "fresh").padEnd(8)} ${(e.label ?? e.harness).padEnd(24)} ${what}`);
+      }
       return;
     }
     case "detect": {
@@ -162,7 +169,11 @@ async function main(): Promise<void> {
         command: flag("command"),
         role: has("server") ? "server" : undefined,
         health: flag("health"),
+        onDemand: has("on-demand") || undefined,
+        provides: flag("provides"),
+        needs: flag("needs")?.split(",").map((s) => s.trim()).filter(Boolean),
       });
+      if (hire.onDemand) return console.log(`${hire.id}  on call  ${hire.label}  (provides ${hire.provides}; starts when a hire needs it)`);
       console.log(`${hire.id}  ${hire.state}  ${hire.label}  pid ${hire.pid}`);
       return;
     }

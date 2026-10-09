@@ -17,6 +17,8 @@ export interface HarnessSpec {
   resumeArgs?: (sessionId: string) => string[];
   /** The command that quits the harness cleanly, saving its session (typed, then Enter). */
   exitLine?: string;
+  /** Capabilities a hire on this harness needs running first (provided by on-demand servers). */
+  needs?: string[];
 }
 
 export const HARNESSES: HarnessSpec[] = [
@@ -26,7 +28,7 @@ export const HARNESSES: HarnessSpec[] = [
   { id: "gemini", name: "Gemini CLI", commands: ["gemini"], privacy: "cloud", vendor: "Google" },
   { id: "opencode", name: "opencode", commands: ["opencode"], privacy: "either", vendor: "SST (any provider, including local)" },
   { id: "hermes", name: "Hermes", commands: ["hermes"], privacy: "either", vendor: "Nous Research (any provider, including local)" },
-  { id: "ollama", name: "Ollama", commands: ["ollama"], privacy: "local", vendor: "local models" },
+  { id: "ollama", name: "Ollama", commands: ["ollama"], privacy: "local", vendor: "local models", needs: ["ollama"] },
 ];
 
 export interface Resolved {

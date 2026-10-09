@@ -41,6 +41,12 @@ interface SpawnBody {
   role?: "server";
   /** For a server: the URL that answers 200 once it is up. */
   health?: string;
+  /** For a server: start only when a hire needs what it provides; rest when unused. */
+  onDemand?: boolean;
+  /** For a server: the capability it provides (e.g. "ollama"). */
+  provides?: string;
+  /** For a hire: capabilities that must be running before it starts. */
+  needs?: string[];
 }
 
 /** Loaded into node servers so Horos can ask for their own graceful shutdown (see hooks/graceful-hook.cjs). */
@@ -63,6 +69,8 @@ export interface HorosOptions {
   log?: (event: string, data: unknown) => void;
   /** Where the operator hears about everything; defaults to a quiet in-memory feed. */
   notifier?: Notifier;
+  /** How long an on-demand server stays up after the last hire that needed it has gone. */
+  onDemandIdleMs?: number;
 }
 
 const STATE_WORDS: Partial<Record<HireState, string>> = { working: "working", idle: "idle", done: "finished, result unread" };
@@ -80,6 +88,15 @@ export class Horos {
   private readonly resumed = new WeakSet<Hire>();
   private readonly restarts = new Map<string, number[]>();
   private readonly pendingRestart = new Map<string, NodeJS.Timeout>();
+  /** Servers that got the graceful-stop hook (node servers). */
+  private readonly hooked = new Set<string>();
+  /** On-demand servers being started, by capability, so concurrent needs share one start. */
+  private readonly starting = new Map<string, Promise<void>>();
+  private readonly idleTimers = new Map<string, NodeJS.Timeout>();
+  /** Sessions Horos stopped on purpose (an unused on-demand server): their exit isn't a crash. */
+  private readonly rested = new WeakSet<Hire>();
+  /** Needs of hires that aren't on the roster. */
+  private readonly spawnNeeds = new Map<string, string[]>();
   private shuttingDown = false;
 
   constructor(private readonly opts: HorosOptions = {}) {
@@ -125,12 +142,27 @@ export class Horos {
       this.roster.push({
         id: hire.id, harness: hire.harness, command: body.command, cwd: body.cwd, label: body.label, env: body.env, args,
         resumeArgs: resumeArgsFor(harnessSpec(hire.harness)?.resumeArgs, args), brief: body.brief, keptAt: new Date().toISOString(),
-        ...(body.role === "server" ? { role: "server" as const, health: body.health } : {}),
+        ...(body.role === "server" ? { role: "server" as const, health: body.health, onDemand: body.onDemand || undefined, provides: body.provides } : {}),
+        ...(body.needs?.length ? { needs: body.needs } : {}),
       });
       this.saveRoster();
     }
+    if (body.needs?.length) this.spawnNeeds.set(hire.id, body.needs);
     if (body.brief) this.deliverBrief(hire, body.brief);
     return hire;
+  }
+
+  /** Put an on-demand server on the roster without starting it: it starts when a hire needs it. */
+  register(body: SpawnBody): RosterEntry {
+    if (body.role !== "server" || !body.onDemand || !body.provides) throw new HorosError("bad_request", "Only on-demand servers (role server, onDemand, provides) can be registered without starting.");
+    const entry: RosterEntry = {
+      id: randomUUID().slice(0, 8), harness: harnessSpec(body.harness)?.id ?? "generic", command: body.command, cwd: body.cwd, label: body.label, env: body.env,
+      args: body.args ?? [], resumeArgs: null, keptAt: new Date().toISOString(), role: "server", health: body.health, onDemand: true, provides: body.provides,
+    };
+    this.roster.push(entry);
+    this.saveRoster();
+    this.notify({ level: "info", kind: "server_registered", title: `${entry.label ?? entry.id} is on call`, body: `It provides "${entry.provides}" and starts when a hire needs it.`, hireId: entry.id });
+    return entry;
   }
 
   /** Let a hire go: stop it, unbind its seat, and drop it from the roster. */
@@ -148,6 +180,7 @@ export class Horos {
       this.saveRoster();
       this.notify({ level: "info", kind: "hire_released", title: `${hire?.label ?? hireId} was let go`, body: "Stopped and taken off the roster.", hireId });
     }
+    this.scheduleIdleStops();
   }
 
   /** A hire told Horos its session id: record how to resume it. */
@@ -172,6 +205,7 @@ export class Horos {
     if (!entry || this.shuttingDown) return null;
     this.cancelRestart(hireId);
     try {
+      await this.ensureNeeds(this.needsOf(entry), entry.label ?? hireId);
       return this.revive(entry, false, why === "work" ? "woke for new work" : "started by you");
     } catch (err) {
       this.notify({ level: "error", kind: "wake_failed", title: `${entry.label ?? hireId} couldn't start`, body: (err as Error).message, hireId });
@@ -187,7 +221,7 @@ export class Horos {
     const others = this.roster.filter((e) => e.role !== "server");
     // Servers always come up when Horos starts, even after a crash loop: starting Ogdoad means wanting them.
     for (const entry of servers) {
-      if (this.hires.has(entry.id)) continue;
+      if (this.hires.has(entry.id) || entry.onDemand) continue;
       const name = entry.label ?? entry.id;
       try {
         this.revive(entry, false, "started", { quiet: true });
@@ -208,6 +242,7 @@ export class Horos {
           if (entry.seat) this.bindSeat(entry.seat.agentId, entry.id, entry.seat.mailbox);
           resting.push(name);
         } else {
+          await this.ensureNeeds(this.needsOf(entry), name);
           this.revive(entry, false, "back after Horos restarted", { quiet: true });
           back.push(name);
         }
@@ -226,10 +261,12 @@ export class Horos {
    */
   async stopServer(server: Hire, timeoutMs: number): Promise<boolean> {
     if (server.state === "exited") return false;
-    writeFileSync(this.stopFileFor(server.id), new Date().toISOString(), "utf8");
-    if (await server.waitFor((s) => s === "exited", timeoutMs)) return false;
+    if (this.hooked.has(server.id)) {
+      writeFileSync(this.stopFileFor(server.id), new Date().toISOString(), "utf8");
+      if (await server.waitFor((s) => s === "exited", timeoutMs)) return false;
+    }
     server.keys(["ctrl+c"]);
-    if (await server.waitFor((s) => s === "exited", 10_000)) return false;
+    if (await server.waitFor((s) => s === "exited", this.hooked.has(server.id) ? 10_000 : timeoutMs)) return false;
     server.kill();
     this.notify({ level: "error", kind: "server_forced", title: `${server.label} had to be killed`, body: "It didn't finish its own shutdown in time. Its database recovers on the next start; check: horos screen " + server.id, hireId: server.id });
     return true;
@@ -244,6 +281,67 @@ export class Horos {
     for (const hire of this.hires.values()) if (!isServer(hire)) hire.kill();
     await Promise.all([...this.hires.values()].filter(isServer).map((h) => this.stopServer(h, serverTimeoutMs)));
     this.notifier.close();
+  }
+
+  /** What a hire needs running first: its own declared needs plus its harness's. */
+  needsOf(entry: { harness: string; needs?: string[] }): string[] {
+    return [...new Set([...(entry.needs ?? []), ...(harnessSpec(entry.harness)?.needs ?? [])])];
+  }
+
+  /** Start (or find already running) whatever provides each capability, and wait until it answers. */
+  async ensureNeeds(needs: string[], forLabel: string): Promise<void> {
+    for (const cap of needs) await this.ensureServer(cap, forLabel);
+  }
+
+  private async ensureServer(cap: string, forLabel: string): Promise<void> {
+    const entry = this.roster.find((e) => e.role === "server" && e.provides === cap);
+    if (!entry) throw new HorosError("no_provider", `Nothing on the roster provides "${cap}" for ${forLabel}.`);
+    const idle = this.idleTimers.get(entry.id);
+    if (idle) clearTimeout(idle);
+    this.idleTimers.delete(entry.id);
+    // Already answering (ours, or started outside Horos)?
+    if (entry.health && (await isHealthy(entry.health))) return;
+    const pending = this.starting.get(cap);
+    if (pending) return pending;
+    const start = (async () => {
+      const live = this.hires.get(entry.id);
+      if (!live || live.state === "exited") this.revive(entry, false, `started for ${forLabel}`);
+      if (entry.health && !(await waitHealthy(entry.health, 180_000))) {
+        throw new HorosError("provider_not_up", `${entry.label ?? cap} didn't answer at ${entry.health} within 3 minutes.`);
+      }
+    })();
+    this.starting.set(cap, start);
+    try {
+      await start;
+    } finally {
+      this.starting.delete(cap);
+    }
+  }
+
+  /** Rest any on-demand server that no live hire needs, after the idle grace. */
+  private scheduleIdleStops(): void {
+    if (this.shuttingDown) return;
+    for (const entry of this.roster) {
+      if (entry.role !== "server" || !entry.onDemand || !entry.provides || this.idleTimers.has(entry.id)) continue;
+      const server = this.hires.get(entry.id);
+      if (!server || server.state === "exited" || this.inUse(entry.provides)) continue;
+      this.idleTimers.set(entry.id, setTimeout(() => {
+        this.idleTimers.delete(entry.id);
+        const now = this.hires.get(entry.id);
+        if (this.shuttingDown || !now || now.state === "exited" || this.inUse(entry.provides!)) return;
+        this.rested.add(now);
+        void this.stopServer(now, 60_000);
+      }, this.opts.onDemandIdleMs ?? 10 * 60_000));
+    }
+  }
+
+  private inUse(cap: string): boolean {
+    return [...this.hires.values()].some((h) => {
+      if (h.state === "exited") return false;
+      const e = this.roster.find((r) => r.id === h.id);
+      if (e?.role === "server") return false;
+      return this.needsOf(e ?? { harness: h.harness, needs: this.spawnNeeds.get(h.id) }).includes(cap);
+    });
   }
 
   private stopFileFor(id: string): string {
@@ -348,6 +446,7 @@ export class Horos {
       // Forward slashes: NODE_OPTIONS treats backslashes inside quotes as escapes.
       const require = GRACEFUL_HOOK.includes(" ") ? `--require "${GRACEFUL_HOOK}"` : `--require ${GRACEFUL_HOOK}`;
       env = { ...env, NODE_OPTIONS: [process.env.NODE_OPTIONS, env?.NODE_OPTIONS, require].filter(Boolean).join(" "), OGDOAD_STOP_FILE: this.stopFileFor(id) };
+      this.hooked.add(id);
     }
 
     const hireSpec: HireSpec = {
@@ -384,13 +483,31 @@ export class Horos {
       this.opts.log?.("server_exit_screen", { id: hire.id, label: hire.label, exitCode: hire.exitCode, tail: hire.read(2000, false) });
     }
     if (this.shuttingDown || this.released.has(hire) || this.hires.get(hire.id) !== hire) return;
+    this.scheduleIdleStops();
+    if (this.rested.has(hire)) {
+      this.notify({ level: "info", kind: "server_rested", title: `${hire.label} is resting`, body: "Nothing needed it any more. It starts again when a hire needs it.", hireId: hire.id });
+      return;
+    }
     const entry = this.roster.find((e) => e.id === hire.id);
     const code = hire.exitCode === null ? "killed" : `exit ${hire.exitCode}`;
     if (!entry) {
       this.notify({ level: hire.exitCode === 0 ? "info" : "warn", kind: "hire_exited", title: `${hire.label} exited`, body: `Its session ended (${code}). It isn't kept, so it stays down.`, hireId: hire.id });
       return;
     }
+    // A provider whose port is already served by someone else (WSL's own systemd Ollama, say) exits at
+    // once with "address in use". That isn't a crash: what hires need is up.
+    if (entry.role === "server" && entry.provides && entry.health) {
+      void isHealthy(entry.health).then((up) => {
+        if (up) this.notify({ level: "info", kind: "served_elsewhere", title: `${hire.label} is already served`, body: `Something else answers at ${entry.health}, so Horos uses that instead of running its own.`, hireId: hire.id });
+        else this.planExit(hire, entry, code);
+      });
+      return;
+    }
+    this.planExit(hire, entry, code);
+  }
 
+  /** A kept hire's session ended on its own: rest it or bring it back, per planRestart, and say so. */
+  private planExit(hire: Hire, entry: RosterEntry, code: string): void {
     const history = this.restarts.get(hire.id) ?? [];
     const plan = planRestart({ exitCode: hire.exitCode, ranForMs: Date.now() - hire.startedAt, recentRestarts: history, wasResume: this.resumed.has(hire) });
     if (plan.action === "rest") {
@@ -415,11 +532,9 @@ export class Horos {
       this.pendingRestart.delete(hire.id);
       // Still ours to bring back? The operator may have let it go, or Horos may be stopping.
       if (this.shuttingDown || this.hires.get(hire.id) !== hire || !this.roster.includes(entry)) return;
-      try {
-        this.revive(entry, plan.fresh, "is back");
-      } catch (err) {
-        this.notify({ level: "error", kind: "restore_failed", title: `${hire.label} couldn't be restarted`, body: (err as Error).message, hireId: hire.id });
-      }
+      void this.ensureNeeds(this.needsOf(entry), hire.label)
+        .then(() => this.revive(entry, plan.fresh, "is back"))
+        .catch((err) => this.notify({ level: "error", kind: "restore_failed", title: `${hire.label} couldn't be restarted`, body: (err as Error).message, hireId: hire.id }));
     }, plan.delayMs));
   }
 
@@ -504,6 +619,15 @@ export class Horos {
 
 function harnessSpec(id: string) {
   return HARNESSES.find((h) => h.id === id);
+}
+
+/** One health check: does the URL answer 2xx right now? */
+async function isHealthy(url: string): Promise<boolean> {
+  try {
+    return (await fetch(url, { signal: AbortSignal.timeout(2000) })).ok;
+  } catch {
+    return false;
+  }
 }
 
 /** Poll a health URL until it answers 2xx, or give up after timeoutMs. */
@@ -637,6 +761,8 @@ export function startServer(horos: Horos, opts: HorosServerOptions) {
         if (req.method === "POST") {
           const body = (await readJson(req)) as SpawnBody;
           if (!body.harness || !body.cwd) throw new HorosError("bad_request", "harness and cwd are required.");
+          if (body.role === "server" && body.onDemand) return send(res, 201, horos.register(body));
+          await horos.ensureNeeds(horos.needsOf(body), body.label ?? body.harness);
           return send(res, 201, horos.spawn(body).info());
         }
       }

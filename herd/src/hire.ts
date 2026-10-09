@@ -110,6 +110,15 @@ export class Hire extends EventEmitter {
       this.exitCode = exitCode;
       this.stabilizer.markExited();
       this.emitState();
+      // A session that ends on its own still holds its ConPTY host (conhost) open on Windows;
+      // close it, or every crash leaks a console and keeps herd's event loop alive.
+      setTimeout(() => {
+        try {
+          this.pty.kill();
+        } catch {
+          // already closed
+        }
+      }, 0);
       this.dispose();
     });
     this.schedule(TICK_MS);

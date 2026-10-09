@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
+import { startDetached } from "../daemon.js";
 import type { Inventory } from "../harnesses.js";
 import { DEFAULT_PORT, OGDOAD_HOME, TOKEN_FILE, readOrCreateToken } from "../paths.js";
 import { renderBrief } from "./brief.js";
@@ -58,18 +59,6 @@ async function up(url: string): Promise<boolean> {
   }
 }
 
-/** Start the herd daemon in the background if it isn't running. */
-async function ensureHerd(): Promise<void> {
-  if (await up(`${HERD_URL}/v1/health`)) return;
-  const child = spawnProcess(process.execPath, [HERD_CLI, "serve"], { detached: true, stdio: "ignore", windowsHide: true });
-  child.unref();
-  for (let i = 0; i < 40; i++) {
-    if (await up(`${HERD_URL}/v1/health`)) return;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error("herd didn't start within 10 s");
-}
-
 /** The live-agent mailbox key for an agent: created here if the adapter hasn't made it yet. */
 function ensureAgentKey(agentId: string): void {
   const home = process.env.PAPERCLIP_HOME?.trim() || join(homedir(), ".paperclip");
@@ -102,7 +91,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
   try {
     say("0GD0AD: choosing SOPHIA, your CEO\n");
     if (!(await up(`${OGDOAD_URL}/api/health`))) throw new Error(`Ogdoad isn't answering at ${OGDOAD_URL}. Start it first (OGDOAD-START).`);
-    await ensureHerd();
+    await startDetached();
 
     // 1. Company.
     let company: { id: string; name: string; issuePrefix?: string };
@@ -177,8 +166,10 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     } else {
       spawnBody = { harness: pick.id, args: [], brief };
     }
+    // Kept: herd brings SOPHIA back (resumed, same seat) whenever it restarts.
     const hire = await herd("POST", "/v1/hires", {
       ...spawnBody,
+      keep: true,
       cwd: seatDir,
       label: sessionName,
       env: { OGDOAD_COMPANY_ID: company.id, OGDOAD_AGENT_ID: agent.id, OGDOAD_API_URL: OGDOAD_URL },

@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // ogdoad-herd: run the herd daemon, or drive it.
-//   ogdoad-herd serve [--port 3198]
+//   ogdoad-herd start                       (herd in the background, logging to ~/.ogdoad/herd/herd.log)
+//   ogdoad-herd stop                        (stops herd and its hires; kept hires come back on the next start)
+//   ogdoad-herd serve [--port 3198]         (herd in this terminal)
 //   ogdoad-herd detect
 //   ogdoad-herd ls
-//   ogdoad-herd spawn <harness> --cwd <dir> [--label name] [--brief-file f] [-- harness args...]
+//   ogdoad-herd spawn <harness> --cwd <dir> [--label name] [--brief-file f] [--keep] [-- harness args...]
+//   ogdoad-herd roster                      (kept hires: brought back after a restart)
 //   ogdoad-herd screen <id> [--lines 60]
 //   ogdoad-herd prompt <id> <text...> [--wait]
 //   ogdoad-herd keys <id> <key...>          (enter, esc, up, down, tab, ctrl+c, or literal text)
-//   ogdoad-herd kill <id>
+//   ogdoad-herd kill <id>                   (lets the hire go: stopped, unseated, dropped from the roster)
 //   ogdoad-herd seat <hireId> --agent <paperclip agent id>   (jobs for that agent flow into the hire)
 //   ogdoad-herd seats
 //   ogdoad-herd done <jobId> --agent <agentId> [--summary "..."] [--fail]
@@ -17,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { LOG_FILE, startDetached } from "./daemon.js";
 import { detect } from "./harnesses.js";
 import { DEFAULT_PORT, TOKEN_FILE, readOrCreateToken } from "./paths.js";
 import { Herd, startServer } from "./server.js";
@@ -52,18 +56,38 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
 async function main(): Promise<void> {
   switch (command) {
     case "serve": {
-      const herd = new Herd();
-      const server = startServer(herd, { port, token: readOrCreateToken() });
-      server.on("listening", () => {
-        console.log(`herd listening on ${base} (token: ${TOKEN_FILE})`);
-      });
-      const shutdown = () => {
-        for (const hire of herd.hires.values()) hire.kill();
+      const herd = new Herd({ log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
+      const exit = () => {
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), 2000).unref();
       };
+      const server = startServer(herd, { port, token: readOrCreateToken(), onShutdown: exit });
+      server.on("listening", () => {
+        console.log(`${new Date().toISOString()} herd listening on ${base} (token: ${TOKEN_FILE}, pid ${process.pid})`);
+        void herd.restore();
+      });
+      const shutdown = () => {
+        herd.shutdown();
+        exit();
+      };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
+      return;
+    }
+    case "start": {
+      const { pid, already } = await startDetached(port);
+      console.log(already ? `herd is already running on ${base}` : `herd started on ${base} (pid ${pid}, log ${LOG_FILE})`);
+      return;
+    }
+    case "stop": {
+      await api("POST", "/v1/shutdown");
+      console.log("herd stopped");
+      return;
+    }
+    case "roster": {
+      const roster = await api("GET", "/v1/roster");
+      if (!roster.length) return console.log("No kept hires.");
+      for (const e of roster) console.log(`${e.id}  ${(e.running ? "running" : "down").padEnd(8)} ${(e.resumable ? "resumes" : "fresh").padEnd(8)} ${(e.label ?? e.harness).padEnd(16)} ${e.seat ? `seat ${e.seat.agentId}` : "no seat"}`);
       return;
     }
     case "detect": {
@@ -91,6 +115,7 @@ async function main(): Promise<void> {
         args,
         label: flag("label"),
         brief: briefFile ? readFileSync(briefFile, "utf8") : undefined,
+        keep: has("keep"),
       });
       console.log(`${hire.id}  ${hire.state}  ${hire.label}  pid ${hire.pid}`);
       return;

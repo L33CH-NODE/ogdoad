@@ -11,4 +11,5 @@ Keep changes small and in their own files where possible. Prefer new files plus 
 | Skins | `ui/src/main.tsx` | One import of `ogdoad/skins.css` after `index.css`. |
 | Skins | `ui/src/context/ThemeContext.tsx` | `applyTheme` asks the active skin for the browser chrome colour instead of hard-coded `#18181b` / `#ffffff`. |
 | Skins | `ui/src/components/SidebarAccountMenu.tsx`, `SidebarAccountMenu.production.tsx` | `<SkinPicker />` under the theme toggle. |
+| Branding | `ui/src/context/BreadcrumbContext.tsx` | Document title suffix "Ogdoad" instead of "Paperclip". |
 | Branding + skins | `ui/index.html` | Title "Ogdoad"; the pre-paint boot script also applies the stored skin (`localStorage["ogdoad.skin"]`), so there is no flash of the wrong palette. |

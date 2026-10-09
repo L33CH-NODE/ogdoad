@@ -327,7 +327,12 @@
   caret-color: var(--primary);
 }
 :root[data-skin="cyberpunk-uv"] :is(h1, h2, h3) {
+  font-family: var(--font-mono);
   letter-spacing: -0.01em;
+}
+:root[data-skin="cyberpunk-uv"].dark .primary-sidebar-surface nav a[aria-current="page"] {
+  color: var(--foreground);
+  box-shadow: inset 2px 0 0 var(--primary), 0 0 24px -10px var(--primary);
 }
 :root[data-skin="cyberpunk-uv"].dark .bg-primary {
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--ring) 55%, transparent), 0 0 18px -4px color-mix(in oklch, var(--primary) 75%, transparent);

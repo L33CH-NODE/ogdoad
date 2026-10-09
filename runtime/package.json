@@ -1,0 +1,8 @@
+{
+  "name": "ogdoad-runtime",
+  "private": true,
+  "description": "Pinned Paperclip runtime that Ogdoad's own UI build is served on, until the full core builds on Windows. Not published.",
+  "dependencies": {
+    "paperclipai": "2026.1005.0"
+  }
+}

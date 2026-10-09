@@ -1,0 +1,33 @@
+{
+  "name": "@ogdoad/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ogdoad's own app: the operator's UI and Ogdoad's local APIs (Money first), in front of the Ogdoad server and Horos.",
+  "license": "MIT",
+  "author": "L33CH-NODE",
+  "scripts": {
+    "build:server": "tsc -p tsconfig.server.json && node scripts/copy-assets.mjs",
+    "build:web": "vite build",
+    "build": "npm run build:server && npm run build:web",
+    "dev:web": "vite",
+    "start": "node dist/server/main.js",
+    "test": "npm run build:server && node --test \"dist/server/test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "5.9",
+    "vite": "^7.3.7"
+  }
+}

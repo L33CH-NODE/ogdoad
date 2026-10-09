@@ -3,3 +3,4 @@ node_modules/
 dist/
 runtime/node_modules/
 horos/dist/
+app/dist/

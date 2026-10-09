@@ -8,6 +8,10 @@
 //   ogdoad-herd prompt <id> <text...> [--wait]
 //   ogdoad-herd keys <id> <key...>          (enter, esc, up, down, tab, ctrl+c, or literal text)
 //   ogdoad-herd kill <id>
+//   ogdoad-herd seat <hireId> --agent <paperclip agent id>   (jobs for that agent flow into the hire)
+//   ogdoad-herd seats
+//   ogdoad-herd done <jobId> --agent <agentId> [--summary "..."] [--fail]
+//   ogdoad-herd sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes] [--no-browser] [--show]
 //   ogdoad-herd events
 
 import { readFileSync } from "node:fs";
@@ -16,6 +20,7 @@ import { resolve } from "node:path";
 import { detect } from "./harnesses.js";
 import { DEFAULT_PORT, TOKEN_FILE, readOrCreateToken } from "./paths.js";
 import { Herd, startServer } from "./server.js";
+import { readSophiaState, runWizard } from "./sophia/wizard.js";
 
 const argv = process.argv.slice(2);
 const command = argv[0];
@@ -110,6 +115,39 @@ async function main(): Promise<void> {
       await api("DELETE", `/v1/hires/${argv[1]}`);
       return;
     }
+    case "seat": {
+      const agentId = flag("agent");
+      if (!argv[1] || !agentId) throw new Error("usage: seat <hireId> --agent <paperclip agent id> [--mailbox URL]");
+      const seat = await api("POST", "/v1/seats", { hireId: argv[1], agentId, mailbox: flag("mailbox") });
+      console.log(`seat bound: agent ${seat.agentId} -> hire ${seat.hireId} (${seat.mailbox})`);
+      return;
+    }
+    case "seats": {
+      const seats = await api("GET", "/v1/seats");
+      if (!seats.length) return console.log("No seats.");
+      for (const s of seats) console.log(`${s.agentId}  hire ${s.hireId}  job ${s.currentJob ?? "-"}  handled ${s.jobsHandled}`);
+      return;
+    }
+    case "sophia": {
+      if (has("show")) return console.log(JSON.stringify(readSophiaState(), null, 2) ?? "No SOPHIA yet.");
+      const trust = flag("trust");
+      if (trust && !["private", "balanced", "power"].includes(trust)) throw new Error("--trust is private, balanced or power");
+      await runWizard({
+        companyId: flag("company"),
+        companyName: flag("company-name"),
+        trust: trust as "private" | "balanced" | "power" | undefined,
+        yes: has("yes"),
+        openBrowser: !has("no-browser"),
+      });
+      return;
+    }
+    case "done": {
+      const agentId = flag("agent");
+      if (!argv[1] || !agentId) throw new Error('usage: done <jobId> --agent <agentId> [--summary "..."] [--fail]');
+      await api("POST", `/v1/seats/${agentId}/jobs/${argv[1]}/done`, { ok: !has("fail"), summary: flag("summary") });
+      console.log(`closed job ${argv[1]}`);
+      return;
+    }
     case "events": {
       const res = await fetch(`${base}/v1/events`, { headers: { authorization: `Bearer ${readOrCreateToken()}` } });
       if (!res.ok || !res.body) throw new Error(`events: HTTP ${res.status}`);
@@ -117,7 +155,7 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      console.log(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(1, 12).map((l) => l.slice(3)).join("\n"));
+      console.log(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//   ")).map((l) => l.slice(3)).join("\n"));
   }
 }
 

@@ -9,6 +9,9 @@ import { mkdirSync } from "node:fs";
 import { HARNESSES, detect, resolveCommand } from "./harnesses.js";
 import { Hire, HerdError, type HireSpec } from "./hire.js";
 import type { HireState } from "./rules.js";
+import { Seat } from "./seat.js";
+
+const DEFAULT_MAILBOX = process.env.LIVE_AGENT_MAILBOX ?? "http://127.0.0.1:3199";
 
 export interface HerdServerOptions {
   port: number;
@@ -29,7 +32,20 @@ interface SpawnBody {
 
 export class Herd {
   readonly hires = new Map<string, Hire>();
+  /** Seats by Paperclip agent id. */
+  readonly seats = new Map<string, Seat>();
   private readonly subscribers = new Set<ServerResponse>();
+
+  /** Bind a hire to a Paperclip agent on the live-agent adapter, so its jobs flow into the session. */
+  bindSeat(agentId: string, hireId: string, mailbox = DEFAULT_MAILBOX): Seat {
+    const hire = this.hires.get(hireId);
+    if (!hire) throw new HerdError("no_such_hire", `No hire ${hireId}.`);
+    this.seats.get(agentId)?.stop();
+    const seat = new Seat(agentId, hire, mailbox, (event, data) => this.broadcast(event, data));
+    this.seats.set(agentId, seat);
+    this.broadcast("seat_bound", seat.info());
+    return seat;
+  }
 
   spawn(body: SpawnBody): Hire {
     const spec = HARNESSES.find((h) => h.id === body.harness);
@@ -138,6 +154,28 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
 
       if (parts[1] === "events" && req.method === "GET") return herd.subscribe(res);
       if (parts[1] === "detect" && req.method === "GET") return send(res, 200, await detect());
+
+      if (parts[1] === "seats") {
+        if (parts.length === 2 && req.method === "GET") return send(res, 200, [...herd.seats.values()].map((s) => s.info()));
+        if (parts.length === 2 && req.method === "POST") {
+          const body = await readJson(req);
+          if (!body.agentId || !body.hireId) throw new HerdError("bad_request", "agentId and hireId are required.");
+          return send(res, 201, herd.bindSeat(String(body.agentId), String(body.hireId), body.mailbox).info());
+        }
+        const seat = herd.seats.get(parts[2] ?? "");
+        if (!seat) return send(res, 404, { error: "no_such_seat" });
+        // POST /v1/seats/:agentId/jobs/:jobId/done  {ok?, summary?}
+        if (parts[3] === "jobs" && parts[4] && parts[5] === "done" && req.method === "POST") {
+          const body = await readJson(req);
+          const closed = await seat.close(parts[4], { ok: body.ok !== false, summary: body.summary });
+          return send(res, closed ? 200 : 409, closed ? { ok: true } : { error: "not_current_job" });
+        }
+        if (parts.length === 3 && req.method === "DELETE") {
+          seat.stop();
+          herd.seats.delete(seat.agentId);
+          return send(res, 200, { ok: true });
+        }
+      }
 
       if (parts[1] === "hires" && parts.length === 2) {
         if (req.method === "GET") return send(res, 200, [...herd.hires.values()].map((h) => h.info()));

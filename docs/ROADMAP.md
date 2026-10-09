@@ -17,7 +17,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    
    *Done when a stolen token can't clear, push or spend, and any run can be rolled back.*
 3. **The operator's home.**
-   - A decision band on top, with the agent dashboard squares below it.
+   - SOPHIA's ranked banner on top (blockers waiting on the operator and anything important, ordered by what gets things moving), with the agent dashboard squares below it.
    - The dashboard runtime and the dashboard-craft skill.
    - SOPHIA's chat bar, Team, the notification centre with a deep-work lock, the graceful-shutdown button, and the skins.
    - Then Paperclip's old UI is retired.
@@ -33,7 +33,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    - Guided tours.
    - NotebookLM two-way.
    - SOPHIA editing UI code.
-   - Dissent for flagged decisions.
+   - Dissent debates between varied harnesses, reviewed by SOPHIA.
    - An "already tried" table.
    - Skill pinning, growing into the genome.
    - The cost vector.
@@ -108,9 +108,12 @@ Ideas, not started yet. Paperclip's controls are a budget cap, an approval butto
   - Each workspace gets planted honeytokens: fake paths, fake API keys, fake prior decisions.
   - Touching one kills that agent identity, rotates secrets, and marks every downstream claim from that run as tainted.
   - Audit logs say what an agent claims it did. Canaries say when something in a prompt or a tool tried to walk out. That's the difference between governance and intrusion detection.
-- **Dissent before recommendation.**
-  - High-impact tickets need two adapters to write opposing briefs before the board sees a plan. The same local model under two different system constraints is enough.
-  - Consensus is cheap for LLMs and expensive for the operator, so the UI shows the disagreement, not a smoothed CEO summary.
+- **Dissent before recommendation: a round-based debate.**
+  - A high-impact ticket goes to a debate between the most varied harnesses on hand. Different providers and model families give real disagreement; one model arguing with itself doesn't. Example line-up: Claude, Codex, grok and a local model.
+  - The debate runs in rounds. Each round, every seat argues pros and cons, then answers the others' points.
+  - When it ends, SOPHIA drafts a review for the operator: the options, where the seats agreed, where they still disagree and why, and her recommendation. She shows the disagreement, not a smoothed summary.
+  - Consensus is cheap for LLMs and expensive for the operator.
+  - Horos already has what's needed: it spawns any harness, prompts it, and reads its answer back.
 - **Node physiology.**
   - Agents bind to a machine: VRAM, watts, thermals, online or offline, Tailscale path.
   - The scheduler refuses cloud fallback unless the ticket is explicitly marked exfil-allowed.
@@ -133,6 +136,10 @@ Ideas, not started yet. Paperclip's controls are a budget cap, an approval butto
   - Versioning skills isn't enough, because a trusted skill can go feral.
 - **An empty state for one brain.**
   - The default view isn't an org chart. It's one decision: what changed since the last signature, what's quarantined, what needs a key.
+  - **The home page's animated banner is SOPHIA's ranked list.**
+    - SOPHIA ranks everything that is blocked waiting on the operator, plus anything else important, by how much it gets things moving again.
+    - The top of the home page shows it as an evolving list: items rise, fall and drop off as they're cleared, and the most unblocking item always leads.
+    - Each item says what it is, why it ranks where it does, and the one action that clears it (answer, sign, decide).
   - Context-switch cost is a first-class number. A deep-work lock pauses heartbeats that would notify the operator.
   - A corporate kanban is the wrong instrument for one person running a mesh.
 

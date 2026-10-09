@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Notifier } from "../notify.js";
-import { loadRoster, resumeArgsFor } from "../roster.js";
+import { loadRoster, resumeArgsFor, saveRoster } from "../roster.js";
 import { planRestart } from "../restart.js";
 import { Horos } from "../server.js";
 
@@ -112,6 +112,55 @@ test("a hire that signs off with /exit rests until it's woken, and isn't restart
     assert.ok(woken && woken !== hire, "woken as a new session");
     assert.ok(await woken.waitFor((s) => s === "idle", 10_000));
     assert.equal(loadRoster(rosterFile)[0].dormant, false, "awake again");
+  } finally {
+    horos.shutdown();
+  }
+});
+
+// A stand-in server: answers health checks, and shuts itself down in order on SIGINT. It reports
+// whether Horos's stop hook was armed inside it, and how long it took to be asked to stop.
+const FAKE_SERVER = `
+import http from "node:http";
+const armed = process.env.OGDOAD_STOP_HOOK_PID === String(process.pid);
+http.createServer((q, r) => { r.writeHead(200); r.end("ok"); }).listen(Number(process.argv[2]), "127.0.0.1", () => process.stdout.write("server up, hook " + (armed ? "armed" : "missing") + "\\n"));
+process.on("SIGINT", () => { process.stdout.write("ordered shutdown\\n"); setTimeout(() => process.exit(0), 300); });
+`;
+
+test("a server starts first and stops last, through its own shutdown (stop hook, not Ctrl+C)", { timeout: 60_000 }, async () => {
+  const { dir, script, rosterFile } = fixture();
+  const serverScript = join(dir, "server.mjs");
+  writeFileSync(serverScript, FAKE_SERVER);
+  const port = 40000 + Math.floor(Math.random() * 20000);
+  const health = `http://127.0.0.1:${port}/health`;
+
+  // The hire is on the roster before the server, so restore has to reorder them.
+  const keptAt = new Date().toISOString();
+  saveRoster([
+    { id: "worker01", harness: "generic", command: "node", cwd: dir, label: "worker", args: [script], resumeArgs: null, keptAt },
+    { id: "server01", harness: "generic", command: "node", cwd: dir, label: "server", args: [serverScript, String(port)], resumeArgs: null, keptAt, role: "server", health },
+  ], rosterFile);
+
+  const notifier = new Notifier();
+  const horos = new Horos({ rosterFile, notifier });
+  try {
+    await horos.restore();
+    const back = notifier.list().find((n) => n.kind === "horos_started")?.body ?? "";
+    assert.match(back, /Back: server, worker\./, "the server comes up before the hire");
+    assert.ok((await fetch(health)).ok, "the server is up");
+
+    const [worker, server] = ["worker", "server"].map((label) => [...horos.hires.values()].find((h) => h.label === label)!);
+    assert.ok(await worker.waitFor((s) => s === "idle", 10_000));
+    let workerExitedFirst = false;
+    server.on("state", (s: string) => { if (s === "exited") workerExitedFirst = worker.state === "exited"; });
+    assert.match(server.read(20).join("\n"), /hook armed/, "the stop hook loaded inside the server");
+    const started = Date.now();
+    await horos.gracefulShutdown({ exitTimeoutMs: 5_000, serverTimeoutMs: 10_000 });
+    assert.equal(server.state, "exited");
+    assert.ok(workerExitedFirst, "the hire quits before the server stops");
+    assert.match(server.read(20).join("\n"), /ordered shutdown/, "the server ran its own shutdown");
+    assert.ok(Date.now() - started < 10_000, "stopped by the hook, before the Ctrl+C fallback would start");
+    assert.ok(!notifier.list({ limit: 500 }).some((n) => n.kind === "server_forced"));
+    assert.match(notifier.list().find((n) => n.kind === "shutdown_done")?.body ?? "", /server closed cleanly/);
   } finally {
     horos.shutdown();
   }

@@ -28,6 +28,10 @@ export interface RosterEntry {
   seat?: { agentId: string; mailbox?: string };
   /** Resting: left down on purpose (/exit, or a crash loop). Horos won't start it until work arrives. */
   dormant?: boolean;
+  /** "server": a service the hires depend on. Started first and up before hires; stopped last, with Ctrl+C. */
+  role?: "server";
+  /** For a server: the URL that answers 2xx once it is up. */
+  health?: string;
   keptAt: string;
 }
 

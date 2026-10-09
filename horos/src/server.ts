@@ -4,13 +4,15 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { HARNESSES, detect, resolveCommand } from "./harnesses.js";
 import { Hire, HorosError, type HireSpec } from "./hire.js";
 import { Notifier, type NotificationInput } from "./notify.js";
 import { planRestart } from "./restart.js";
-import { loadRoster, resumeArgsFor, saveRoster, type RosterEntry } from "./roster.js";
+import { ROSTER_FILE, loadRoster, resumeArgsFor, saveRoster, type RosterEntry } from "./roster.js";
 import type { HireState } from "./rules.js";
 import { Seat } from "./seat.js";
 
@@ -35,10 +37,19 @@ interface SpawnBody {
   brief?: string;
   /** Keep this hire: Horos brings it back after a restart and when its session ends on its own. */
   keep?: boolean;
+  /** "server": a service the hires depend on (the Ogdoad server). Started first, stopped last, with Ctrl+C. */
+  role?: "server";
+  /** For a server: the URL that answers 200 once it is up. */
+  health?: string;
 }
+
+/** Loaded into node servers so Horos can ask for their own graceful shutdown (see hooks/graceful-hook.cjs). */
+const GRACEFUL_HOOK = fileURLToPath(new URL("../hooks/graceful-hook.cjs", import.meta.url)).replace(/\\/g, "/");
 
 interface LaunchSpec {
   id?: string;
+  /** A server: node servers get the graceful-stop hook. */
+  server?: boolean;
   harness: string;
   command?: string;
   args: string[];
@@ -108,12 +119,13 @@ export class Horos {
   }
 
   spawn(body: SpawnBody): Hire {
-    const hire = this.launch({ harness: body.harness, command: body.command, args: body.args ?? [], cwd: body.cwd, label: body.label, env: body.env });
+    const hire = this.launch({ server: body.role === "server", harness: body.harness, command: body.command, args: body.args ?? [], cwd: body.cwd, label: body.label, env: body.env });
     if (body.keep) {
       const args = body.args ?? [];
       this.roster.push({
         id: hire.id, harness: hire.harness, command: body.command, cwd: body.cwd, label: body.label, env: body.env, args,
         resumeArgs: resumeArgsFor(harnessSpec(hire.harness)?.resumeArgs, args), brief: body.brief, keptAt: new Date().toISOString(),
+        ...(body.role === "server" ? { role: "server" as const, health: body.health } : {}),
       });
       this.saveRoster();
     }
@@ -167,11 +179,27 @@ export class Horos {
     }
   }
 
-  /** On horos start: bring every kept hire back, resumed where possible, and re-bind its seat. */
+  /** On horos start: servers first (and up), then every kept hire, resumed where possible, with its seat. */
   async restore(): Promise<void> {
     const back: string[] = [];
     const resting: string[] = [];
-    for (const entry of this.roster) {
+    const servers = this.roster.filter((e) => e.role === "server");
+    const others = this.roster.filter((e) => e.role !== "server");
+    // Servers always come up when Horos starts, even after a crash loop: starting Ogdoad means wanting them.
+    for (const entry of servers) {
+      if (this.hires.has(entry.id)) continue;
+      const name = entry.label ?? entry.id;
+      try {
+        this.revive(entry, false, "started", { quiet: true });
+        if (entry.health && !(await waitHealthy(entry.health, 180_000))) {
+          this.notify({ level: "error", kind: "server_not_up", title: `${name} isn't answering`, body: `It started but ${entry.health} didn't answer within 3 minutes. See it with: horos screen ${entry.id}`, hireId: entry.id });
+        }
+        back.push(name);
+      } catch (err) {
+        this.notify({ level: "error", kind: "restore_failed", title: `${name} couldn't be started`, body: (err as Error).message, hireId: entry.id });
+      }
+    }
+    for (const entry of others) {
       if (this.hires.has(entry.id)) continue;
       const name = entry.label ?? entry.id;
       try {
@@ -192,6 +220,36 @@ export class Horos {
     this.notify({ level: "info", kind: "horos_started", title: "Horos is running", body: parts.join(" ") || "No kept hires yet." });
   }
 
+  /**
+   * Stop a server through its own ordered shutdown: the stop file (node servers, via the hook), then
+   * Ctrl+C, and only then a kill. Returns true when it had to be killed.
+   */
+  async stopServer(server: Hire, timeoutMs: number): Promise<boolean> {
+    if (server.state === "exited") return false;
+    writeFileSync(this.stopFileFor(server.id), new Date().toISOString(), "utf8");
+    if (await server.waitFor((s) => s === "exited", timeoutMs)) return false;
+    server.keys(["ctrl+c"]);
+    if (await server.waitFor((s) => s === "exited", 10_000)) return false;
+    server.kill();
+    this.notify({ level: "error", kind: "server_forced", title: `${server.label} had to be killed`, body: "It didn't finish its own shutdown in time. Its database recovers on the next start; check: horos screen " + server.id, hireId: server.id });
+    return true;
+  }
+
+  /** Stop at once, except servers, which still get their own ordered shutdown (so no database is killed). */
+  async quickShutdown(serverTimeoutMs = 120_000): Promise<void> {
+    this.shuttingDown = true;
+    for (const id of this.pendingRestart.keys()) this.cancelRestart(id);
+    for (const seat of this.seats.values()) seat.stop();
+    const isServer = (h: Hire) => this.roster.some((e) => e.id === h.id && e.role === "server");
+    for (const hire of this.hires.values()) if (!isServer(hire)) hire.kill();
+    await Promise.all([...this.hires.values()].filter(isServer).map((h) => this.stopServer(h, serverTimeoutMs)));
+    this.notifier.close();
+  }
+
+  private stopFileFor(id: string): string {
+    return join(dirname(this.opts.rosterFile ?? ROSTER_FILE), `stop-${id}`);
+  }
+
   /** Stop every hire at once, without letting any go: they come back on the next start. */
   shutdown(): void {
     this.shuttingDown = true;
@@ -206,13 +264,15 @@ export class Horos {
    * quits through its own exit command (so the harness saves its session), and only then does
    * anything get stopped. Kept hires stay on the roster and come back on the next start.
    */
-  async gracefulShutdown(opts: { workTimeoutMs?: number; exitTimeoutMs?: number } = {}): Promise<void> {
+  async gracefulShutdown(opts: { workTimeoutMs?: number; exitTimeoutMs?: number; serverTimeoutMs?: number } = {}): Promise<void> {
     const workTimeout = opts.workTimeoutMs ?? 15 * 60_000;
     const exitTimeout = opts.exitTimeoutMs ?? 20_000;
     this.shuttingDown = true;
     for (const id of this.pendingRestart.keys()) this.cancelRestart(id);
-    const live = () => [...this.hires.values()].filter((h) => h.state !== "exited");
-    this.notify({ level: "info", kind: "shutdown_started", title: "Shutting down", body: `Letting running work finish, then closing ${live().length} session(s) cleanly.` });
+    const isServer = (h: Hire) => this.roster.some((e) => e.id === h.id && e.role === "server");
+    const live = () => [...this.hires.values()].filter((h) => h.state !== "exited" && !isServer(h));
+    const liveServers = () => [...this.hires.values()].filter((h) => h.state !== "exited" && isServer(h));
+    this.notify({ level: "info", kind: "shutdown_started", title: "Shutting down", body: `Letting running work finish, then closing ${live().length} session(s) cleanly${liveServers().length ? ", then the server" : ""}.` });
 
     // 1. Finish the jobs in hand; take no new ones.
     const drained = await Promise.all([...this.seats.values()].map((s) => s.drain(workTimeout)));
@@ -232,7 +292,11 @@ export class Horos {
       if (!(await hire.waitFor((s) => s === "exited", exitTimeout))) hire.kill();
     }));
     for (const seat of this.seats.values()) seat.stop();
-    this.notify({ level: "info", kind: "shutdown_done", title: "Ogdoad's team is shut down", body: "Every session closed cleanly. They come back on the next start." });
+
+    // 4. Servers last, once nothing depends on them: Ctrl+C runs their own ordered shutdown
+    //    (the Ogdoad server drains its runs, then stops Postgres cleanly).
+    const forced = (await Promise.all(liveServers().map((server) => this.stopServer(server, opts.serverTimeoutMs ?? 120_000)))).includes(true);
+    this.notify({ level: forced ? "warn" : "info", kind: "shutdown_done", title: "Ogdoad is shut down", body: forced ? "Every session closed; one server had to be killed." : "Every session and server closed cleanly. They come back on the next start." });
     await sleep(2000); // let the last toast go out
     this.notifier.close();
   }
@@ -244,7 +308,7 @@ export class Horos {
       entry.dormant = false;
       this.saveRoster();
     }
-    const hire = this.launch({ id: entry.id, harness: entry.harness, command: entry.command, args: resume ? entry.resumeArgs! : entry.args, cwd: entry.cwd, label: entry.label, env: entry.env });
+    const hire = this.launch({ id: entry.id, server: entry.role === "server", harness: entry.harness, command: entry.command, args: resume ? entry.resumeArgs! : entry.args, cwd: entry.cwd, label: entry.label, env: entry.env });
     if (resume) this.resumed.add(hire);
     else if (entry.brief) this.deliverBrief(hire, entry.brief);
     if (entry.seat) {
@@ -278,13 +342,21 @@ export class Horos {
     if (!resolved) throw new HorosError("not_installed", `"${command}" isn't on PATH.`);
     mkdirSync(o.cwd, { recursive: true });
 
+    const id = o.id ?? randomUUID().slice(0, 8);
+    let env = o.env;
+    if (o.server && /^node(\.exe)?$/i.test(basename(resolved.path))) {
+      // Forward slashes: NODE_OPTIONS treats backslashes inside quotes as escapes.
+      const require = GRACEFUL_HOOK.includes(" ") ? `--require "${GRACEFUL_HOOK}"` : `--require ${GRACEFUL_HOOK}`;
+      env = { ...env, NODE_OPTIONS: [process.env.NODE_OPTIONS, env?.NODE_OPTIONS, require].filter(Boolean).join(" "), OGDOAD_STOP_FILE: this.stopFileFor(id) };
+    }
+
     const hireSpec: HireSpec = {
-      id: o.id,
+      id,
       harness: spec?.id ?? "generic",
       file: resolved.file,
       args: [...resolved.prefix, ...o.args],
       cwd: o.cwd,
-      env: o.env,
+      env,
       label: o.label,
     };
     const hire = new Hire(hireSpec);
@@ -292,6 +364,8 @@ export class Horos {
     hire.on("state", (state: HireState) => {
       this.broadcast("status_changed", { id: hire.id, label: hire.label, state });
       if (state === "exited") return this.onExit(hire);
+      // A server's log scrolling isn't news; only its exits (and failures to come up) are.
+      if (this.roster.some((e) => e.id === hire.id && e.role === "server")) return;
       if (state === "blocked") {
         this.notify({ level: "warn", kind: "needs_you", title: `${hire.label} needs you`, body: `It's waiting on a decision. See it with: horos screen ${hire.id}`, hireId: hire.id, dedupeKey: `blocked:${hire.id}`, dedupeMs: 5_000 });
       } else if (STATE_WORDS[state]) {
@@ -305,6 +379,10 @@ export class Horos {
   private onExit(hire: Hire): void {
     if (this.exitHandled.has(hire)) return;
     this.exitHandled.add(hire);
+    // A server's last words are the only record of why it stopped; keep them in Horos's log.
+    if (this.roster.some((e) => e.id === hire.id && e.role === "server")) {
+      this.opts.log?.("server_exit_screen", { id: hire.id, label: hire.label, exitCode: hire.exitCode, tail: hire.read(2000, false) });
+    }
     if (this.shuttingDown || this.released.has(hire) || this.hires.get(hire.id) !== hire) return;
     const entry = this.roster.find((e) => e.id === hire.id);
     const code = hire.exitCode === null ? "killed" : `exit ${hire.exitCode}`;
@@ -428,6 +506,20 @@ function harnessSpec(id: string) {
   return HARNESSES.find((h) => h.id === id);
 }
 
+/** Poll a health URL until it answers 2xx, or give up after timeoutMs. */
+async function waitHealthy(url: string, timeoutMs: number): Promise<boolean> {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    try {
+      if ((await fetch(url, { signal: AbortSignal.timeout(2000) })).ok) return true;
+    } catch {
+      // not up yet
+    }
+    await sleep(1000);
+  }
+  return false;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -490,8 +582,7 @@ export function startServer(horos: Horos, opts: HorosServerOptions) {
           void horos.gracefulShutdown().finally(() => opts.onShutdown?.());
         } else {
           send(res, 200, { ok: true });
-          horos.shutdown();
-          opts.onShutdown?.();
+          void horos.quickShutdown().finally(() => opts.onShutdown?.());
         }
         return;
       }

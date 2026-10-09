@@ -9,6 +9,8 @@
 //   horos detect
 //   horos ls
 //   horos spawn <harness> --cwd <dir> [--label name] [--brief-file f] [--keep] [-- harness args...]
+//   horos spawn generic --command node --server --health <url> --cwd <dir> --label "Ogdoad server" -- <server args...>
+//                                (a server: started first and up before hires, stopped last with Ctrl+C)
 //   horos roster                 (kept hires: brought back after a restart)
 //   horos screen <id> [--lines 60]
 //   horos prompt <id> <text...> [--wait]
@@ -26,7 +28,7 @@ import { resolve } from "node:path";
 import { LOG_FILE, startDetached } from "./daemon.js";
 import { detect } from "./harnesses.js";
 import { NOTIFICATIONS_FILE, Notifier } from "./notify.js";
-import { DEFAULT_PORT, TOKEN_FILE, migrateFromHerd, readOrCreateToken } from "./paths.js";
+import { DEFAULT_PORT, TOKEN_FILE, isElevated, migrateFromHerd, readOrCreateToken } from "./paths.js";
 import { Horos, startServer } from "./server.js";
 import { desktopToast } from "./toast.js";
 import { readSophiaState, runWizard } from "./sophia/wizard.js";
@@ -34,12 +36,14 @@ import { readSophiaState, runWizard } from "./sophia/wizard.js";
 const argv = process.argv.slice(2);
 const command = argv[0];
 
+// Horos's own flags come before a bare "--"; everything after it belongs to the harness.
+const ownArgs = argv.includes("--") ? argv.slice(0, argv.indexOf("--")) : argv;
 function flag(name: string): string | undefined {
-  const i = argv.indexOf(`--${name}`);
-  return i >= 0 ? argv[i + 1] : undefined;
+  const i = ownArgs.indexOf(`--${name}`);
+  return i >= 0 ? ownArgs[i + 1] : undefined;
 }
 function has(name: string): boolean {
-  return argv.includes(`--${name}`);
+  return ownArgs.includes(`--${name}`);
 }
 
 const port = Number(flag("port") ?? DEFAULT_PORT);
@@ -73,12 +77,13 @@ async function main(): Promise<void> {
       const server = startServer(horos, { port, token: readOrCreateToken(), onShutdown: exit });
       server.on("listening", () => {
         console.log(`${new Date().toISOString()} Horos listening on ${base} (token: ${TOKEN_FILE}, pid ${process.pid})`);
+        if (isElevated()) {
+          horos.notify({ level: "warn", kind: "elevated", title: "Horos is running with admin rights", body: "Every hire and the Ogdoad server inherit them, and the server's database refuses to start as admin. Stop it (horos stop) and start Ogdoad with OGDOAD-START, which drops admin rights first." });
+        }
         void horos.restore();
       });
-      const shutdown = () => {
-        horos.shutdown();
-        exit();
-      };
+      // Ctrl+C on Horos itself: hires stop at once, servers still get their own ordered shutdown.
+      const shutdown = () => void horos.quickShutdown().finally(exit);
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
       return;
@@ -153,7 +158,10 @@ async function main(): Promise<void> {
         args,
         label: flag("label"),
         brief: briefFile ? readFileSync(briefFile, "utf8") : undefined,
-        keep: has("keep"),
+        keep: has("keep") || has("server"),
+        command: flag("command"),
+        role: has("server") ? "server" : undefined,
+        health: flag("health"),
       });
       console.log(`${hire.id}  ${hire.state}  ${hire.label}  pid ${hire.pid}`);
       return;

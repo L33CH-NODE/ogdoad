@@ -13,3 +13,13 @@ Keep changes small and in their own files where possible. Prefer new files plus 
 | Skins | `ui/src/components/SidebarAccountMenu.tsx`, `SidebarAccountMenu.production.tsx` | `<SkinPicker />` under the theme toggle. |
 | Branding | `ui/src/context/BreadcrumbContext.tsx` | Document title suffix "Ogdoad" instead of "Paperclip". |
 | Branding + skins | `ui/index.html` | Title "Ogdoad"; the pre-paint boot script also applies the stored skin (`localStorage["ogdoad.skin"]`), so there is no flash of the wrong palette. |
+
+## Runtime patches and settings (outside `core/`)
+
+The pinned runtime (`runtime/`, paperclipai 2026.1005.0 from npm) gets these until our own core build runs it. `runtime/patches/apply.mjs` re-applies the patches after every `npm install` (postinstall); the settings live in the Ogdoad server's Horos roster entry.
+
+| What | Where | Why |
+|---|---|---|
+| Patch: Postgres stops cleanly on Windows | `embedded-postgres` (top-level and `@paperclipai/db`'s copy) | Upstream stops Postgres on Windows with `taskkill /f /t`, so every shutdown forces crash recovery. The patch uses `pg_ctl stop -m fast` and keeps taskkill as the fallback. Carry the same fix into `core/` when it builds. |
+| Setting: telemetry off | `PAPERCLIP_TELEMETRY_DISABLED=1`, `DO_NOT_TRACK=1` | Ogdoad never phones home. Upstream sends anonymous usage events by default; where the endpoints are blocked, its shutdown also waited about two minutes on the telemetry flush. |
+| Setting: git scans stop at the home folder | `GIT_CEILING_DIRECTORIES=<home>` | Workspaces live under the home folder. If that folder is itself a git repository, every workspace check scanned all of it and timed out. |

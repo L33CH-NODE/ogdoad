@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -16,6 +17,13 @@ export function migrateFromHerd(): void {
   for (const [from, to] of [["herd.token", "horos.token"], ["herd.log", "horos.log"], ["herd.log.1", "horos.log.1"]]) {
     if (existsSync(join(HOROS_DIR, from))) renameSync(join(HOROS_DIR, from), join(HOROS_DIR, to));
   }
+}
+
+/** Whether this process has admin rights (Windows). Hires and servers inherit whatever Horos has. */
+export function isElevated(): boolean {
+  if (process.platform !== "win32") return typeof process.getuid === "function" && process.getuid() === 0;
+  const net = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "net.exe");
+  return spawnSync(net, ["session"], { stdio: "ignore", windowsHide: true }).status === 0;
 }
 
 /** The per-install API token. Created on first use, readable only by this account on Unix. */

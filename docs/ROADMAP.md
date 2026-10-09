@@ -2,6 +2,42 @@
 
 Ideas and decisions, newest at the bottom of each section. Specs live next to this file.
 
+## Build order (agreed 2026-10-09)
+
+One constraint decides it: while Ogdoad runs in local-trusted mode, every request from this machine is the board, so any hire can act as the operator. Money comes first but stays operator-only; the doors get locked before any agent goes near money or the tailnet.
+
+0. **Loose ends.** The Ogdoad server runs under Horos, so a graceful shutdown stops it last and a crash raises an alert. Ollama in WSL is reachable from Windows (the base of Tier 0). SOPHIA's setup interview finishes.
+1. **Money, on the new UI's skeleton.** The new app shell (floating layout, tokens, API client, Horos notification bell), with Money as its first screen. The invoices backend: history import, numbering that continues the old sequence, PDFs, two bank accounts, the GST-threshold meter. Operator-only. *Done when the operator stops using the old invoicing site.*
+2. **Lock the doors.**
+   - Hires run as their own low-privilege identity.
+   - Local-trusted mode is off: the operator's browser gets a session, agents only get per-run tokens.
+   - The core server builds (via WSL).
+   - A director key on a passkey or USB security key signs irreversible acts, which subsumes the invoice gates.
+   - Rewind snapshots every mutating run.
+   
+   *Done when a stolen token can't clear, push or spend, and any run can be rolled back.*
+3. **The operator's home.**
+   - A decision band on top, with the agent dashboard squares below it.
+   - The dashboard runtime and the dashboard-craft skill.
+   - SOPHIA's chat bar, Team, the notification centre with a deep-work lock, the graceful-shutdown button, and the skins.
+   - Then Paperclip's old UI is retired.
+4. **Agents near money, and the membrane.**
+   - A local Ledger seat: bank matching, ageing, chasing drafts the operator sends.
+   - The membrane: stand-ins, the Tier 1 pane, the crossings log, privacy per data class, the exfil-allowed flag.
+   - Behaviour checks: declared-scope drift checks, canaries, the refusal surface, claims for done/verified/paid.
+   - The accountant pack and deductions research.
+5. **Reach.** The Tailscale serve toggle (only after step 2), the home sync server, and encryption at rest.
+6. **Going public.** A branding pass, README and final scrub, then push and publish on the operator's word.
+7. **Growth and experiments.**
+   - Market research and fintech seats.
+   - Guided tours.
+   - NotebookLM two-way.
+   - SOPHIA editing UI code.
+   - Dissent for flagged decisions.
+   - An "already tried" table.
+   - Skill pinning, growing into the genome.
+   - The cost vector.
+
 ## The main draw: tiered information
 
 Frontier intelligence without handing over the business.

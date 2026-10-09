@@ -5,6 +5,7 @@
 //                                 --now stops at once. Kept hires come back on the next start)
 //   horos notifications [--limit 20] [--read]   (the operator's feed: errors, needs-you, jobs, restarts)
 //   horos wake <id>              (start a resting kept hire now)
+//   horos restart <id>           (stop one kept hire or server the proper way and start it again, e.g. after a deploy)
 //   horos serve [--port 3198]    (Horos in this terminal)
 //   horos detect
 //   horos ls
@@ -122,6 +123,12 @@ async function main(): Promise<void> {
         console.log(`#${n.id} ${when} ${n.level.toUpperCase().padEnd(5)} ${n.title}${n.body ? `: ${n.body}` : ""}`);
       }
       console.log(`${out.unread} unread`);
+      return;
+    }
+    case "restart": {
+      if (!argv[1]) throw new Error("usage: restart <hire id>");
+      const hire = await api("POST", `/v1/roster/${argv[1]}/restart`);
+      console.log(`${hire.id}  ${hire.state}  ${hire.label}`);
       return;
     }
     case "wake": {

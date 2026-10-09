@@ -7,7 +7,7 @@ Ideas and decisions, newest at the bottom of each section. Specs live next to th
 One constraint decides it: while Ogdoad runs in local-trusted mode, every request from this machine is the board, so any hire can act as the operator. Money comes first but stays operator-only; the doors get locked before any agent goes near money or the tailnet.
 
 0. **Loose ends.** ~~The Ogdoad server runs under Horos~~ (done: up first, down last, Postgres stopped cleanly). ~~Ollama on call~~ (done: Horos starts WSL Ollama when a local seat needs it and rests it after; the model store is empty, so the first local seat picks and pulls a model, on the operator's word). SOPHIA's setup interview finishes.
-1. **Money, on the new UI's skeleton.** The new app shell (floating layout, tokens, API client, Horos notification bell), with Money as its first screen. The invoices backend: history import, numbering that continues the old sequence, PDFs, two bank accounts, the GST-threshold meter. Operator-only. *Done when the operator stops using the old invoicing site.*
+1. **Money, on the new UI's skeleton.** (Built 2026-10-09: the app on :3101, Money on local SQLite, the importer, PDFs, the GST meter. Done once the operator has imported the old site and sent a real invoice.) The new app shell (floating layout, tokens, API client, Horos notification bell), with Money as its first screen. The invoices backend: history import, numbering that continues the old sequence, PDFs, two bank accounts, the GST-threshold meter. Operator-only. *Done when the operator stops using the old invoicing site.*
 2. **Lock the doors.**
    - Hires run as their own low-privilege identity.
    - Local-trusted mode is off: the operator's browser gets a session, agents only get per-run tokens.

@@ -202,6 +202,21 @@ test("an on-demand server starts only when a hire needs it, and rests when nothi
   }
 });
 
+test("restart stops one kept hire the proper way and starts it again, quietly", { timeout: 40_000 }, async () => {
+  const { dir, script, horos, kinds } = fixture();
+  const hire = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, keep: true });
+  try {
+    assert.ok(await hire.waitFor((s) => s === "idle", 10_000));
+    const again = await horos.restart(hire.id);
+    assert.ok(again && again !== hire && again.id === hire.id, "a new session under the same id");
+    assert.equal(hire.state, "exited");
+    assert.ok(await again.waitFor((s) => s === "idle", 10_000));
+    assert.ok(!kinds().includes("hire_restarting") && !kinds().includes("hire_signed_off"), "a requested restart isn't a crash or a sign-off");
+  } finally {
+    horos.shutdown();
+  }
+});
+
 test("graceful shutdown waits for each hire, quits it, and keeps it on the roster", { timeout: 40_000 }, async () => {
   const { dir, script, rosterFile, horos, kinds } = fixture();
   const hire = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, keep: true });

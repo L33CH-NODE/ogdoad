@@ -95,6 +95,8 @@ export class Horos {
   private readonly idleTimers = new Map<string, NodeJS.Timeout>();
   /** Sessions Horos stopped on purpose (an unused on-demand server): their exit isn't a crash. */
   private readonly rested = new WeakSet<Hire>();
+  /** Sessions being restarted on request: their exit is expected and says nothing. */
+  private readonly restarting = new WeakSet<Hire>();
   /** Needs of hires that aren't on the roster. */
   private readonly spawnNeeds = new Map<string, string[]>();
   private shuttingDown = false;
@@ -149,6 +151,34 @@ export class Horos {
     }
     if (body.needs?.length) this.spawnNeeds.set(hire.id, body.needs);
     if (body.brief) this.deliverBrief(hire, body.brief);
+    return hire;
+  }
+
+  /**
+   * Restart one kept hire or server (after a deploy, say): stopped the proper way (a server through its
+   * own shutdown, a hire through its exit command), then started again with its needs and its seat.
+   */
+  async restart(hireId: string): Promise<Hire | null> {
+    const entry = this.roster.find((e) => e.id === hireId);
+    if (!entry || this.shuttingDown) return null;
+    const live = this.hires.get(hireId);
+    if (live && live.state !== "exited") {
+      this.restarting.add(live);
+      if (entry.role === "server") {
+        await this.stopServer(live, 60_000);
+      } else {
+        const line = harnessSpec(live.harness)?.exitLine;
+        if (line) await live.typeLine(line);
+        else live.keys(["ctrl+c", "ctrl+c"]);
+        if (!(await live.waitFor((s) => s === "exited", 20_000))) live.kill();
+      }
+    }
+    this.cancelRestart(hireId);
+    await this.ensureNeeds(this.needsOf(entry), entry.label ?? hireId);
+    const hire = this.revive(entry, false, "restarted");
+    if (entry.role === "server" && entry.health && !(await waitHealthy(entry.health, 180_000))) {
+      this.notify({ level: "error", kind: "server_not_up", title: `${entry.label ?? hireId} isn't answering after its restart`, body: `See it with: horos screen ${hireId}`, hireId });
+    }
     return hire;
   }
 
@@ -484,6 +514,7 @@ export class Horos {
     }
     if (this.shuttingDown || this.released.has(hire) || this.hires.get(hire.id) !== hire) return;
     this.scheduleIdleStops();
+    if (this.restarting.has(hire)) return;
     if (this.rested.has(hire)) {
       this.notify({ level: "info", kind: "server_rested", title: `${hire.label} is resting`, body: "Nothing needed it any more. It starts again when a hire needs it.", hireId: hire.id });
       return;
@@ -729,6 +760,10 @@ export function startServer(horos: Horos, opts: HorosServerOptions) {
           horos.notify({ level, kind: "from_hire", title: body.title.slice(0, 120), body: String(body.body ?? "").slice(0, 600), hireId: body.hireId ? String(body.hireId) : undefined });
           return send(res, 201, { ok: true });
         }
+      }
+      if (parts[1] === "roster" && parts[2] && parts[3] === "restart" && req.method === "POST") {
+        const hire = await horos.restart(parts[2]);
+        return hire ? send(res, 200, hire.info()) : send(res, 404, { error: "not_kept", message: "No kept hire with that id (or Horos is shutting down)." });
       }
       if (parts[1] === "roster" && parts[2] && parts[3] === "wake" && req.method === "POST") {
         const hire = await horos.wake(parts[2], "operator");

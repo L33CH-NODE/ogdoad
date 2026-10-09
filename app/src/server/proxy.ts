@@ -1,0 +1,63 @@
+// Pass requests through to the Ogdoad server and Horos: plain requests, streamed events (SSE) and
+// WebSocket upgrades. Headers are rewritten so each upstream sees a request from its own origin,
+// and Horos gets its token added here, so the browser never holds it.
+
+import { request, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect, type Socket } from "node:net";
+
+export interface Upstream {
+  /** e.g. http://127.0.0.1:3100 */
+  base: string;
+  /** Path prefix to strip before forwarding (e.g. "/horos"). */
+  strip?: string;
+  /** Extra headers, such as Horos's bearer token (read fresh each time). */
+  headers?: () => Record<string, string>;
+}
+
+function target(up: Upstream, path: string) {
+  const url = new URL(up.base);
+  const rest = up.strip && path.startsWith(up.strip) ? path.slice(up.strip.length) || "/" : path;
+  return { url, path: rest };
+}
+
+function upstreamHeaders(req: IncomingMessage, up: Upstream, url: URL): Record<string, string | string[]> {
+  const headers: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(req.headers)) if (v !== undefined) headers[k] = v;
+  headers.host = url.host;
+  if (headers.origin) headers.origin = url.origin;
+  if (headers.referer) delete headers.referer;
+  Object.assign(headers, up.headers?.() ?? {});
+  return headers;
+}
+
+export function proxyHttp(up: Upstream, req: IncomingMessage, res: ServerResponse): void {
+  const { url, path } = target(up, req.url ?? "/");
+  const out = request({ host: url.hostname, port: url.port, method: req.method, path, headers: upstreamHeaders(req, up, url) }, (upRes) => {
+    res.writeHead(upRes.statusCode ?? 502, upRes.headers);
+    upRes.pipe(res);
+  });
+  out.on("error", () => {
+    if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "upstream_down", message: `${url.host} isn't answering.` }));
+  });
+  req.pipe(out);
+  res.on("close", () => out.destroy());
+}
+
+export function proxyUpgrade(up: Upstream, req: IncomingMessage, client: Socket, head: Buffer): void {
+  const { url, path } = target(up, req.url ?? "/");
+  const server = connect(Number(url.port), url.hostname, () => {
+    const headers = upstreamHeaders(req, up, url);
+    const lines = [`${req.method} ${path} HTTP/1.1`, ...Object.entries(headers).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => `${k}: ${x}`) : [`${k}: ${v}`]))];
+    server.write(lines.join("\r\n") + "\r\n\r\n");
+    if (head.length) server.write(head);
+    server.pipe(client);
+    client.pipe(server);
+  });
+  const end = () => {
+    server.destroy();
+    client.destroy();
+  };
+  server.on("error", end);
+  client.on("error", end);
+}

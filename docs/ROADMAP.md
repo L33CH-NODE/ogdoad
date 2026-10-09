@@ -49,6 +49,64 @@ Frontier intelligence without handing over the business.
 - **Skins.** Ogdoad (clean, corporate, the default), Cyberpunk Ultraviolet, Paperclip Classic. Picked from the account menu. More skins will be added over the project's life.
 - **Guided tours.** When the conversation turns to something visual (financials, say), the EI in the operator's Claude Code seat drives the UI: it opens pages, dashboards and filters for the operator. Meanwhile the chat collapses to SOPHIA's picture and a floating chat bubble at the bottom right, so the talk carries on while the operator looks at the organisation's data and pages.
 
+## Governance: trust by evidence, not by self-report
+
+Ideas, not started yet. Paperclip's controls are a budget cap, an approval button and comment threads. These assume a hire can be wrong, cheap, compromised, or quietly maximising a proxy, and keep the operator safe anyway.
+
+- **Drift detector.**
+  - Every heartbeat emits a distribution: tool calls, files touched, tokens spent.
+  - A standing scorer compares that distribution with the embedding of the stated goal, never with the agent's own report.
+  - Past a threshold the agent is quarantined: no new tickets, its workspace frozen, its diff dumped to the board.
+  - A budget cap stops an agent at 100% spend. It doesn't stop one cheaply doing the wrong thing, and proxy metrics are how maximisers win while the dashboard stays green.
+  - This is the feature the name obligates; Horos, the Limit, is its natural owner.
+- **Director key, not an approval button.**
+  - Irreversible acts are proposals until the operator signs them with an Ed25519 director key, or optionally a dedicated USB security key. They are: hiring, spending, pushing, deleting, rotating a secret, changing a goal.
+  - Agents can countersign, but they can't mint the commitment.
+  - A stolen adapter token then impersonates a worker, not the company.
+  - The board shouldn't be a UI role. It should be a key that isn't on the agents' machine.
+- **Claims, not comments.**
+  - The shared record is a ledger of claims, each with evidence hashes, contradiction links and decay.
+  - An agent can't promote a claim to "done" or "true" without a witness: a tool-output hash, a second model, or the operator.
+  - Comment threads are how agents launder guesses into the organisation's memory. A claim with no witness stays grey in the UI forever.
+- **Canaries inside the context, not just in the log.**
+  - Each workspace gets planted honeytokens: fake paths, fake API keys, fake prior decisions.
+  - Touching one kills that agent identity, rotates secrets, and marks every downstream claim from that run as tainted.
+  - Audit logs say what an agent claims it did. Canaries say when something in a prompt or a tool tried to walk out. That's the difference between governance and intrusion detection.
+- **Dissent before recommendation.**
+  - High-impact tickets need two adapters to write opposing briefs before the board sees a plan. The same local model under two different system constraints is enough.
+  - Consensus is cheap for LLMs and expensive for the operator, so the UI shows the disagreement, not a smoothed CEO summary.
+- **Node physiology.**
+  - Agents bind to a machine: VRAM, watts, thermals, online or offline, Tailscale path.
+  - The scheduler refuses cloud fallback unless the ticket is explicitly marked exfil-allowed.
+  - Cost is a vector (joules, queue delay, minutes of human review), not a dollar cap that assumes an API meter.
+  - An agent that dies when a low-power home box sleeps is behaving correctly. It isn't an outage.
+- **Stigmergy instead of shared chat.**
+  - Agents don't read each other's transcripts. They leave decaying traces in the environment: a pheromone on a file, a Bloom filter of "already tried", an epigenetic mark on a skill that failed its eval.
+  - Shared context windows are a telephone game and a prompt-injection bus.
+  - Environment traces are harder to poison, and cheap to replicate across the operator's machines over a CRDT.
+- **Rewind as a primitive.**
+  - Every mutating heartbeat snapshots the workspace.
+  - The board rewinds to before the run instead of being asked to review a diff.
+  - Review after the fact is what Paperclip offers. Reversible execution is what makes untrusted local agents tolerable.
+- **Refusal surface.**
+  - The ticket records the boundary crossing whenever a routed model refuses or rewrites the work, or a local abliterated model goes ahead with it.
+  - Sovereignty is useless if the operator can't see where censorship, or its absence, changed the work. Most UIs hide this because it looks like a bug.
+- **Skill genome with a behavioural canary.**
+  - Skills are versioned mutations whose fitness comes from evals.
+  - A skill that starts passing its tests while its tool distribution drifts from its spec gets the same quarantine as a maximiser.
+  - Versioning skills isn't enough, because a trusted skill can go feral.
+- **An empty state for one brain.**
+  - The default view isn't an org chart. It's one decision: what changed since the last signature, what's quarantined, what needs a key.
+  - Context-switch cost is a first-class number. A deep-work lock pauses heartbeats that would notify the operator.
+  - A corporate kanban is the wrong instrument for one person running a mesh.
+
+**Where these meet what exists** (to settle before building):
+- **Naming:** Horos already has a "detector", the screen-state stabiliser. The new one should keep the name "drift detector".
+- **Notifications:** the deep-work lock and "the operator is on the pulse of everything" pull in opposite directions. Likely answer: the feed always records, and the lock holds back the desktop alerts.
+- **Home screen:** the empty state for one brain and the dashboard-grid home need one shape. For example, the decision band sits on top and the squares sit below it.
+- **Skills:** abilities belong to the hire's own harness, so the skill genome tracks the skills the operator gives to hires and the ones Ogdoad ships, not each harness's built-ins.
+- **Director key vs human gates:** the director key would subsume the human-only gates already planned (clearing invoices, signatures, bank details).
+
 ## Money
 
 - **Invoices plugin.** Agents draft invoices as local PDFs, the operator clears them, and agents chase payment with drafts the operator sends. It replaces onlineinvoice.com, supports two bank accounts, is not GST-registered yet, and includes an accountant pack, deduction research and PDF signing.

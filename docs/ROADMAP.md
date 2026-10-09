@@ -13,7 +13,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    - Hires run as their own low-privilege identity.
    - Local-trusted mode is off: the operator's browser gets a session, agents only get per-run tokens.
    - The core server builds (via WSL).
-   - A director key on a passkey or USB security key signs irreversible acts, which subsumes the invoice gates.
+   - **The vault**, the operator's choice over passkeys or USB keys: a local login and password, plus a 24-word recovery phrase. Ogdoad's data is encrypted at rest under a key that only the password or the phrase unlocks. The director key is derived from the phrase and signs irreversible acts, after asking for the password again. It subsumes the invoice gates. See `CONTROL-CENTER.md`.
    - Rewind snapshots every mutating run.
    
    *Done when a stolen token can't clear, push or spend, and any run can be rolled back.*
@@ -81,7 +81,7 @@ Frontier intelligence without handing over the business.
 
 ## Look and feel
 
-- **Ogdoad's own UI, built from the ground up.** It's a lean set of screens (home, SOPHIA, decisions, tasks, team, money, files, privacy log, settings) on our own design system, with Paperclip's server underneath as a borrowed engine until we replace it. The shell has floating glass menus: a detached sidebar, an inspector on the right, and SOPHIA's composer bar floating at the bottom. **The middle is reserved for agent-made dashboards:** a grid of squares that any agent fills, at the operator's request or as its own suggestion. Panels are animated, show live data, and keep a tasteful idle motion. The craft becomes a skill shipped in this repo as instructions for EIs. Mock: "Ogdoad Shell Mock" canvas.
+- **The control center.** Ogdoad's own UI, built from the ground up: not a sidebar app, not a project board, but a living, reactive control center for the business. One surface of zones tiled edge to edge (Pulse, Flow, Team, Money, Work, Artifacts, Signals, Dashboards), each live. Zones open in place, the command line doubles as SOPHIA and the command palette, and tasks run as a flow (one thing in focus) instead of a kanban. A guided onboarding makes the operator's key first. See `CONTROL-CENTER.md`. (The first shell, with its floating sidebar, was a stepping stone: too close to Paperclip and every notes app.)
 
 - **Skins.** Ogdoad (clean, corporate, the default), Cyberpunk Ultraviolet, Paperclip Classic. Picked from the account menu. More skins will be added over the project's life.
 - **Guided tours.** When the conversation turns to something visual (financials, say), the EI in the operator's Claude Code seat drives the UI: it opens pages, dashboards and filters for the operator. Meanwhile the chat collapses to SOPHIA's picture and a floating chat bubble at the bottom right, so the talk carries on while the operator looks at the organisation's data and pages.
@@ -97,7 +97,8 @@ Ideas, not started yet. Paperclip's controls are a budget cap, an approval butto
   - A budget cap stops an agent at 100% spend. It doesn't stop one cheaply doing the wrong thing, and proxy metrics are how maximisers win while the dashboard stays green.
   - This is the feature the name obligates; Horos, the Limit, is its natural owner.
 - **Director key, not an approval button.**
-  - Irreversible acts are proposals until the operator signs them with an Ed25519 director key, or optionally a dedicated USB security key. They are: hiring, spending, pushing, deleting, rotating a secret, changing a goal.
+  - Irreversible acts are proposals until the operator signs them with an Ed25519 director key. They are: hiring, spending, pushing, deleting, rotating a secret, changing a goal.
+  - The operator chose the key's form: it's derived from their 24-word recovery phrase and unlocked with their local password. There's no passkey and no USB key.
   - Agents can countersign, but they can't mint the commitment.
   - A stolen adapter token then impersonates a worker, not the company.
   - The board shouldn't be a UI role. It should be a key that isn't on the agents' machine.

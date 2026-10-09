@@ -1,0 +1,25 @@
+0GD0AD (Ogdoad)
+Copyright (c) 2026 L33CH-NODE and Ogdoad contributors. Released under the MIT License (see LICENSE).
+
+Ogdoad is an independent project. It is not affiliated with or endorsed by Paperclip AI or Herdr.
+
+----------------------------------------------------------------------------
+Paperclip
+----------------------------------------------------------------------------
+The directory core/ contains the source of Paperclip v2026.1005.0
+(https://github.com/paperclipai/paperclip, commit 467125faf), imported as a
+snapshot and modified by the Ogdoad project. Paperclip is:
+
+  Copyright (c) 2025 Paperclip AI
+  Licensed under the MIT License (see core/LICENSE)
+
+Ogdoad's changes to core/ are listed in core/OGDOAD_CHANGES.md.
+
+----------------------------------------------------------------------------
+Herdr (reserved)
+----------------------------------------------------------------------------
+Ogdoad's agent-session manager is being designed with reference to Herdr
+(https://github.com/herdrdev/herdr). If any Herdr code or data (such as its
+agent-detection rule files) is copied in, it will be taken only from a release
+at v0.8.0 or later (Apache-2.0), kept under its original notices, accompanied
+by the Apache-2.0 license text, and marked as modified where changed.

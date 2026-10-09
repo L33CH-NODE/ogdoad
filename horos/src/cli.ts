@@ -15,6 +15,7 @@
 //   horos spawn generic --command wsl --server --on-demand --provides ollama --health <url> --cwd <dir> --label "Ollama" -- <args>
 //                                (on call: registered now, started when a hire needs it, rested when unused)
 //   horos spawn <harness> --needs ollama ...   (a hire that needs a capability: its provider starts first)
+//   horos spawn ... --env KEY=VALUE [--env ...] (environment for the hire or server)
 //   horos roster                 (kept hires: brought back after a restart)
 //   horos screen <id> [--lines 60]
 //   horos prompt <id> <text...> [--wait]
@@ -45,6 +46,10 @@ const ownArgs = argv.includes("--") ? argv.slice(0, argv.indexOf("--")) : argv;
 function flag(name: string): string | undefined {
   const i = ownArgs.indexOf(`--${name}`);
   return i >= 0 ? ownArgs[i + 1] : undefined;
+}
+/** Every value of a repeatable flag (--env A=1 --env B=2). */
+function flags(name: string): string[] {
+  return ownArgs.flatMap((a, i) => (a === `--${name}` && ownArgs[i + 1] !== undefined ? [ownArgs[i + 1]] : []));
 }
 function has(name: string): boolean {
   return ownArgs.includes(`--${name}`);
@@ -179,6 +184,7 @@ async function main(): Promise<void> {
         onDemand: has("on-demand") || undefined,
         provides: flag("provides"),
         needs: flag("needs")?.split(",").map((s) => s.trim()).filter(Boolean),
+        env: flags("env").length ? Object.fromEntries(flags("env").map((kv) => [kv.slice(0, kv.indexOf("=")), kv.slice(kv.indexOf("=") + 1)])) : undefined,
       });
       if (hire.onDemand) return console.log(`${hire.id}  on call  ${hire.label}  (provides ${hire.provides}; starts when a hire needs it)`);
       console.log(`${hire.id}  ${hire.state}  ${hire.label}  pid ${hire.pid}`);

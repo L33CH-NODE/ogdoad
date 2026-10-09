@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 export const OGDOAD_HOME = process.env.OGDOAD_HOME ?? join(homedir(), ".ogdoad");
-export const MONEY_DIR = join(OGDOAD_HOME, "money");
+/** The practice copy points this at its own folder, so it can never touch the real books. */
+export const MONEY_DIR = process.env.OGDOAD_MONEY_DIR ?? join(OGDOAD_HOME, "money");
 export const MONEY_DB = join(MONEY_DIR, "money.db");
 
 const MIGRATIONS = fileURLToPath(new URL("./migrations/", import.meta.url));

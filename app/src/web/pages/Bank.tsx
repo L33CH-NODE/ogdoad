@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import { ErrorNote, Loading, useLoad } from "../components/bits";
-import { api, type Account } from "../lib/api";
+import { useEffect } from "react";
+import { api, getAppInfo, type Account } from "../lib/api";
 import { aud, shortDate } from "../lib/format";
 import { linkProps } from "../lib/router";
 
@@ -32,6 +33,8 @@ export function BankPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [practice, setPractice] = useState(false);
+  useEffect(() => void getAppInfo().then((i) => setPractice(i.practice)), []);
 
   if (accounts.error) return <ErrorNote error={accounts.error} retry={accounts.reload} />;
   if (!accounts.data || !review.data) return <Loading what="Loading the bank" />;
@@ -87,7 +90,10 @@ export function BankPage() {
                 ? "Personal account: only lines that pay one of your invoices are kept. Everything else in the statement is ignored and never stored."
                 : "Business account: every credit is kept, so income nothing explains shows up here for you to look at."}
             </p>
-            <div><button className="btn primary" disabled={!file || busy} onClick={() => void run()}>{busy ? "Reading…" : "Bring it in"}</button></div>
+            <div className="row">
+              <button className="btn primary" disabled={!file || busy} onClick={() => void run()}>{busy ? "Reading…" : "Bring it in"}</button>
+              {practice ? <a className="btn" href="/ogdoad/practice/statement.csv" download>Download a practice statement</a> : null}
+            </div>
           </>
         )}
         {error ? <ErrorNote error={error} /> : null}

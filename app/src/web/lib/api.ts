@@ -56,6 +56,14 @@ export interface Overview {
   bankToReview: number;
 }
 
+export interface AppInfo { practice: boolean; realAppPort: number }
+
+let appInfo: Promise<AppInfo> | null = null;
+/** Whether this is the practice copy (asked once per page load). */
+export function getAppInfo(): Promise<AppInfo> {
+  return (appInfo ??= api.get<AppInfo>("/ogdoad/app").catch(() => ({ practice: false, realAppPort: 3101 })));
+}
+
 // --- Horos ---
 
 export interface Notification { id: number; at: string; level: "error" | "warn" | "info" | "pulse"; kind: string; title: string; body: string; hireId?: string }

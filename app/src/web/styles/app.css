@@ -212,6 +212,18 @@ table.table { width: 100%; border-collapse: collapse; }
 .tabs button { min-height: 34px; padding: 0 12px; border-radius: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
 .tabs button[aria-pressed="true"] { background: var(--panel-solid); color: var(--fg); box-shadow: 0 1px 3px oklch(0 0 0 / .12); }
 
+/* ---------- The practice copy: impossible to mistake for the real books ---------- */
+
+.practice-ribbon {
+  flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 16px;
+  background: repeating-linear-gradient(135deg, oklch(0.83 0.16 80 / 0.22) 0 14px, oklch(0.83 0.16 80 / 0.1) 14px 28px);
+  border: 1px solid oklch(0.72 0.16 70 / 0.6); color: var(--fg); font-size: 13px;
+}
+.practice-ribbon strong { text-transform: uppercase; letter-spacing: 0.08em; color: oklch(0.55 0.14 60); }
+:root[data-skin="ogdoad-dark"] .practice-ribbon strong, :root[data-skin="cyberpunk-uv"] .practice-ribbon strong { color: oklch(0.85 0.15 80); }
+.practice-ribbon a { margin-left: auto; font-weight: 600; text-decoration: underline; }
+:root[data-practice="1"] .brand-mark { background: oklch(0.72 0.16 70); }
+
 /* ---------- SOPHIA's bar and the bell ---------- */
 
 .composer-dock { position: fixed; left: 0; right: 0; bottom: 16px; display: flex; justify-content: center; pointer-events: none; z-index: 20; }

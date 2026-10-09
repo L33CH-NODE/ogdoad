@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { api, type HireInfo } from "../lib/api";
+import { api, getAppInfo, type AppInfo, type HireInfo } from "../lib/api";
 import { ago } from "../lib/format";
 import { useNotifications, useTeam } from "../lib/horos";
 import { linkProps, usePath } from "../lib/router";
@@ -141,11 +141,30 @@ function SophiaBar() {
   );
 }
 
+function PracticeRibbon({ info }: { info: AppInfo }) {
+  return (
+    <div className="practice-ribbon" role="note">
+      <strong>Practice copy</strong>
+      <span>Made-up books: try anything, nothing here is real.</span>
+      <a href={`http://127.0.0.1:${info.realAppPort}/`}>Your real books</a>
+    </div>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePath();
   const team = useTeam();
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  useEffect(() => {
+    getAppInfo().then((i) => {
+      setInfo(i);
+      document.documentElement.dataset.practice = i.practice ? "1" : "0";
+      document.title = i.practice ? "Ogdoad (practice)" : "Ogdoad";
+    });
+  }, []);
   return (
     <div className="shell">
+      {info?.practice ? <PracticeRibbon info={info} /> : null}
       <nav className="side float" aria-label="Main">
         <div className="brand">
           <span className="brand-mark"><Mark /></span>

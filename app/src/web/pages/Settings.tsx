@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 
 import { ErrorNote, Loading, useLoad } from "../components/bits";
-import { api, type Account, type Settings } from "../lib/api";
+import { api, getAppInfo, type Account, type Settings } from "../lib/api";
 
 /** The ATO's ABN check, so a typo shows before saving. */
 function abnLooksValid(abn: string): boolean {
@@ -25,6 +25,7 @@ export function SettingsPage() {
       <BusinessForm settings={settings.data} accounts={accounts.data} onSaved={settings.reload} />
       <Accounts accounts={accounts.data} reload={accounts.reload} />
       <ImportOld />
+      <PracticeReset />
     </>
   );
 }
@@ -111,6 +112,27 @@ function Accounts({ accounts, reload }: { accounts: Account[]; reload: () => voi
         {error ? <ErrorNote error={error} /> : null}
         <div><button className="btn" type="submit">Add account</button></div>
       </form>
+    </section>
+  );
+}
+
+/** On the practice copy only: start the made-up books again. */
+function PracticeReset() {
+  const [practice, setPractice] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => void getAppInfo().then((i) => setPractice(i.practice)), []);
+  if (!practice) return null;
+  const reset = async () => {
+    if (!confirm("Start the practice books again from scratch? (Your real books aren't touched.)")) return;
+    await api.post("/ogdoad/practice/reset", {});
+    setDone(true);
+    setTimeout(() => location.reload(), 600);
+  };
+  return (
+    <section className="card stack">
+      <h3>Practice books</h3>
+      <p className="muted" style={{ margin: 0, fontSize: 13 }}>This is the practice copy. Issue, void, record payments, import statements: when you're done, start again with fresh made-up books.</p>
+      <div className="row"><button className="btn danger" onClick={() => void reset()}>Start the practice books again</button>{done ? <span className="muted">Done.</span> : null}</div>
     </section>
   );
 }

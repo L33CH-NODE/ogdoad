@@ -8,11 +8,14 @@ import { fileURLToPath } from "node:url";
 
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { openMoneyDb, OGDOAD_HOME } from "./money/db.js";
+import { practiceStatement, resetPractice, seedPractice } from "./money/practice.js";
 import { handleMoney } from "./money/routes.js";
 import { Money } from "./money/service.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
 
 const PORT = Number(process.env.OGDOAD_APP_PORT ?? 3101);
+/** The practice copy: its own made-up books, a ribbon in the UI, and a reset button. */
+const PRACTICE = process.env.OGDOAD_PRACTICE === "1";
 const SERVER_URL = process.env.OGDOAD_SERVER_URL ?? "http://127.0.0.1:3100";
 const HOROS_URL = process.env.OGDOAD_HOROS_URL ?? "http://127.0.0.1:3198";
 const HOROS_TOKEN_FILE = join(OGDOAD_HOME, "horos", "horos.token");
@@ -59,6 +62,7 @@ function readSophia(): { companyId: string; companyName: string; agentId: string
 }
 
 const money = new Money(openMoneyDb());
+if (PRACTICE && !money.invoices().length) seedPractice(money);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -67,6 +71,12 @@ const server = createServer(async (req, res) => {
     checkRequest(req, ALLOWED_ORIGINS);
     if (url.pathname.startsWith("/ogdoad/money/")) return await handleMoney(money, req, res, url);
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
+    if (url.pathname === "/ogdoad/app" && req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, realAppPort: 3101 });
+    if (PRACTICE && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });
+    if (PRACTICE && url.pathname === "/ogdoad/practice/statement.csv" && req.method === "GET") {
+      res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="practice-statement.csv"', "cache-control": "no-store" });
+      return void res.end(practiceStatement(money));
+    }
     if (url.pathname.startsWith("/api/") || url.pathname === "/api") return proxyHttp(paperclip, req, res);
     if (url.pathname.startsWith("/horos/")) return proxyHttp(horos, req, res);
     if (req.method !== "GET" && req.method !== "HEAD") throw new HttpError(404, "not_found", "Nothing here.");
@@ -87,7 +97,7 @@ server.on("upgrade", (req, socket, head) => {
   socket.destroy();
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`Ogdoad app on http://127.0.0.1:${PORT} (Money: ${money.invoices().length} invoices)`));
+server.listen(PORT, "127.0.0.1", () => console.log(`Ogdoad ${PRACTICE ? "PRACTICE copy" : "app"} on http://127.0.0.1:${PORT} (Money: ${money.invoices().length} invoices)`));
 
 // Horos's stop hook (or Ctrl+C) asks for an orderly stop: finish requests, close the database.
 const stop = () => {

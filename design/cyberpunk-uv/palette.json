@@ -1,0 +1,68 @@
+{
+  "dark": {
+    "surface": "oklch(0.17 0.034 292)",
+    "text": {
+      "foreground": "oklch(0.955 0.015 300)",
+      "muted-foreground": "oklch(0.74 0.045 298)",
+      "primary": "oklch(0.66 0.21 300)",
+      "ring": "oklch(0.72 0.18 305)",
+      "sidebar-fg": "oklch(0.9 0.02 300)",
+      "magenta": "oklch(0.68 0.24 345)",
+      "cyan": "oklch(0.84 0.14 205)"
+    },
+    "pairs": [
+      ["primary-fg on primary", "oklch(0.13 0.03 292)", "oklch(0.66 0.21 300)"],
+      ["fg on sidebar-accent", "oklch(0.97 0.02 300)", "oklch(0.25 0.075 300)"],
+      ["fg on muted", "oklch(0.955 0.015 300)", "oklch(0.225 0.045 294)"],
+      ["muted-fg on muted", "oklch(0.74 0.045 298)", "oklch(0.225 0.045 294)"],
+      ["fg on destructive", "oklch(0.98 0.01 300)", "oklch(0.55 0.2 20)"]
+    ],
+    "status": {
+      "todo/paused": "oklch(0.83 0.16 80)",
+      "in_progress/run": "oklch(0.8 0.135 215)",
+      "done": "oklch(0.8 0.19 152)",
+      "blocked/error": "oklch(0.68 0.205 18)",
+      "backlog/idle": "oklch(0.58 0.04 294)"
+    },
+    "series": [
+      "oklch(0.72 0.155 245)",
+      "oklch(0.75 0.165 50)",
+      "oklch(0.8 0.15 170)",
+      "oklch(0.87 0.16 92)",
+      "oklch(0.72 0.205 350)",
+      "oklch(0.7 0.19 145)",
+      "oklch(0.68 0.185 295)",
+      "oklch(0.67 0.21 25)"
+    ]
+  },
+  "light": {
+    "surface": "oklch(0.995 0.004 300)",
+    "text": {
+      "foreground": "oklch(0.2 0.045 292)",
+      "muted-foreground": "oklch(0.48 0.05 295)",
+      "primary": "oklch(0.5 0.24 300)"
+    },
+    "pairs": [
+      ["white on primary", "oklch(0.99 0.005 300)", "oklch(0.5 0.24 300)"],
+      ["fg on sidebar-accent", "oklch(0.2 0.045 292)", "oklch(0.9 0.05 300)"],
+      ["muted-fg on muted", "oklch(0.48 0.05 295)", "oklch(0.94 0.02 300)"]
+    ],
+    "status": {
+      "todo/paused": "oklch(0.62 0.135 65)",
+      "in_progress/run": "oklch(0.56 0.118 235)",
+      "done": "oklch(0.56 0.15 150)",
+      "blocked/error": "oklch(0.56 0.21 22)",
+      "backlog/idle": "oklch(0.6 0.03 294)"
+    },
+    "series": [
+      "oklch(0.56 0.16 255)",
+      "oklch(0.67 0.17 45)",
+      "oklch(0.5 0.085 195)",
+      "oklch(0.64 0.13 72)",
+      "oklch(0.58 0.2 355)",
+      "oklch(0.52 0.17 143)",
+      "oklch(0.43 0.165 284)",
+      "oklch(0.6 0.2 25)"
+    ]
+  }
+}

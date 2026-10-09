@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { applySkin, readStoredSkinId } from "../ogdoad/skins";
 
 type Theme = "light" | "dark";
 
@@ -17,8 +18,6 @@ interface ThemeContextValue {
 }
 
 const THEME_STORAGE_KEY = "paperclip.theme";
-const DARK_THEME_COLOR = "#18181b";
-const LIGHT_THEME_COLOR = "#ffffff";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function resolveThemeFromDocument(): Theme {
@@ -42,10 +41,8 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   root.classList.toggle("dark", isDark);
   root.style.colorScheme = isDark ? "dark" : "light";
-  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-  if (themeColorMeta instanceof HTMLMetaElement) {
-    themeColorMeta.setAttribute("content", isDark ? DARK_THEME_COLOR : LIGHT_THEME_COLOR);
-  }
+  // Ogdoad: the active skin owns the browser chrome colour for each mode.
+  applySkin(root.dataset.skin ?? readStoredSkinId());
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

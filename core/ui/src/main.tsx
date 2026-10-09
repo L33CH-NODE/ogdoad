@@ -23,6 +23,7 @@ import { getOrCreatePaperclipReactRoot } from "./lib/react-root";
 import { startServiceWorkerUpdates } from "./lib/service-worker-updates";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
+import "./ogdoad/skins.css";
 
 initPluginBridge(React, ReactDOM);
 

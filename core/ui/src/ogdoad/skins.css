@@ -1,0 +1,341 @@
+/* Ogdoad skins. Each skin overrides Paperclip's design tokens when <html data-skin="<id>"> is set.
+   Specificity does the layering, so import order doesn't matter:
+     :root[data-skin=x]        (0,2,0) beats Paperclip's :root and .dark (0,1,0)
+     :root[data-skin=x].dark   (0,3,0) beats the skin's own light block
+   "paperclip" has no block on purpose: it is upstream's grayscale.
+   Every colour pair here was checked with design/tools/palette-check.mjs: text >= 4.5:1, chart
+   marks >= 3:1 on their card, neighbouring chart colours >= 11 OKLab apart under simulated
+   protanopia, deuteranopia and tritanopia, and everything inside sRGB. Assign --chart-1..8 in order. */
+
+/* ── Ogdoad: clean and corporate (default) ───────────────────────────────── */
+:root[data-skin="ogdoad"] {
+  --background: oklch(0.985 0.003 285);
+  --foreground: oklch(0.21 0.02 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 285);
+  --primary: oklch(0.47 0.17 285);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.962 0.005 285);
+  --secondary-foreground: oklch(0.21 0.02 285);
+  --muted: oklch(0.962 0.005 285);
+  --muted-foreground: oklch(0.5 0.02 285);
+  --accent: oklch(0.95 0.008 285);
+  --accent-foreground: oklch(0.21 0.02 285);
+  --destructive: oklch(0.575 0.186 25.2);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.915 0.008 285);
+  --input: oklch(0.9 0.01 285);
+  --ring: oklch(0.62 0.12 285);
+
+  --sidebar: oklch(0.975 0.004 285);
+  --sidebar-foreground: oklch(0.21 0.02 285);
+  --sidebar-primary: oklch(0.47 0.17 285);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.93 0.012 285);
+  --sidebar-accent-foreground: oklch(0.21 0.02 285);
+  --sidebar-border: oklch(0.915 0.008 285);
+  --sidebar-ring: oklch(0.62 0.12 285);
+
+  --chart-1: oklch(0.56 0.16 255);
+  --chart-2: oklch(0.67 0.17 45);
+  --chart-3: oklch(0.5 0.085 195);
+  --chart-4: oklch(0.64 0.13 72);
+  --chart-5: oklch(0.58 0.2 355);
+  --chart-6: oklch(0.52 0.17 143);
+  --chart-7: oklch(0.43 0.165 284);
+  --chart-8: oklch(0.6 0.2 25);
+
+  --status-task-backlog: oklch(0.74 0.012 285);
+  --status-task-todo: oklch(0.76 0.15 70);
+  --status-task-in_progress: oklch(0.56 0.16 255);
+  --status-task-in_review: oklch(0.5 0.17 290);
+  --status-task-done: oklch(0.68 0.17 150);
+  --status-task-blocked: oklch(0.575 0.186 25.2);
+  --status-task-cancelled: oklch(0.74 0.012 285);
+  --status-task-icon-backlog: oklch(0.45 0.015 285);
+  --status-task-icon-todo: oklch(0.62 0.135 65);
+  --status-task-icon-in_progress: oklch(0.52 0.15 255);
+  --status-task-icon-in_review: oklch(0.5 0.17 290);
+  --status-task-icon-done: oklch(0.56 0.15 150);
+  --status-task-icon-cancelled: oklch(0.45 0.015 285);
+  --status-agent-running: oklch(0.56 0.16 255);
+  --status-agent-idle: oklch(0.6 0.015 285);
+  --status-agent-error: oklch(0.575 0.186 25.2);
+  --status-agent-paused: oklch(0.62 0.135 65);
+  --liveness-blue: oklch(0.56 0.16 255);
+  --scrollbar-thumb: oklch(0.8 0.01 285);
+  --scrollbar-thumb-hover: oklch(0.7 0.015 285);
+
+  /* Meaning tokens for plugins and dashboards. Status colours are for status only. */
+  --grid: oklch(0.94 0.006 285);
+  --neutral: oklch(0.787 0.017 290);
+  --good: oklch(0.621 0.207 142.6);
+  --warning: oklch(0.811 0.164 78.5);
+  --serious: oklch(0.717 0.141 41.6);
+  --bad: oklch(0.575 0.186 25.2);
+  --good-foreground: oklch(0.433 0.147 142.5);
+  --warning-foreground: oklch(0.5 0.11 75);
+  --serious-foreground: oklch(0.5 0.14 40);
+  --bad-foreground: oklch(0.5 0.18 25);
+  --age-current: var(--neutral);
+  --age-1-30: var(--warning);
+  --age-31-60: var(--serious);
+  --age-61-90: oklch(0.639 0.164 34);
+  --age-90-plus: var(--bad);
+}
+
+:root[data-skin="ogdoad"].dark {
+  --background: oklch(0.17 0.012 285);
+  --foreground: oklch(0.96 0.005 285);
+  --card: oklch(0.215 0.014 285);
+  --card-foreground: oklch(0.96 0.005 285);
+  --popover: oklch(0.23 0.015 285);
+  --popover-foreground: oklch(0.96 0.005 285);
+  --primary: oklch(0.74 0.13 290);
+  --primary-foreground: oklch(0.17 0.012 285);
+  --secondary: oklch(0.26 0.014 285);
+  --secondary-foreground: oklch(0.96 0.005 285);
+  --muted: oklch(0.26 0.014 285);
+  --muted-foreground: oklch(0.72 0.015 285);
+  --accent: oklch(0.27 0.016 285);
+  --accent-foreground: oklch(0.96 0.005 285);
+  --destructive: oklch(0.62 0.19 25);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.31 0.015 285);
+  --input: oklch(0.34 0.016 285);
+  --ring: oklch(0.6 0.1 290);
+
+  --sidebar: oklch(0.155 0.012 285);
+  --sidebar-foreground: oklch(0.93 0.006 285);
+  --sidebar-primary: oklch(0.74 0.13 290);
+  --sidebar-primary-foreground: oklch(0.17 0.012 285);
+  --sidebar-accent: oklch(0.26 0.02 287);
+  --sidebar-accent-foreground: oklch(0.97 0.005 285);
+  --sidebar-border: oklch(0.27 0.014 285);
+  --sidebar-ring: oklch(0.6 0.1 290);
+
+  --chart-1: oklch(0.622 0.161 255.1);
+  --chart-2: oklch(0.622 0.173 40.1);
+  --chart-3: oklch(0.621 0.128 163.1);
+  --chart-4: oklch(0.67 0.143 73.2);
+  --chart-5: oklch(0.622 0.171 0.8);
+  --chart-6: oklch(0.529 0.18 142.5);
+  --chart-7: oklch(0.67 0.145 286.8);
+  --chart-8: oklch(0.669 0.159 22.3);
+
+  --status-task-backlog: oklch(0.6 0.015 285);
+  --status-task-todo: oklch(0.81 0.16 78);
+  --status-task-in_progress: oklch(0.68 0.15 255);
+  --status-task-in_review: oklch(0.68 0.15 290);
+  --status-task-done: oklch(0.72 0.17 150);
+  --status-task-blocked: oklch(0.65 0.2 25);
+  --status-task-cancelled: oklch(0.6 0.015 285);
+  --status-task-icon-backlog: oklch(0.65 0.015 285);
+  --status-task-icon-todo: oklch(0.83 0.16 80);
+  --status-task-icon-in_progress: oklch(0.7 0.15 255);
+  --status-task-icon-in_review: oklch(0.68 0.16 290);
+  --status-task-icon-done: oklch(0.76 0.18 150);
+  --status-task-icon-cancelled: oklch(0.65 0.015 285);
+  --status-agent-running: oklch(0.68 0.15 255);
+  --status-agent-idle: oklch(0.6 0.015 285);
+  --status-agent-error: oklch(0.65 0.2 25);
+  --status-agent-paused: oklch(0.81 0.16 78);
+  --liveness-blue: oklch(0.68 0.15 255);
+  --scrollbar-thumb: oklch(0.4 0.012 285);
+  --scrollbar-thumb-hover: oklch(0.5 0.015 285);
+
+  --grid: oklch(0.27 0.012 285);
+  --neutral: oklch(0.451 0.018 290);
+  --good: oklch(0.621 0.207 142.6);
+  --warning: oklch(0.811 0.164 78.5);
+  --serious: oklch(0.717 0.141 41.6);
+  --bad: oklch(0.62 0.19 25);
+  --good-foreground: oklch(0.72 0.19 143);
+  --warning-foreground: oklch(0.83 0.15 80);
+  --serious-foreground: oklch(0.76 0.13 42);
+  --bad-foreground: oklch(0.72 0.16 23);
+}
+
+/* ── Cyberpunk Ultraviolet: neon UV on violet-black ──────────────────────── */
+:root[data-skin="cyberpunk-uv"] {
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-heading: var(--font-mono);
+  --og-magenta: oklch(0.6 0.22 345);
+  --og-cyan: oklch(0.56 0.118 225);
+
+  --background: oklch(0.975 0.01 300);
+  --foreground: oklch(0.2 0.045 292);
+  --card: oklch(0.995 0.004 300);
+  --card-foreground: oklch(0.2 0.045 292);
+  --popover: oklch(0.995 0.004 300);
+  --popover-foreground: oklch(0.2 0.045 292);
+  --primary: oklch(0.5 0.24 300);
+  --primary-foreground: oklch(0.99 0.005 300);
+  --secondary: oklch(0.94 0.02 300);
+  --secondary-foreground: oklch(0.2 0.045 292);
+  --muted: oklch(0.94 0.02 300);
+  --muted-foreground: oklch(0.48 0.05 295);
+  --accent: oklch(0.92 0.035 300);
+  --accent-foreground: oklch(0.2 0.045 292);
+  --destructive: oklch(0.56 0.21 22);
+  --destructive-foreground: oklch(0.99 0.005 300);
+  --border: oklch(0.885 0.03 298);
+  --input: oklch(0.86 0.04 298);
+  --ring: oklch(0.58 0.2 305);
+
+  --sidebar: oklch(0.955 0.018 300);
+  --sidebar-foreground: oklch(0.2 0.045 292);
+  --sidebar-primary: oklch(0.5 0.24 300);
+  --sidebar-primary-foreground: oklch(0.99 0.005 300);
+  --sidebar-accent: oklch(0.9 0.05 300);
+  --sidebar-accent-foreground: oklch(0.2 0.045 292);
+  --sidebar-border: oklch(0.885 0.03 298);
+  --sidebar-ring: oklch(0.58 0.2 305);
+
+  --chart-1: oklch(0.56 0.16 255);
+  --chart-2: oklch(0.67 0.17 45);
+  --chart-3: oklch(0.5 0.085 195);
+  --chart-4: oklch(0.64 0.13 72);
+  --chart-5: oklch(0.58 0.2 355);
+  --chart-6: oklch(0.52 0.17 143);
+  --chart-7: oklch(0.43 0.165 284);
+  --chart-8: oklch(0.6 0.2 25);
+
+  --status-task-backlog: oklch(0.72 0.03 294);
+  --status-task-todo: oklch(0.75 0.15 70);
+  --status-task-in_progress: oklch(0.56 0.118 225);
+  --status-task-in_review: oklch(0.6 0.22 345);
+  --status-task-done: oklch(0.62 0.15 150);
+  --status-task-blocked: oklch(0.56 0.21 22);
+  --status-task-cancelled: oklch(0.72 0.03 294);
+  --status-task-icon-backlog: oklch(0.6 0.03 294);
+  --status-task-icon-todo: oklch(0.62 0.135 65);
+  --status-task-icon-in_progress: oklch(0.56 0.118 225);
+  --status-task-icon-in_review: oklch(0.6 0.22 345);
+  --status-task-icon-done: oklch(0.56 0.15 150);
+  --status-task-icon-cancelled: oklch(0.6 0.03 294);
+  --status-agent-running: oklch(0.56 0.118 225);
+  --status-agent-idle: oklch(0.6 0.03 294);
+  --status-agent-error: oklch(0.56 0.21 22);
+  --status-agent-paused: oklch(0.62 0.135 65);
+  --liveness-blue: oklch(0.56 0.118 225);
+  --scrollbar-thumb: oklch(0.82 0.04 300);
+  --scrollbar-thumb-hover: oklch(0.7 0.1 300);
+
+  --grid: oklch(0.93 0.015 300);
+  --neutral: oklch(0.72 0.03 294);
+  --good: oklch(0.56 0.15 150);
+  --warning: oklch(0.75 0.15 70);
+  --serious: oklch(0.67 0.17 45);
+  --bad: oklch(0.56 0.21 22);
+  --good-foreground: oklch(0.45 0.13 150);
+  --warning-foreground: oklch(0.5 0.11 70);
+  --serious-foreground: oklch(0.5 0.14 45);
+  --bad-foreground: oklch(0.5 0.19 22);
+  --age-current: var(--neutral);
+  --age-1-30: var(--warning);
+  --age-31-60: var(--serious);
+  --age-61-90: oklch(0.6 0.2 30);
+  --age-90-plus: var(--bad);
+}
+
+:root[data-skin="cyberpunk-uv"].dark {
+  --og-magenta: oklch(0.68 0.24 345);
+  --og-cyan: oklch(0.84 0.14 205);
+
+  --background: oklch(0.135 0.028 292);
+  --foreground: oklch(0.955 0.015 300);
+  --card: oklch(0.17 0.034 292);
+  --card-foreground: oklch(0.955 0.015 300);
+  --popover: oklch(0.19 0.04 292);
+  --popover-foreground: oklch(0.955 0.015 300);
+  --primary: oklch(0.66 0.21 300);
+  --primary-foreground: oklch(0.13 0.03 292);
+  --secondary: oklch(0.225 0.045 294);
+  --secondary-foreground: oklch(0.955 0.015 300);
+  --muted: oklch(0.225 0.045 294);
+  --muted-foreground: oklch(0.74 0.045 298);
+  --accent: oklch(0.25 0.06 298);
+  --accent-foreground: oklch(0.97 0.02 300);
+  --destructive: oklch(0.55 0.2 20);
+  --destructive-foreground: oklch(0.98 0.01 300);
+  --border: oklch(0.3 0.06 294);
+  --input: oklch(0.34 0.075 294);
+  --ring: oklch(0.72 0.18 305);
+
+  --sidebar: oklch(0.115 0.03 292);
+  --sidebar-foreground: oklch(0.9 0.02 300);
+  --sidebar-primary: oklch(0.66 0.21 300);
+  --sidebar-primary-foreground: oklch(0.13 0.03 292);
+  --sidebar-accent: oklch(0.25 0.075 300);
+  --sidebar-accent-foreground: oklch(0.97 0.02 300);
+  --sidebar-border: oklch(0.24 0.05 294);
+  --sidebar-ring: oklch(0.72 0.18 305);
+
+  --chart-1: oklch(0.72 0.155 245);
+  --chart-2: oklch(0.75 0.165 50);
+  --chart-3: oklch(0.8 0.15 170);
+  --chart-4: oklch(0.87 0.16 92);
+  --chart-5: oklch(0.72 0.205 350);
+  --chart-6: oklch(0.7 0.19 145);
+  --chart-7: oklch(0.68 0.185 295);
+  --chart-8: oklch(0.67 0.21 25);
+
+  --status-task-backlog: oklch(0.58 0.04 294);
+  --status-task-todo: oklch(0.83 0.16 80);
+  --status-task-in_progress: oklch(0.8 0.135 215);
+  --status-task-in_review: oklch(0.68 0.24 345);
+  --status-task-done: oklch(0.8 0.19 152);
+  --status-task-blocked: oklch(0.68 0.205 18);
+  --status-task-cancelled: oklch(0.58 0.04 294);
+  --status-task-icon-backlog: oklch(0.62 0.04 294);
+  --status-task-icon-todo: oklch(0.83 0.16 80);
+  --status-task-icon-in_progress: oklch(0.8 0.135 215);
+  --status-task-icon-in_review: oklch(0.68 0.24 345);
+  --status-task-icon-done: oklch(0.8 0.19 152);
+  --status-task-icon-cancelled: oklch(0.62 0.04 294);
+  --status-agent-running: oklch(0.8 0.135 215);
+  --status-agent-idle: oklch(0.58 0.04 294);
+  --status-agent-error: oklch(0.68 0.205 18);
+  --status-agent-paused: oklch(0.83 0.16 80);
+  --liveness-blue: oklch(0.8 0.135 215);
+  --scrollbar-thumb: oklch(0.36 0.08 296);
+  --scrollbar-thumb-hover: oklch(0.5 0.15 300);
+
+  --grid: oklch(0.22 0.04 294);
+  --neutral: oklch(0.58 0.04 294);
+  --good: oklch(0.8 0.19 152);
+  --warning: oklch(0.83 0.16 80);
+  --serious: oklch(0.75 0.165 50);
+  --bad: oklch(0.68 0.205 18);
+  --good-foreground: oklch(0.82 0.18 152);
+  --warning-foreground: oklch(0.85 0.15 82);
+  --serious-foreground: oklch(0.78 0.15 52);
+  --bad-foreground: oklch(0.74 0.18 18);
+  --age-61-90: oklch(0.7 0.19 35);
+}
+
+/* Cyberpunk finish: glow on the primary surfaces, a lit edge on the current nav row,
+   magenta selection, and a faint ultraviolet bloom at the top of the page. */
+:root[data-skin="cyberpunk-uv"] ::selection {
+  background: color-mix(in oklch, var(--og-magenta) 38%, transparent);
+  color: var(--foreground);
+}
+:root[data-skin="cyberpunk-uv"] :is(input, textarea, [contenteditable="true"]) {
+  caret-color: var(--primary);
+}
+:root[data-skin="cyberpunk-uv"] :is(h1, h2, h3) {
+  letter-spacing: -0.01em;
+}
+:root[data-skin="cyberpunk-uv"].dark .bg-primary {
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--ring) 55%, transparent), 0 0 18px -4px color-mix(in oklch, var(--primary) 75%, transparent);
+}
+:root[data-skin="cyberpunk-uv"].dark .sidebar-action-row:has(.sidebar-action-link[aria-current="page"]) .sidebar-action-link {
+  box-shadow: inset 2px 0 0 var(--primary), 0 0 22px -12px var(--primary);
+}
+:root[data-skin="cyberpunk-uv"].dark body {
+  background-image: radial-gradient(90rem 36rem at 50% -14rem, color-mix(in oklch, var(--primary) 12%, transparent), transparent 70%);
+  background-attachment: fixed;
+}

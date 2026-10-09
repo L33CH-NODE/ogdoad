@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // ogdoad-herd: run the herd daemon, or drive it.
 //   ogdoad-herd start                       (herd in the background, logging to ~/.ogdoad/herd/herd.log)
-//   ogdoad-herd stop                        (stops herd and its hires; kept hires come back on the next start)
+//   ogdoad-herd stop [--now]                (graceful: work finishes, each hire quits with its own /exit;
+//                                            --now stops at once. Kept hires come back on the next start)
+//   ogdoad-herd notifications [--limit 20] [--read]   (the operator's feed: errors, needs-you, jobs, restarts)
+//   ogdoad-herd wake <id>                   (start a resting kept hire now)
 //   ogdoad-herd serve [--port 3198]         (herd in this terminal)
 //   ogdoad-herd detect
 //   ogdoad-herd ls
@@ -22,8 +25,10 @@ import { resolve } from "node:path";
 
 import { LOG_FILE, startDetached } from "./daemon.js";
 import { detect } from "./harnesses.js";
+import { NOTIFICATIONS_FILE, Notifier } from "./notify.js";
 import { DEFAULT_PORT, TOKEN_FILE, readOrCreateToken } from "./paths.js";
 import { Herd, startServer } from "./server.js";
+import { desktopToast } from "./toast.js";
 import { readSophiaState, runWizard } from "./sophia/wizard.js";
 
 const argv = process.argv.slice(2);
@@ -56,7 +61,10 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
 async function main(): Promise<void> {
   switch (command) {
     case "serve": {
-      const herd = new Herd({ log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
+      // Every notification lands in the feed; the ones that matter now also pop up on the desktop,
+      // and status flips arrive as a digest at most once a minute.
+      const notifier = new Notifier({ file: NOTIFICATIONS_FILE, toast: desktopToast(), pulseDigestMs: 60_000 });
+      const herd = new Herd({ notifier, log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
       const exit = () => {
         server.close(() => process.exit(0));
         setTimeout(() => process.exit(0), 2000).unref();
@@ -80,14 +88,43 @@ async function main(): Promise<void> {
       return;
     }
     case "stop": {
-      await api("POST", "/v1/shutdown");
-      console.log("herd stopped");
+      if (has("now")) {
+        await api("POST", "/v1/shutdown");
+        return console.log("herd stopped");
+      }
+      await api("POST", "/v1/shutdown", { graceful: true });
+      console.log("Shutting down gracefully: running work finishes, then each hire quits cleanly.");
+      // Herd answers health until the last hire has quit.
+      for (let i = 0; i < 20 * 60; i++) {
+        if (!(await fetch(`${base}/v1/health`).then((r) => r.ok, () => false))) return console.log("herd stopped");
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      return console.log("Still shutting down after 20 minutes; check: ogdoad-herd notifications");
+    }
+    case "notifications": {
+      if (has("read")) {
+        await api("POST", "/v1/notifications/read", {});
+        return console.log("All marked read.");
+      }
+      const out = await api("GET", `/v1/notifications?limit=${flag("limit") ?? 20}`);
+      if (!out.items.length) return console.log("No notifications.");
+      for (const n of out.items) {
+        const when = new Date(n.at).toLocaleTimeString();
+        console.log(`#${n.id} ${when} ${n.level.toUpperCase().padEnd(5)} ${n.title}${n.body ? `: ${n.body}` : ""}`);
+      }
+      console.log(`${out.unread} unread`);
+      return;
+    }
+    case "wake": {
+      if (!argv[1]) throw new Error("usage: wake <hire id>");
+      const hire = await api("POST", `/v1/roster/${argv[1]}/wake`);
+      console.log(`${hire.id}  ${hire.state}  ${hire.label}`);
       return;
     }
     case "roster": {
       const roster = await api("GET", "/v1/roster");
       if (!roster.length) return console.log("No kept hires.");
-      for (const e of roster) console.log(`${e.id}  ${(e.running ? "running" : "down").padEnd(8)} ${(e.resumable ? "resumes" : "fresh").padEnd(8)} ${(e.label ?? e.harness).padEnd(16)} ${e.seat ? `seat ${e.seat.agentId}` : "no seat"}`);
+      for (const e of roster) console.log(`${e.id}  ${(e.running ? "running" : e.dormant ? "resting" : "down").padEnd(8)} ${(e.resumable ? "resumes" : "fresh").padEnd(8)} ${(e.label ?? e.harness).padEnd(16)} ${e.seat ? `seat ${e.seat.agentId}` : "no seat"}`);
       return;
     }
     case "detect": {

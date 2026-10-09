@@ -15,10 +15,12 @@ export interface HarnessSpec {
   vendor: string;
   /** Extra argv for a resumed session, given the harness's own session id. */
   resumeArgs?: (sessionId: string) => string[];
+  /** The command that quits the harness cleanly, saving its session (typed, then Enter). */
+  exitLine?: string;
 }
 
 export const HARNESSES: HarnessSpec[] = [
-  { id: "claude", name: "Claude Code", commands: ["claude"], privacy: "cloud", vendor: "Anthropic", resumeArgs: (id) => ["--resume", id] },
+  { id: "claude", name: "Claude Code", commands: ["claude"], privacy: "cloud", vendor: "Anthropic", resumeArgs: (id) => ["--resume", id], exitLine: "/exit" },
   { id: "codex", name: "Codex CLI", commands: ["codex"], privacy: "cloud", vendor: "OpenAI", resumeArgs: (id) => ["resume", id] },
   { id: "grok", name: "grok CLI", commands: ["grok"], privacy: "cloud", vendor: "xAI" },
   { id: "gemini", name: "Gemini CLI", commands: ["gemini"], privacy: "cloud", vendor: "Google" },

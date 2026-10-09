@@ -38,7 +38,13 @@ Frontier intelligence without handing over the business.
   - Publishes charts (recipes) and write-ups to its dedicated panel, on a schedule or on request.
   - Data comes through its own harness (web access or the operator's own API keys, kept in the harness). Panels show data and analysis, not trading instructions. Nothing is traded on the operator's behalf.
 
+- **Abilities belong to the hire.** Every skill, plugin and tool an agent uses is its own harness's native ability (Claude Code skills and MCP servers, Codex tools, ...), unless the operator gives it in chat or tells the agent to learn and load it in its own harness. Trust is managed by the operator per hire: for a new ability, hire a different kind of EI from another provider. Ogdoad's own features (invoices, dashboards, the privacy membrane) are operator-side apps that agents reach over the API, not agent abilities.
+- **The operator is on the pulse of everything.** Every error and status in the team reaches the operator as a notification: desktop alerts now, plus the UI's notification centre and the Team pulse panel.
+- **Graceful shutdown button in the UI.** Running work finishes and saves, each hire quits through its own `/exit`, then the server stops cleanly, so Postgres is never killed mid-write. Herd's side is done. The server side is next: herd runs the Ogdoad server in a terminal of its own, so the shutdown can press Ctrl+C on it last, after every agent has exited.
+
 ## Look and feel
+
+- **Ogdoad's own UI, built from the ground up.** It's a lean set of screens (home, SOPHIA, decisions, tasks, team, money, files, privacy log, settings) on our own design system, with Paperclip's server underneath as a borrowed engine until we replace it. The shell has floating glass menus: a detached sidebar, an inspector on the right, and SOPHIA's composer bar floating at the bottom. **The middle is reserved for agent-made dashboards:** a grid of squares that any agent fills, at the operator's request or as its own suggestion. Panels are animated, show live data, and keep a tasteful idle motion. The craft becomes a skill shipped in this repo as instructions for EIs. Mock: "Ogdoad Shell Mock" canvas.
 
 - **Skins.** Ogdoad (clean, corporate, the default), Cyberpunk Ultraviolet, Paperclip Classic. Picked from the account menu. More skins will be added over the project's life.
 - **Guided tours.** When the conversation turns to something visual (financials, say), the EI in the operator's Claude Code seat drives the UI: it opens pages, dashboards and filters for the operator. Meanwhile the chat collapses to SOPHIA's picture and a floating chat bubble at the bottom right, so the talk carries on while the operator looks at the organisation's data and pages.

@@ -8,6 +8,7 @@ import { mkdirSync } from "node:fs";
 
 import { HARNESSES, detect, resolveCommand } from "./harnesses.js";
 import { Hire, HerdError, type HireSpec } from "./hire.js";
+import { Notifier, type NotificationInput } from "./notify.js";
 import { planRestart } from "./restart.js";
 import { loadRoster, resumeArgsFor, saveRoster, type RosterEntry } from "./roster.js";
 import type { HireState } from "./rules.js";
@@ -19,7 +20,7 @@ export interface HerdServerOptions {
   port: number;
   host?: string;
   token: string;
-  /** Called after POST /v1/shutdown has been answered. */
+  /** Called once herd has stopped (after POST /v1/shutdown). */
   onShutdown?: () => void;
 }
 
@@ -46,10 +47,20 @@ interface LaunchSpec {
   env?: Record<string, string>;
 }
 
+export interface HerdOptions {
+  rosterFile?: string;
+  log?: (event: string, data: unknown) => void;
+  /** Where the operator hears about everything; defaults to a quiet in-memory feed. */
+  notifier?: Notifier;
+}
+
+const STATE_WORDS: Partial<Record<HireState, string>> = { working: "working", idle: "idle", done: "finished, result unread" };
+
 export class Herd {
   readonly hires = new Map<string, Hire>();
   /** Seats by Paperclip agent id. */
   readonly seats = new Map<string, Seat>();
+  readonly notifier: Notifier;
   private readonly subscribers = new Set<ServerResponse>();
   private roster: RosterEntry[];
   /** Hires the operator let go of: their exit is expected, never restarted. */
@@ -57,18 +68,31 @@ export class Herd {
   private readonly exitHandled = new WeakSet<Hire>();
   private readonly resumed = new WeakSet<Hire>();
   private readonly restarts = new Map<string, number[]>();
+  private readonly pendingRestart = new Map<string, NodeJS.Timeout>();
   private shuttingDown = false;
 
-  constructor(private readonly opts: { rosterFile?: string; log?: (event: string, data: unknown) => void } = {}) {
+  constructor(private readonly opts: HerdOptions = {}) {
     this.roster = loadRoster(opts.rosterFile);
+    this.notifier = opts.notifier ?? new Notifier();
+  }
+
+  notify(input: NotificationInput): void {
+    const n = this.notifier.push(input);
+    if (n) this.broadcast("notification", n);
   }
 
   /** Bind a hire to a Paperclip agent on the live-agent adapter, so its jobs flow into the session. */
   bindSeat(agentId: string, hireId: string, mailbox = DEFAULT_MAILBOX): Seat {
-    const hire = this.hires.get(hireId);
-    if (!hire) throw new HerdError("no_such_hire", `No hire ${hireId}.`);
+    const hire = this.hires.get(hireId) ?? null;
+    const entry = this.roster.find((e) => e.id === hireId);
+    if (!hire && !entry) throw new HerdError("no_such_hire", `No hire ${hireId}.`);
     this.seats.get(agentId)?.stop();
-    const seat = new Seat(agentId, hire, mailbox, (event, data) => this.broadcast(event, data));
+    const seat = new Seat({
+      agentId, hireId, hire: hire && hire.state !== "exited" ? hire : null, cwd: hire?.cwd ?? entry!.cwd, mailboxUrl: mailbox,
+      log: (event, data) => this.seatEvent(event, data as Record<string, any>),
+      // A kept hire's seat outlives its sessions: work for it starts it again.
+      wake: entry ? () => this.wake(hireId, "work") : undefined,
+    });
     this.seats.set(agentId, seat);
     this.updateEntry(hireId, (e) => (e.seat = { agentId, mailbox: mailbox === DEFAULT_MAILBOX ? undefined : mailbox }));
     this.broadcast("seat_bound", seat.info());
@@ -80,7 +104,7 @@ export class Herd {
     if (!seat) return;
     seat.stop();
     this.seats.delete(agentId);
-    this.updateEntry(seat.hire.id, (e) => delete e.seat);
+    this.updateEntry(seat.hireId, (e) => delete e.seat);
   }
 
   spawn(body: SpawnBody): Hire {
@@ -93,14 +117,15 @@ export class Herd {
       });
       this.saveRoster();
     }
-    if (body.brief) void this.deliverBrief(hire, body.brief);
+    if (body.brief) this.deliverBrief(hire, body.brief);
     return hire;
   }
 
   /** Let a hire go: stop it, unbind its seat, and drop it from the roster. */
   release(hireId: string): void {
     const hire = this.hires.get(hireId);
-    for (const seat of [...this.seats.values()]) if (seat.hire.id === hireId) this.unbindSeat(seat.agentId);
+    for (const seat of [...this.seats.values()]) if (seat.hireId === hireId) this.unbindSeat(seat.agentId);
+    this.cancelRestart(hireId);
     if (hire) {
       this.released.add(hire);
       hire.kill();
@@ -109,6 +134,7 @@ export class Herd {
     if (this.roster.some((e) => e.id === hireId)) {
       this.roster = this.roster.filter((e) => e.id !== hireId);
       this.saveRoster();
+      this.notify({ level: "info", kind: "hire_released", title: `${hire?.label ?? hireId} was let go`, body: "Stopped and taken off the roster.", hireId });
     }
   }
 
@@ -126,34 +152,111 @@ export class Herd {
     });
   }
 
-  /** On herd start: bring every kept hire back, resumed where possible, and re-bind its seat. */
-  async restore(): Promise<void> {
-    for (const entry of this.roster) {
-      if (this.hires.has(entry.id)) continue;
-      try {
-        this.revive(entry, false);
-      } catch (err) {
-        this.broadcast("restore_failed", { id: entry.id, label: entry.label, reason: (err as Error).message });
-      }
-      await sleep(500);
+  /** Start a resting (or crashed) kept hire now. Returns the live session. */
+  async wake(hireId: string, why: "work" | "operator"): Promise<Hire | null> {
+    const live = this.hires.get(hireId);
+    if (live && live.state !== "exited") return live;
+    const entry = this.roster.find((e) => e.id === hireId);
+    if (!entry || this.shuttingDown) return null;
+    this.cancelRestart(hireId);
+    try {
+      return this.revive(entry, false, why === "work" ? "woke for new work" : "started by you");
+    } catch (err) {
+      this.notify({ level: "error", kind: "wake_failed", title: `${entry.label ?? hireId} couldn't start`, body: (err as Error).message, hireId });
+      return null;
     }
   }
 
-  /** Stop every hire without letting any of them go: they come back on the next start. */
-  shutdown(): void {
-    this.shuttingDown = true;
-    for (const seat of this.seats.values()) seat.stop();
-    for (const hire of this.hires.values()) hire.kill();
+  /** On herd start: bring every kept hire back, resumed where possible, and re-bind its seat. */
+  async restore(): Promise<void> {
+    const back: string[] = [];
+    const resting: string[] = [];
+    for (const entry of this.roster) {
+      if (this.hires.has(entry.id)) continue;
+      const name = entry.label ?? entry.id;
+      try {
+        if (entry.dormant) {
+          // Resting hires stay down; their seats listen so work can start them.
+          if (entry.seat) this.bindSeat(entry.seat.agentId, entry.id, entry.seat.mailbox);
+          resting.push(name);
+        } else {
+          this.revive(entry, false, "back after herd restarted", { quiet: true });
+          back.push(name);
+        }
+      } catch (err) {
+        this.notify({ level: "error", kind: "restore_failed", title: `${name} couldn't be brought back`, body: (err as Error).message, hireId: entry.id });
+      }
+      await sleep(500);
+    }
+    const parts = [back.length ? `Back: ${back.join(", ")}.` : "", resting.length ? `Resting until work arrives: ${resting.join(", ")}.` : ""].filter(Boolean);
+    this.notify({ level: "info", kind: "herd_started", title: "Herd is running", body: parts.join(" ") || "No kept hires yet." });
   }
 
-  private revive(entry: RosterEntry, fresh: boolean): Hire {
+  /** Stop every hire at once, without letting any go: they come back on the next start. */
+  shutdown(): void {
+    this.shuttingDown = true;
+    for (const id of this.pendingRestart.keys()) this.cancelRestart(id);
+    for (const seat of this.seats.values()) seat.stop();
+    for (const hire of this.hires.values()) hire.kill();
+    this.notifier.close();
+  }
+
+  /**
+   * The operator's graceful shutdown: no new work is taken, running jobs finish and save, each hire
+   * quits through its own exit command (so the harness saves its session), and only then does
+   * anything get stopped. Kept hires stay on the roster and come back on the next start.
+   */
+  async gracefulShutdown(opts: { workTimeoutMs?: number; exitTimeoutMs?: number } = {}): Promise<void> {
+    const workTimeout = opts.workTimeoutMs ?? 15 * 60_000;
+    const exitTimeout = opts.exitTimeoutMs ?? 20_000;
+    this.shuttingDown = true;
+    for (const id of this.pendingRestart.keys()) this.cancelRestart(id);
+    const live = () => [...this.hires.values()].filter((h) => h.state !== "exited");
+    this.notify({ level: "info", kind: "shutdown_started", title: "Shutting down", body: `Letting running work finish, then closing ${live().length} session(s) cleanly.` });
+
+    // 1. Finish the jobs in hand; take no new ones.
+    const drained = await Promise.all([...this.seats.values()].map((s) => s.drain(workTimeout)));
+    if (drained.includes(false)) this.notify({ level: "warn", kind: "shutdown_job_unfinished", title: "A job didn't finish in time", body: "Shutting down anyway; that job will be retried when Ogdoad is back." });
+
+    // 2. Let each hire come to rest (a hire waiting on a decision holds the shutdown until answered or timed out).
+    await Promise.all(live().map(async (hire) => {
+      if (hire.state === "blocked") this.notify({ level: "warn", kind: "shutdown_waiting", title: `Shutdown is waiting on ${hire.label}`, body: "It's waiting on a decision. Answer it, or it will be closed when the wait runs out.", hireId: hire.id });
+      await hire.waitFor((s) => s === "idle" || s === "done" || s === "exited", workTimeout);
+    }));
+
+    // 3. Quit each through its own exit command, so its session is saved; stop what won't quit.
+    await Promise.all(live().map(async (hire) => {
+      const line = harnessSpec(hire.harness)?.exitLine;
+      if (line) await hire.typeLine(line);
+      else hire.keys(["ctrl+c", "ctrl+c"]);
+      if (!(await hire.waitFor((s) => s === "exited", exitTimeout))) hire.kill();
+    }));
+    for (const seat of this.seats.values()) seat.stop();
+    this.notify({ level: "info", kind: "shutdown_done", title: "Ogdoad's team is shut down", body: "Every session closed cleanly. They come back on the next start." });
+    await sleep(2000); // let the last toast go out
+    this.notifier.close();
+  }
+
+  private revive(entry: RosterEntry, fresh: boolean, why: string, opts: { quiet?: boolean } = {}): Hire {
     const resume = !fresh && entry.resumeArgs !== null;
     if (fresh) this.renewSession(entry);
+    if (entry.dormant) {
+      entry.dormant = false;
+      this.saveRoster();
+    }
     const hire = this.launch({ id: entry.id, harness: entry.harness, command: entry.command, args: resume ? entry.resumeArgs! : entry.args, cwd: entry.cwd, label: entry.label, env: entry.env });
     if (resume) this.resumed.add(hire);
-    else if (entry.brief) void this.deliverBrief(hire, entry.brief);
-    if (entry.seat) this.bindSeat(entry.seat.agentId, hire.id, entry.seat.mailbox);
+    else if (entry.brief) this.deliverBrief(hire, entry.brief);
+    if (entry.seat) {
+      const seat = this.seats.get(entry.seat.agentId);
+      if (seat && !seat.stopped) seat.attach(hire);
+      else this.bindSeat(entry.seat.agentId, hire.id, entry.seat.mailbox);
+    }
     this.broadcast("hire_restored", { id: hire.id, label: hire.label, resumed: resume });
+    if (!opts.quiet) {
+      const how = resume ? "Resumed its session." : "Started a fresh session and re-sent its brief.";
+      this.notify({ level: "info", kind: "hire_back", title: `${hire.label} ${why}`, body: how, hireId: hire.id });
+    }
     return hire;
   }
 
@@ -188,7 +291,12 @@ export class Herd {
     this.hires.set(hire.id, hire);
     hire.on("state", (state: HireState) => {
       this.broadcast("status_changed", { id: hire.id, label: hire.label, state });
-      if (state === "exited") this.onExit(hire);
+      if (state === "exited") return this.onExit(hire);
+      if (state === "blocked") {
+        this.notify({ level: "warn", kind: "needs_you", title: `${hire.label} needs you`, body: `It's waiting on a decision. See it with: ogdoad-herd screen ${hire.id}`, hireId: hire.id, dedupeKey: `blocked:${hire.id}`, dedupeMs: 5_000 });
+      } else if (STATE_WORDS[state]) {
+        this.notify({ level: "pulse", kind: "status", title: `${hire.label} ${STATE_WORDS[state]}`, body: "", hireId: hire.id });
+      }
     });
     this.broadcast("hire_spawned", hire.info());
     return hire;
@@ -199,25 +307,74 @@ export class Herd {
     this.exitHandled.add(hire);
     if (this.shuttingDown || this.released.has(hire) || this.hires.get(hire.id) !== hire) return;
     const entry = this.roster.find((e) => e.id === hire.id);
-    if (!entry) return;
+    const code = hire.exitCode === null ? "killed" : `exit ${hire.exitCode}`;
+    if (!entry) {
+      this.notify({ level: hire.exitCode === 0 ? "info" : "warn", kind: "hire_exited", title: `${hire.label} exited`, body: `Its session ended (${code}). It isn't kept, so it stays down.`, hireId: hire.id });
+      return;
+    }
 
     const history = this.restarts.get(hire.id) ?? [];
     const plan = planRestart({ exitCode: hire.exitCode, ranForMs: Date.now() - hire.startedAt, recentRestarts: history, wasResume: this.resumed.has(hire) });
-    if (!plan) {
-      this.broadcast("hire_gave_up", { id: hire.id, label: hire.label, exitCode: hire.exitCode, restarts: history.length });
+    if (plan.action === "rest") {
+      entry.dormant = true;
+      this.saveRoster();
+      const wakes = entry.seat ? "It starts again when a task is assigned to it." : `Start it again with: ogdoad-herd wake ${hire.id}`;
+      if (plan.why === "signed_off") {
+        this.notify({ level: "info", kind: "hire_signed_off", title: `${hire.label} signed off`, body: `It exited cleanly and is resting. ${wakes}`, hireId: hire.id });
+      } else {
+        this.notify({ level: "error", kind: "hire_down", title: `${hire.label} is down`, body: `It crashed ${history.length + 1} times in 10 minutes (last: ${code}), so herd stopped restarting it. ${wakes}`, hireId: hire.id });
+      }
       return;
     }
+
     this.restarts.set(hire.id, [...history, Date.now()]);
-    this.broadcast("hire_restarting", { id: hire.id, label: hire.label, exitCode: hire.exitCode, inMs: plan.delayMs, fresh: plan.fresh });
-    setTimeout(() => {
+    const inSec = Math.round(plan.delayMs / 1000);
+    const body = plan.fresh
+      ? `Its resumed session died within 20 s (${code}), so it starts a fresh session in ${inSec} s. Its earlier conversation isn't carried over; its brief is re-sent.`
+      : `Its session ended unexpectedly (${code}). Restarting it in ${inSec} s, resuming where it was.`;
+    this.notify({ level: plan.fresh ? "error" : "warn", kind: plan.fresh ? "hire_resume_failed" : "hire_restarting", title: plan.fresh ? `${hire.label} couldn't resume` : `${hire.label} stopped`, body, hireId: hire.id });
+    this.pendingRestart.set(hire.id, setTimeout(() => {
+      this.pendingRestart.delete(hire.id);
       // Still ours to bring back? The operator may have let it go, or herd may be stopping.
       if (this.shuttingDown || this.hires.get(hire.id) !== hire || !this.roster.includes(entry)) return;
       try {
-        this.revive(entry, plan.fresh);
+        this.revive(entry, plan.fresh, "is back");
       } catch (err) {
-        this.broadcast("restore_failed", { id: entry.id, label: entry.label, reason: (err as Error).message });
+        this.notify({ level: "error", kind: "restore_failed", title: `${hire.label} couldn't be restarted`, body: (err as Error).message, hireId: hire.id });
       }
-    }, plan.delayMs).unref();
+    }, plan.delayMs));
+  }
+
+  private cancelRestart(hireId: string): void {
+    const timer = this.pendingRestart.get(hireId);
+    if (timer) clearTimeout(timer);
+    this.pendingRestart.delete(hireId);
+  }
+
+  /** Seat events: streamed as they are, and turned into notifications for the operator. */
+  private seatEvent(event: string, d: Record<string, any>): void {
+    this.broadcast(event, d);
+    const who = this.hires.get(d.hireId)?.label ?? d.agentName ?? "A seat";
+    const refs = { hireId: d.hireId, agentId: d.agentId, jobId: d.jobId };
+    switch (event) {
+      case "seat_job_received":
+        this.notify({ level: "info", kind: "job_started", title: `${who} picked up work`, body: d.wakeReason ? `Reason: ${d.wakeReason}.` : "A new job arrived.", ...refs });
+        break;
+      case "seat_job_closed":
+        if (d.how === "done" || d.how === "settled") this.notify({ level: "info", kind: "job_done", title: `${who} finished a job`, body: "Closed and reported back to Ogdoad.", ...refs });
+        else if (d.how === "lost") this.notify({ level: "warn", kind: "job_lost", title: `${who} lost a job`, body: "Its lease ran out before it reported back. Ogdoad will retry the work.", ...refs });
+        else this.notify({ level: "error", kind: "job_failed", title: `${who}'s job failed`, body: d.summary ? String(d.summary) : "The seat reported a failure.", ...refs });
+        break;
+      case "seat_job_cancel_requested":
+        this.notify({ level: "info", kind: "job_cancelled", title: `${who}'s job was cancelled`, body: "Herd pressed Esc in its session.", ...refs });
+        break;
+      case "seat_mailbox_unreachable":
+        this.notify({ level: "error", kind: "mailbox_down", title: `Can't reach ${who}'s job mailbox`, body: `${d.error ?? "No answer"}. Is Ogdoad running? Herd keeps retrying.`, ...refs, dedupeKey: `mailbox:${d.agentId}`, dedupeMs: 60 * 60_000 });
+        break;
+      case "seat_mailbox_reachable":
+        if (this.notifier.clear(`mailbox:${d.agentId}`)) this.notify({ level: "info", kind: "mailbox_back", title: `${who}'s job mailbox is back`, body: "Jobs flow again.", ...refs });
+        break;
+    }
   }
 
   private updateEntry(hireId: string, change: (e: RosterEntry) => void): void {
@@ -232,19 +389,21 @@ export class Herd {
   }
 
   /** Paste the brief once the harness has finished starting up and is idle at its prompt. */
-  private async deliverBrief(hire: Hire, brief: string): Promise<void> {
-    const ready = await hire.waitFor((s) => s === "idle" || s === "done" || s === "exited", 90_000);
-    if (!ready || hire.state === "exited") {
-      this.broadcast("brief_failed", { id: hire.id, reason: ready ? "exited" : "not ready within 90 s" });
-      return;
-    }
-    hire.read(1); // acknowledge any startup "done"
-    try {
-      await hire.prompt(brief);
-      this.broadcast("brief_delivered", { id: hire.id });
-    } catch (err) {
-      this.broadcast("brief_failed", { id: hire.id, reason: (err as Error).message });
-    }
+  private deliverBrief(hire: Hire, brief: string): void {
+    hire.briefing = (async () => {
+      const ready = await hire.waitFor((s) => s === "idle" || s === "done" || s === "exited", 90_000);
+      if (!ready || hire.state === "exited") {
+        this.notify({ level: "error", kind: "brief_failed", title: `${hire.label} didn't get its brief`, body: ready ? "It exited before it was ready." : "It wasn't ready within 90 s.", hireId: hire.id });
+        return;
+      }
+      hire.read(1); // acknowledge any startup "done"
+      try {
+        await hire.prompt(brief);
+        this.broadcast("brief_delivered", { id: hire.id });
+      } catch (err) {
+        this.notify({ level: "error", kind: "brief_failed", title: `${hire.label} didn't get its brief`, body: (err as Error).message, hireId: hire.id });
+      }
+    })();
   }
 
   broadcast(event: string, data: unknown): void {
@@ -323,11 +482,42 @@ export function startServer(herd: Herd, opts: HerdServerOptions) {
       if (parts[1] === "events" && req.method === "GET") return herd.subscribe(res);
       if (parts[1] === "detect" && req.method === "GET") return send(res, 200, await detect());
       if (parts[1] === "roster" && req.method === "GET") return send(res, 200, herd.listRoster());
+      // POST /v1/shutdown {graceful?: true}: graceful lets work finish and quits each hire cleanly.
       if (parts[1] === "shutdown" && req.method === "POST") {
-        send(res, 200, { ok: true });
-        herd.shutdown();
-        opts.onShutdown?.();
+        const body = await readJson(req);
+        if (body.graceful) {
+          send(res, 202, { ok: true, graceful: true });
+          void herd.gracefulShutdown().finally(() => opts.onShutdown?.());
+        } else {
+          send(res, 200, { ok: true });
+          herd.shutdown();
+          opts.onShutdown?.();
+        }
         return;
+      }
+      if (parts[1] === "notifications") {
+        if (parts.length === 2 && req.method === "GET") {
+          const after = Number(url.searchParams.get("after") ?? 0);
+          const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 500);
+          return send(res, 200, { unread: herd.notifier.unread(), items: herd.notifier.list({ after, limit }) });
+        }
+        if (parts[2] === "read" && req.method === "POST") {
+          const body = await readJson(req);
+          herd.notifier.markRead(body.upTo === undefined ? undefined : Number(body.upTo));
+          return send(res, 200, { unread: herd.notifier.unread() });
+        }
+        // Hires (SOPHIA, say) can put something in front of the operator too.
+        if (parts.length === 2 && req.method === "POST") {
+          const body = await readJson(req);
+          if (typeof body.title !== "string" || !body.title.trim()) throw new HerdError("bad_request", "title is required.");
+          const level = body.level === "warn" ? "warn" : "info";
+          herd.notify({ level, kind: "from_hire", title: body.title.slice(0, 120), body: String(body.body ?? "").slice(0, 600), hireId: body.hireId ? String(body.hireId) : undefined });
+          return send(res, 201, { ok: true });
+        }
+      }
+      if (parts[1] === "roster" && parts[2] && parts[3] === "wake" && req.method === "POST") {
+        const hire = await herd.wake(parts[2], "operator");
+        return hire ? send(res, 200, hire.info()) : send(res, 404, { error: "not_kept", message: "No kept hire with that id (or herd is shutting down)." });
       }
 
       if (parts[1] === "seats") {

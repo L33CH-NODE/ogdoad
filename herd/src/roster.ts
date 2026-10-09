@@ -26,6 +26,8 @@ export interface RosterEntry {
   /** Re-delivered on a fresh start, so a hire that can't resume still knows its role. */
   brief?: string;
   seat?: { agentId: string; mailbox?: string };
+  /** Resting: left down on purpose (/exit, or a crash loop). Herd won't start it until work arrives. */
+  dormant?: boolean;
   keptAt: string;
 }
 

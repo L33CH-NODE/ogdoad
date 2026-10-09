@@ -72,6 +72,8 @@ export class Hire extends EventEmitter {
   exitCode: number | null = null;
   sessionId: string | null = null;
   resumeArgs: string[] | null = null;
+  /** Settles once the hire's brief (if any) has been handed over; seats wait on it before prompting. */
+  briefing: Promise<void> = Promise.resolve();
 
   private readonly pty: pty.IPty;
   private readonly term: TerminalType;
@@ -171,6 +173,14 @@ export class Hire extends EventEmitter {
     if (!started) throw new HerdError("prompt_stalled", "The hire didn't start working within 5 s of the prompt.");
     await this.waitFor((s) => s === "idle" || s === "done" || s === "blocked" || s === "exited", opts.timeoutMs ?? 30 * 60_000);
     return this.state;
+  }
+
+  /** Type a line as keystrokes (not a paste), then Enter: for harness commands such as /exit. */
+  async typeLine(text: string): Promise<void> {
+    if (this.state === "exited") return;
+    this.pty.write(text);
+    await sleep(PROMPT_ENTER_DELAY_MS);
+    this.pty.write("\r");
   }
 
   /** Send named keys ("enter", "esc", "down", "ctrl+c") or literal text, in order. */

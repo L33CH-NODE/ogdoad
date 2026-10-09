@@ -1,6 +1,6 @@
 {
   "name": "ogdoad",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "0GD0AD: hire any live agent (Claude Code, grok, opencode, Hermes, local models) into a Paperclip company with no logins, plus agent-built live dashboards.",
   "license": "MIT",
   "author": "L33CH-NODE",

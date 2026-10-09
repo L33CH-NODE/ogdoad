@@ -1,0 +1,28 @@
+{
+  "name": "@ogdoad/herd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ogdoad's agent-session manager: spawn, watch and steer any CLI harness in a real terminal, on this machine, under the operator's own logins.",
+  "license": "MIT",
+  "author": "L33CH-NODE",
+  "bin": {
+    "ogdoad-herd": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@xterm/headless": "6.0.0",
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

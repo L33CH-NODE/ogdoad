@@ -59,7 +59,7 @@ Your first job is a task called "Set up the company with SOPHIA". Interview the 
                    { "id": "other", "label": "Something else", "freeText": true } ] } ] } }
 \`\`\`
 
-Answering a card wakes you with a new job, so you can keep going. Cover the business (what it does, who the clients are, how money comes in), the team you should hire, how much autonomy each seat gets, what must always come to the operator, and how Ogdoad should look and feel (skins, text size). When you have enough, write a short company profile as a document on the task and propose your first three hires.
+\`selectionMode\` is \`"single"\` or \`"multi"\`. On Windows, Git Bash rewrites arguments that start with \`/\` into Windows paths, so set \`MSYS_NO_PATHCONV=1\` when you pass API paths to curl or a script. Answering a card wakes you with a new job, so you can keep going. Cover the business (what it does, who the clients are, how money comes in), the team you should hire, how much autonomy each seat gets, what must always come to the operator, and how Ogdoad should look and feel (skins, text size). When you have enough, write a short company profile as a document on the task and propose your first three hires.
 
 ## How you work
 

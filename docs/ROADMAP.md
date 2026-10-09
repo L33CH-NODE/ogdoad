@@ -2,6 +2,22 @@
 
 Ideas and decisions, newest at the bottom of each section. Specs live next to this file.
 
+## The main draw: tiered information
+
+Frontier intelligence without handing over the business.
+
+- **Tier 0, local only.** Financial and client information is handled and stored by **local models** on the operator's machine.
+- **The membrane.** Local models sanitise data before it moves up a tier: stand-ins for identities, aggregates instead of rows.
+- **Tier 1, cloud-visible.** Only sanitised data, and only what the operator has chosen to share, ever reaches a cloud model. It appears in its own pane of the operator's UI, separate from any chat ("non-cross-chat"), so the operator can always see exactly what the cloud has seen.
+- **Back down.** The cloud model's answers return through the membrane, are re-linked to the real records locally, and flow into the local tiers. This happens only after the operator decides, and only within what they agreed to share.
+- **In practice:** a cloud SOPHIA reasons over Tier 1, while local seats do the Tier 0 work (invoices, bank matching, client records). Every crossing is logged, so the operator can review what was shared, with whom, and when.
+- **Fully customisable privacy, set at setup and changeable any time.** The privacy level runs from one end of a spectrum to the other:
+  - **Frontier**: hand everything to the cloud model, if the operator chooses.
+  - **Tiered**: the membrane above.
+  - **Strict local**: a local-only pipe, where no data leaves the machine at all.
+  
+  The choice can be made per class of data: identities, money, documents, communications, and so on. The first-launch trust question sets the starting profile, and SOPHIA's setup interview refines it.
+
 ## Core
 
 - **Own codebase.** Paperclip v2026.1005.0 lives in `core/` as a snapshot, credited in `NOTICE`; every change is listed in `core/OGDOAD_CHANGES.md`.

@@ -1,0 +1,1310 @@
+[
+  {
+    "id": "kpi-outstanding",
+    "title": "Outstanding",
+    "query": "SELECT SUM(balance_aud) AS outstanding, COUNT(*) AS open_invoices, COUNT(DISTINCT client) AS clients\nFROM invoices\nWHERE balance_aud > 0",
+    "chart": {
+      "type": "stat",
+      "value": "outstanding",
+      "format": "aud",
+      "detail": "{open_invoices} open invoices · {clients} clients"
+    },
+    "notes": "Everything still owed, due or not. First tile because it is the number nearest the outcome: cash not yet in the bank."
+  },
+  {
+    "id": "kpi-overdue",
+    "title": "Overdue",
+    "query": "SELECT SUM(balance_aud) AS overdue, COUNT(*) AS overdue_invoices,\n       ROUND(100.0 * SUM(balance_aud) / (SELECT SUM(balance_aud) FROM invoices WHERE balance_aud > 0), 1) AS pct_of_outstanding\nFROM invoices\nWHERE balance_aud > 0 AND days_past_due > 0",
+    "chart": {
+      "type": "stat",
+      "value": "overdue",
+      "format": "aud",
+      "tone": "bad",
+      "detail": "{pct_of_outstanding}% of outstanding · {overdue_invoices} invoices"
+    },
+    "notes": "The part of outstanding that is past its due date. Tone is bad whenever it is above zero."
+  },
+  {
+    "id": "kpi-collected-month",
+    "title": "Collected this month",
+    "query": "WITH m AS (SELECT MAX(date) AS asof FROM bank_transactions)\nSELECT\n  (SELECT SUM(credit_in) FROM bank_transactions, m\n    WHERE date >= date(m.asof, 'start of month')) AS collected,\n  (SELECT COALESCE(SUM(credit_in), 0) FROM bank_transactions, m\n    WHERE date >= date(m.asof, 'start of month', '-1 month') AND date <= date(m.asof, '-1 month')) AS same_days_last_month,\n  (SELECT SUM(credit_in) FROM bank_transactions, m\n    WHERE date >= date(m.asof, 'start of month'))\n  - (SELECT COALESCE(SUM(credit_in), 0) FROM bank_transactions, m\n    WHERE date >= date(m.asof, 'start of month', '-1 month') AND date <= date(m.asof, '-1 month')) AS vs_last_month,\n  (SELECT CAST(strftime('%d', asof) AS INTEGER) FROM m) AS days_in",
+    "chart": {
+      "type": "stat",
+      "value": "collected",
+      "format": "aud",
+      "delta": {
+        "field": "vs_last_month",
+        "format": "aud",
+        "goodWhen": "up",
+        "label": "vs first {days_in} days of last month"
+      }
+    },
+    "notes": "Month to date, anchored on the latest bank row so it works on a static file. The comparison is like for like: the same number of days of the month before, never a part month against a full one. On live data swap MAX(date) for date('now')."
+  },
+  {
+    "id": "kpi-days-to-pay",
+    "title": "Average days to pay",
+    "query": "WITH pay AS (\n  SELECT i.client, i.invoice_no, i.issue_date, i.due_date, b.date AS paid_date, b.credit_in AS paid,\n         julianday(b.date) - julianday(i.issue_date) AS days_to_pay,\n         julianday(b.date) - julianday(i.due_date)   AS days_late\n  FROM bank_transactions b\n  JOIN invoices i ON i.invoice_no = substr(b.description, instr(b.description, 'INV-'))\n  WHERE b.credit_in IS NOT NULL\n)\nSELECT ROUND(AVG(days_to_pay), 1) AS avg_days_to_pay,\n       ROUND(AVG(days_late), 1)   AS avg_days_late,\n       COUNT(*)                   AS payments\nFROM pay",
+    "chart": {
+      "type": "stat",
+      "value": "avg_days_to_pay",
+      "format": "days",
+      "tone": "warn",
+      "detail": "{avg_days_late} days past due on 14-day terms · {payments} payments"
+    },
+    "notes": "Issue date to the bank credit that references the invoice, averaged over every payment. Terms are 14 days on every invoice in the file, so anything above 14 is lateness."
+  },
+  {
+    "id": "kpi-open-tasks",
+    "title": "Open tasks",
+    "query": "SELECT SUM(status <> 'done') AS open_tasks, SUM(status = 'blocked') AS blocked, SUM(status = 'in_progress') AS in_progress\nFROM tasks",
+    "chart": {
+      "type": "stat",
+      "value": "open_tasks",
+      "format": "int",
+      "detail": "{in_progress} in progress · {blocked} blocked"
+    },
+    "notes": "Everything not done. Blocked is called out because it is the only status that needs a human."
+  },
+  {
+    "id": "kpi-agent-success",
+    "title": "Agent success rate",
+    "query": "SELECT ROUND(100.0 * SUM(status = 'done') / SUM(status IN ('done', 'blocked')), 1) AS success_pct,\n       SUM(status = 'done') AS done, SUM(status = 'blocked') AS blocked\nFROM tasks",
+    "chart": {
+      "type": "stat",
+      "value": "success_pct",
+      "format": "pct",
+      "detail": "{done} done ÷ ({done} done + {blocked} blocked)"
+    },
+    "notes": "The tasks table has no outcome column, so success is defined here as done ÷ (done + blocked): of the tasks that reached an end state or a wall, the share that finished. Change the definition in this one query if Ogdoad records run outcomes."
+  },
+  {
+    "id": "ageing-buckets",
+    "title": "What is owed, by age",
+    "query": "WITH b(ageing_bucket, ord) AS (VALUES ('current', 0), ('1-30', 1), ('31-60', 2), ('61-90', 3), ('90+', 4))\nSELECT b.ageing_bucket, b.ord,\n       COALESCE(SUM(i.balance_aud), 0) AS owed,\n       COUNT(i.invoice_no)             AS invoices\nFROM b\nLEFT JOIN invoices i ON i.ageing_bucket = b.ageing_bucket AND i.balance_aud > 0\nGROUP BY b.ageing_bucket, b.ord\nORDER BY b.ord",
+    "format": {
+      "value": "aud",
+      "fields": {
+        "owed": "aud",
+        "invoices": "int"
+      }
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "grid": {
+        "top": 28,
+        "bottom": 30
+      },
+      "xAxis": {
+        "type": "category",
+        "name": "Days past due",
+        "nameLocation": "middle",
+        "nameGap": 28
+      },
+      "yAxis": {
+        "type": "value"
+      },
+      "visualMap": {
+        "show": false,
+        "type": "piecewise",
+        "dimension": "ord",
+        "pieces": [
+          {
+            "value": 0,
+            "color": "var(--age-current)"
+          },
+          {
+            "value": 1,
+            "color": "var(--age-1-30)"
+          },
+          {
+            "value": 2,
+            "color": "var(--age-31-60)"
+          },
+          {
+            "value": 3,
+            "color": "var(--age-61-90)"
+          },
+          {
+            "value": 4,
+            "color": "var(--age-90-plus)"
+          }
+        ]
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Owed",
+          "barMaxWidth": 48,
+          "encode": {
+            "x": "ageing_bucket",
+            "y": "owed",
+            "tooltip": [
+              "owed",
+              "invoices"
+            ]
+          },
+          "itemStyle": {
+            "borderRadius": [
+              4,
+              4,
+              0,
+              0
+            ]
+          },
+          "label": {
+            "show": true,
+            "position": "top"
+          }
+        }
+      ]
+    },
+    "notes": "Five fixed buckets from a VALUES spine, so an empty bucket (61-90 today) still shows as a gap instead of vanishing. Colour is an ordered ramp from neutral to bad. Look for money piling up at the right-hand end."
+  },
+  {
+    "id": "ageing-by-client",
+    "title": "Who owes what, by age",
+    "query": "SELECT client,\n       SUM(CASE WHEN ageing_bucket = 'current' THEN balance_aud ELSE 0 END) AS not_due,\n       SUM(CASE WHEN ageing_bucket = '1-30'    THEN balance_aud ELSE 0 END) AS d1_30,\n       SUM(CASE WHEN ageing_bucket = '31-60'   THEN balance_aud ELSE 0 END) AS d31_60,\n       SUM(CASE WHEN ageing_bucket = '61-90'   THEN balance_aud ELSE 0 END) AS d61_90,\n       SUM(CASE WHEN ageing_bucket = '90+'     THEN balance_aud ELSE 0 END) AS d90_plus,\n       SUM(balance_aud) AS owed\nFROM invoices\nWHERE balance_aud > 0\nGROUP BY client\nORDER BY owed DESC",
+    "format": {
+      "value": "aud"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "axis",
+        "axisPointer": {
+          "type": "shadow"
+        }
+      },
+      "legend": {},
+      "grid": {
+        "top": 36
+      },
+      "xAxis": {
+        "type": "value"
+      },
+      "yAxis": {
+        "type": "category",
+        "inverse": true
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Not yet due",
+          "stack": "owed",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "client",
+            "x": "not_due"
+          },
+          "itemStyle": {
+            "color": "var(--age-current)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "1-30 days",
+          "stack": "owed",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "client",
+            "x": "d1_30"
+          },
+          "itemStyle": {
+            "color": "var(--age-1-30)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "31-60 days",
+          "stack": "owed",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "client",
+            "x": "d31_60"
+          },
+          "itemStyle": {
+            "color": "var(--age-31-60)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "61-90 days",
+          "stack": "owed",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "client",
+            "x": "d61_90"
+          },
+          "itemStyle": {
+            "color": "var(--age-61-90)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "90+ days",
+          "stack": "owed",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "client",
+            "x": "d90_plus"
+          },
+          "itemStyle": {
+            "color": "var(--age-90-plus)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        }
+      ]
+    },
+    "notes": "One row per client, pivoted wide in SQL so each bucket is a plain series with its own encode. Sorted by total owed. One client carrying most of the bar length is the thing to notice."
+  },
+  {
+    "id": "cashflow-monthly",
+    "title": "Cash flow by month",
+    "query": "SELECT substr('JanFebMarAprMayJunJulAugSepOctNovDec', (CAST(strftime('%m', date) AS INTEGER) - 1) * 3 + 1, 3) || ' ' || substr(strftime('%Y', date), 3, 2)\n         || CASE WHEN strftime('%m', date) = '07' OR strftime('%Y-%m', date) = (SELECT strftime('%Y-%m', MIN(date)) FROM bank_transactions)\n                 THEN char(10) || 'FY' || substr(strftime('%Y', date, '+6 months'), 3, 2) ELSE '' END AS month,\n       strftime('%Y-%m', date) AS ym,\n       'FY' || substr(strftime('%Y', date, '+6 months'), 3, 2) AS fy,\n       SUM(COALESCE(credit_in, 0))                                AS money_in,\n       -SUM(COALESCE(debit_out, 0))                               AS money_out,\n       SUM(COALESCE(credit_in, 0)) - SUM(COALESCE(debit_out, 0)) AS net\nFROM bank_transactions\nGROUP BY strftime('%Y-%m', date)\nORDER BY ym",
+    "format": {
+      "value": "aud"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "axis",
+        "axisPointer": {
+          "type": "shadow"
+        }
+      },
+      "legend": {},
+      "grid": {
+        "top": 36
+      },
+      "xAxis": {
+        "type": "category"
+      },
+      "yAxis": {
+        "type": "value"
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Money in",
+          "stack": "flow",
+          "barMaxWidth": 26,
+          "encode": {
+            "x": "month",
+            "y": "money_in"
+          },
+          "itemStyle": {
+            "color": "var(--chart-1)",
+            "borderRadius": [
+              4,
+              4,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "type": "bar",
+          "name": "Money out",
+          "stack": "flow",
+          "barMaxWidth": 26,
+          "encode": {
+            "x": "month",
+            "y": "money_out"
+          },
+          "itemStyle": {
+            "color": "var(--chart-2)",
+            "borderRadius": [
+              0,
+              0,
+              4,
+              4
+            ]
+          }
+        },
+        {
+          "type": "line",
+          "name": "Net",
+          "encode": {
+            "x": "month",
+            "y": "net"
+          },
+          "symbol": "circle",
+          "symbolSize": 7,
+          "lineStyle": {
+            "width": 2,
+            "color": "var(--foreground)"
+          },
+          "itemStyle": {
+            "color": "var(--foreground)",
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          }
+        }
+      ]
+    },
+    "notes": "In above the line, out below it, net as a line on the same A$ axis. Each July label carries its financial-year tag (FY27 starts 1 July 2026), written by SQL so no formatter function is needed. The quarterly dips in net are BAS and super. The last month is a part month."
+  },
+  {
+    "id": "cashflow-fy-cumulative",
+    "title": "Net cash, this financial year vs last",
+    "query": "WITH m AS (\n  SELECT strftime('%Y-%m', date) AS ym,\n         CAST(strftime('%Y', date, '+6 months') AS INTEGER)  AS fy,\n         (CAST(strftime('%m', date) AS INTEGER) + 5) % 12    AS fy_month_idx,\n         SUM(COALESCE(credit_in, 0)) - SUM(COALESCE(debit_out, 0)) AS net\n  FROM bank_transactions\n  GROUP BY strftime('%Y-%m', date)\n),\nc AS (SELECT fy, fy_month_idx, SUM(net) OVER (PARTITION BY fy ORDER BY fy_month_idx) AS cum_net FROM m),\ncur AS (SELECT MAX(fy) AS fy FROM m),\nmonths(idx, label) AS (VALUES (0,'Jul'),(1,'Aug'),(2,'Sep'),(3,'Oct'),(4,'Nov'),(5,'Dec'),(6,'Jan'),(7,'Feb'),(8,'Mar'),(9,'Apr'),(10,'May'),(11,'Jun'))\nSELECT months.label AS fy_month,\n       (SELECT c.cum_net FROM c, cur WHERE c.fy = cur.fy     AND c.fy_month_idx = months.idx) AS this_fy,\n       (SELECT c.cum_net FROM c, cur WHERE c.fy = cur.fy - 1 AND c.fy_month_idx = months.idx) AS last_fy\nFROM months\nORDER BY months.idx",
+    "format": {
+      "value": "aud"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "axis"
+      },
+      "legend": {},
+      "grid": {
+        "top": 36
+      },
+      "xAxis": {
+        "type": "category",
+        "boundaryGap": false
+      },
+      "yAxis": {
+        "type": "value"
+      },
+      "series": [
+        {
+          "type": "line",
+          "name": "Last FY",
+          "encode": {
+            "x": "fy_month",
+            "y": "last_fy"
+          },
+          "symbol": "circle",
+          "symbolSize": 5,
+          "lineStyle": {
+            "width": 2,
+            "color": "var(--neutral)"
+          },
+          "itemStyle": {
+            "color": "var(--neutral)"
+          }
+        },
+        {
+          "type": "line",
+          "name": "This FY",
+          "encode": {
+            "x": "fy_month",
+            "y": "this_fy"
+          },
+          "symbol": "circle",
+          "symbolSize": 8,
+          "lineStyle": {
+            "width": 3,
+            "color": "var(--chart-1)"
+          },
+          "itemStyle": {
+            "color": "var(--chart-1)",
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "areaStyle": {
+            "color": "var(--chart-1)",
+            "opacity": 0.1
+          },
+          "endLabel": {
+            "show": true
+          }
+        }
+      ]
+    },
+    "notes": "The financial year laid out July to June, running total of net cash, current FY against the one before. Written relative to the latest FY in the data, so it rolls over on 1 July with no edits. The bank file starts in August 2025, so last FY has no July point."
+  },
+  {
+    "id": "who-owes-what",
+    "title": "Who owes what",
+    "query": "SELECT i.client,\n       SUM(i.balance_aud) AS owed,\n       SUM(CASE WHEN i.days_past_due > 0 THEN i.balance_aud ELSE 0 END) AS overdue,\n       COUNT(*) AS open_invoices,\n       MAX(i.days_past_due) AS oldest_days_past_due,\n       (SELECT x.next_chase_step FROM invoices x\n         WHERE x.client = i.client AND x.balance_aud > 0\n         ORDER BY x.days_past_due DESC LIMIT 1) AS next_chase_step\nFROM invoices i\nWHERE i.balance_aud > 0\nGROUP BY i.client\nORDER BY owed DESC",
+    "chart": {
+      "type": "table",
+      "rowKey": "client",
+      "columns": [
+        {
+          "field": "client",
+          "label": "Client"
+        },
+        {
+          "field": "owed",
+          "label": "Owed",
+          "format": "aud",
+          "align": "right",
+          "bar": "var(--chart-1)"
+        },
+        {
+          "field": "overdue",
+          "label": "Overdue",
+          "format": "aud",
+          "align": "right"
+        },
+        {
+          "field": "open_invoices",
+          "label": "Open",
+          "format": "int",
+          "align": "right"
+        },
+        {
+          "field": "oldest_days_past_due",
+          "label": "Oldest",
+          "format": "days",
+          "align": "right"
+        },
+        {
+          "field": "next_chase_step",
+          "label": "Next chase step",
+          "empty": "nothing due yet",
+          "pill": {
+            "friendly reminder": "warn",
+            "second reminder": "serious",
+            "phone call + final notice": "bad"
+          }
+        }
+      ]
+    },
+    "notes": "A table, because the next action is words, not a quantity. The chase step shown is the one on the client's oldest open invoice, which is the step that matters first. The in-cell bar keeps the ranking readable without a second chart."
+  },
+  {
+    "id": "payment-habits",
+    "title": "Payment habits",
+    "query": "WITH pay AS (\n  SELECT i.client, i.invoice_no, i.issue_date, i.due_date, b.date AS paid_date, b.credit_in AS paid,\n         julianday(b.date) - julianday(i.issue_date) AS days_to_pay,\n         julianday(b.date) - julianday(i.due_date)   AS days_late\n  FROM bank_transactions b\n  JOIN invoices i ON i.invoice_no = substr(b.description, instr(b.description, 'INV-'))\n  WHERE b.credit_in IS NOT NULL\n),\np AS (SELECT client, AVG(days_late) AS avg_days_late, SUM(days_late > 0) AS late_payments, COUNT(*) AS payments FROM pay GROUP BY client),\ni AS (SELECT client, SUM(amount_aud) AS billed, SUM(balance_aud) AS outstanding FROM invoices GROUP BY client)\nSELECT i.client,\n       ROUND(p.avg_days_late, 1) AS avg_days_late,\n       i.billed, i.outstanding, p.late_payments, p.payments,\n       ROUND(100.0 * sqrt(i.outstanding / (SELECT MAX(outstanding) FROM i)), 1) AS bubble\nFROM i JOIN p USING (client)\nORDER BY i.outstanding DESC",
+    "format": {
+      "value": "aud",
+      "xAxis": "days",
+      "yAxis": "aud",
+      "fields": {
+        "avg_days_late": "days",
+        "billed": "aud",
+        "outstanding": "aud",
+        "late_payments": "int",
+        "payments": "int"
+      }
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "grid": {
+        "top": 56,
+        "left": 20,
+        "right": 28,
+        "bottom": 34
+      },
+      "legend": {},
+      "dataset": [
+        {
+          "dimensions": [
+            {
+              "name": "client",
+              "displayName": "Client"
+            },
+            {
+              "name": "avg_days_late",
+              "displayName": "Avg days late"
+            },
+            {
+              "name": "billed",
+              "displayName": "Total billed"
+            },
+            {
+              "name": "outstanding",
+              "displayName": "Outstanding"
+            },
+            {
+              "name": "late_payments",
+              "displayName": "Late payments"
+            },
+            {
+              "name": "payments",
+              "displayName": "Payments"
+            },
+            {
+              "name": "bubble",
+              "displayName": "Bubble"
+            }
+          ]
+        },
+        {
+          "transform": {
+            "type": "filter",
+            "config": {
+              "dimension": "avg_days_late",
+              "<=": 0
+            }
+          }
+        },
+        {
+          "transform": {
+            "type": "filter",
+            "config": {
+              "and": [
+                {
+                  "dimension": "avg_days_late",
+                  ">": 0
+                },
+                {
+                  "dimension": "avg_days_late",
+                  "<=": 14
+                }
+              ]
+            }
+          }
+        },
+        {
+          "transform": {
+            "type": "filter",
+            "config": {
+              "dimension": "avg_days_late",
+              ">": 14
+            }
+          }
+        }
+      ],
+      "xAxis": {
+        "type": "value",
+        "name": "Average days late (negative = early)",
+        "nameLocation": "middle",
+        "nameGap": 28,
+        "scale": true,
+        "boundaryGap": [
+          "24%",
+          "12%"
+        ]
+      },
+      "yAxis": {
+        "type": "value",
+        "name": "Total billed",
+        "nameTextStyle": {
+          "align": "right"
+        },
+        "axisLine": {
+          "onZero": false
+        },
+        "boundaryGap": [
+          0,
+          "22%"
+        ]
+      },
+      "visualMap": {
+        "show": false,
+        "type": "continuous",
+        "dimension": "bubble",
+        "min": 0,
+        "max": 100,
+        "inRange": {
+          "symbolSize": [
+            10,
+            64
+          ]
+        }
+      },
+      "series": [
+        {
+          "type": "scatter",
+          "name": "On time or early",
+          "datasetIndex": 1,
+          "encode": {
+            "x": "avg_days_late",
+            "y": "billed",
+            "itemName": "client",
+            "tooltip": [
+              "avg_days_late",
+              "billed",
+              "outstanding",
+              "late_payments",
+              "payments"
+            ]
+          },
+          "itemStyle": {
+            "color": "var(--good)",
+            "opacity": 0.88,
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "label": {
+            "show": true,
+            "formatter": "{@client}",
+            "position": "left",
+            "distance": 6,
+            "color": "var(--foreground)",
+            "fontSize": 11
+          },
+          "markLine": {
+            "silent": true,
+            "symbol": "none",
+            "lineStyle": {
+              "color": "var(--neutral)",
+              "type": "solid",
+              "width": 1
+            },
+            "label": {
+              "formatter": "due date",
+              "color": "var(--muted-foreground)"
+            },
+            "data": [
+              {
+                "xAxis": 0
+              }
+            ]
+          }
+        },
+        {
+          "type": "scatter",
+          "name": "Up to 14 days late",
+          "datasetIndex": 2,
+          "encode": {
+            "x": "avg_days_late",
+            "y": "billed",
+            "itemName": "client",
+            "tooltip": [
+              "avg_days_late",
+              "billed",
+              "outstanding",
+              "late_payments",
+              "payments"
+            ]
+          },
+          "itemStyle": {
+            "color": "var(--warning)",
+            "opacity": 0.88,
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "label": {
+            "show": true,
+            "formatter": "{@client}",
+            "position": "right",
+            "distance": 6,
+            "color": "var(--foreground)",
+            "fontSize": 11
+          }
+        },
+        {
+          "type": "scatter",
+          "name": "More than 14 days late",
+          "datasetIndex": 3,
+          "encode": {
+            "x": "avg_days_late",
+            "y": "billed",
+            "itemName": "client",
+            "tooltip": [
+              "avg_days_late",
+              "billed",
+              "outstanding",
+              "late_payments",
+              "payments"
+            ]
+          },
+          "itemStyle": {
+            "color": "var(--bad)",
+            "opacity": 0.88,
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "label": {
+            "show": true,
+            "formatter": "{@client}",
+            "position": "top",
+            "distance": 6,
+            "color": "var(--foreground)",
+            "fontSize": 11
+          },
+          "markArea": {
+            "silent": true,
+            "itemStyle": {
+              "color": "var(--bad)",
+              "opacity": 0.06
+            },
+            "label": {
+              "position": "insideBottomRight",
+              "color": "var(--muted-foreground)",
+              "formatter": "a full 14-day term late or more"
+            },
+            "data": [
+              [
+                {
+                  "xAxis": 14
+                },
+                {
+                  "xAxis": "max"
+                }
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "notes": "Each client placed by how late their payments land (x) against how much we bill them (y); bubble area is what they still owe, scaled in SQL (sqrt of share of the largest) so the visualMap range stays static JSON. The three status series are filter transforms over the one injected dataset, which also lets each group put its labels on the side with room. Top right is the danger corner: big, late, and still owing."
+  },
+  {
+    "id": "invoice-flow",
+    "title": "Where invoiced money went",
+    "queries": {
+      "links": "WITH pay AS (\n  SELECT i.client, i.invoice_no, i.issue_date, i.due_date, b.date AS paid_date, b.credit_in AS paid,\n         julianday(b.date) - julianday(i.issue_date) AS days_to_pay,\n         julianday(b.date) - julianday(i.due_date)   AS days_late\n  FROM bank_transactions b\n  JOIN invoices i ON i.invoice_no = substr(b.description, instr(b.description, 'INV-'))\n  WHERE b.credit_in IS NOT NULL\n),\nflow(source, target, value) AS (\n  SELECT 'Invoiced', 'Paid on time', (SELECT SUM(paid) FROM pay WHERE days_late <= 0)\n  UNION ALL SELECT 'Invoiced', 'Paid late', (SELECT SUM(paid) FROM pay WHERE days_late > 0)\n  UNION ALL SELECT 'Invoiced', 'Still outstanding', (SELECT SUM(balance_aud) FROM invoices)\n  UNION ALL SELECT 'Paid late', '1-30 days late',  (SELECT SUM(paid) FROM pay WHERE days_late BETWEEN 1 AND 30)\n  UNION ALL SELECT 'Paid late', '31-60 days late', (SELECT SUM(paid) FROM pay WHERE days_late BETWEEN 31 AND 60)\n  UNION ALL SELECT 'Paid late', '61+ days late',   (SELECT SUM(paid) FROM pay WHERE days_late > 60)\n  UNION ALL SELECT 'Still outstanding', 'Not yet due',     (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = 'current')\n  UNION ALL SELECT 'Still outstanding', 'Overdue 1-30',    (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '1-30')\n  UNION ALL SELECT 'Still outstanding', 'Overdue 31-60',   (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '31-60')\n  UNION ALL SELECT 'Still outstanding', 'Overdue 61-90',   (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '61-90')\n  UNION ALL SELECT 'Still outstanding', 'Overdue 90+',     (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '90+')\n)\nSELECT source, target, value FROM flow WHERE value > 0",
+      "nodes": "WITH pay AS (\n  SELECT i.client, i.invoice_no, i.issue_date, i.due_date, b.date AS paid_date, b.credit_in AS paid,\n         julianday(b.date) - julianday(i.issue_date) AS days_to_pay,\n         julianday(b.date) - julianday(i.due_date)   AS days_late\n  FROM bank_transactions b\n  JOIN invoices i ON i.invoice_no = substr(b.description, instr(b.description, 'INV-'))\n  WHERE b.credit_in IS NOT NULL\n),\nn(name, color, value) AS (\n  SELECT 'Invoiced', 'var(--chart-1)', (SELECT SUM(amount_aud) FROM invoices)\n  UNION ALL SELECT 'Paid on time', 'var(--good)', (SELECT SUM(paid) FROM pay WHERE days_late <= 0)\n  UNION ALL SELECT 'Paid late', 'var(--warning)', (SELECT SUM(paid) FROM pay WHERE days_late > 0)\n  UNION ALL SELECT 'Still outstanding', 'var(--neutral)', (SELECT SUM(balance_aud) FROM invoices)\n  UNION ALL SELECT '1-30 days late', 'var(--age-1-30)', (SELECT SUM(paid) FROM pay WHERE days_late BETWEEN 1 AND 30)\n  UNION ALL SELECT '31-60 days late', 'var(--age-31-60)', (SELECT SUM(paid) FROM pay WHERE days_late BETWEEN 31 AND 60)\n  UNION ALL SELECT '61+ days late', 'var(--age-61-90)', (SELECT SUM(paid) FROM pay WHERE days_late > 60)\n  UNION ALL SELECT 'Not yet due', 'var(--age-current)', (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = 'current')\n  UNION ALL SELECT 'Overdue 1-30', 'var(--age-1-30)', (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '1-30')\n  UNION ALL SELECT 'Overdue 31-60', 'var(--age-31-60)', (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '31-60')\n  UNION ALL SELECT 'Overdue 61-90', 'var(--age-61-90)', (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '61-90')\n  UNION ALL SELECT 'Overdue 90+', 'var(--age-90-plus)', (SELECT SUM(balance_aud) FROM invoices WHERE ageing_bucket = '90+')\n)\nSELECT name, color AS \"itemStyle.color\" FROM n WHERE value > 0"
+    },
+    "bind": {
+      "series.0.links": "links",
+      "series.0.data": "nodes"
+    },
+    "format": {
+      "value": "aud"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "series": [
+        {
+          "type": "sankey",
+          "left": 8,
+          "right": 176,
+          "top": 12,
+          "bottom": 12,
+          "nodeWidth": 14,
+          "nodeGap": 14,
+          "draggable": false,
+          "nodeAlign": "left",
+          "emphasis": {
+            "focus": "adjacency"
+          },
+          "lineStyle": {
+            "color": "gradient",
+            "opacity": 0.32,
+            "curveness": 0.5
+          },
+          "itemStyle": {
+            "borderWidth": 0
+          },
+          "label": {
+            "show": true,
+            "color": "var(--foreground)"
+          }
+        }
+      ]
+    },
+    "notes": "Every invoiced dollar traced to where it ended up: paid on or before the due date, paid late (and how late), or still owed (and how old). Sankey ignores dataset, so the recipe uses two named queries bound to series.0.links and series.0.data; a column aliased \"itemStyle.color\" becomes a nested key. The three first-level amounts add up to total invoiced exactly."
+  },
+  {
+    "id": "late-heatmap",
+    "title": "Days late, by client and month invoiced",
+    "query": "WITH pay AS (\n  SELECT i.client, i.invoice_no, i.issue_date, i.due_date, b.date AS paid_date, b.credit_in AS paid,\n         julianday(b.date) - julianday(i.issue_date) AS days_to_pay,\n         julianday(b.date) - julianday(i.due_date)   AS days_late\n  FROM bank_transactions b\n  JOIN invoices i ON i.invoice_no = substr(b.description, instr(b.description, 'INV-'))\n  WHERE b.credit_in IS NOT NULL\n),\nmonths AS (SELECT DISTINCT strftime('%Y-%m', issue_date) AS ym FROM invoices),\nclients AS (SELECT client, AVG(days_late) AS overall FROM pay GROUP BY client),\ncell AS (SELECT client, strftime('%Y-%m', issue_date) AS ym, ROUND(AVG(days_late), 1) AS avg_days_late, COUNT(*) AS payments FROM pay GROUP BY 1, 2)\nSELECT substr('JanFebMarAprMayJunJulAugSepOctNovDec', (CAST(strftime('%m', months.ym || '-01') AS INTEGER) - 1) * 3 + 1, 3) || ' ' || substr(months.ym, 3, 2) AS month,\n       clients.client, cell.avg_days_late, cell.payments\nFROM months CROSS JOIN clients\nLEFT JOIN cell ON cell.ym = months.ym AND cell.client = clients.client\nORDER BY months.ym, clients.overall",
+    "format": {
+      "value": "days",
+      "fields": {
+        "avg_days_late": "days",
+        "payments": "int"
+      }
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "grid": {
+        "top": 8,
+        "bottom": 56
+      },
+      "xAxis": {
+        "type": "category",
+        "splitArea": {
+          "show": false
+        },
+        "axisLabel": {
+          "interval": 0,
+          "hideOverlap": true
+        }
+      },
+      "yAxis": {
+        "type": "category",
+        "splitArea": {
+          "show": false
+        }
+      },
+      "visualMap": {
+        "type": "continuous",
+        "dimension": "avg_days_late",
+        "min": -45,
+        "max": 45,
+        "calculable": false,
+        "orient": "horizontal",
+        "left": "center",
+        "bottom": 0,
+        "itemWidth": 10,
+        "itemHeight": 140,
+        "text": [
+          "late",
+          "early"
+        ],
+        "inRange": {
+          "color": [
+            "var(--chart-1)",
+            "var(--diverge-mid)",
+            "var(--bad)"
+          ]
+        }
+      },
+      "series": [
+        {
+          "type": "heatmap",
+          "name": "Avg days late",
+          "encode": {
+            "x": "month",
+            "y": "client",
+            "value": "avg_days_late",
+            "tooltip": [
+              "avg_days_late",
+              "payments"
+            ]
+          },
+          "itemStyle": {
+            "borderColor": "var(--card)",
+            "borderWidth": 2,
+            "borderRadius": 3
+          },
+          "emphasis": {
+            "itemStyle": {
+              "borderColor": "var(--foreground)",
+              "borderWidth": 1
+            }
+          }
+        }
+      ]
+    },
+    "notes": "The scatter says who pays late; this says whether it is a habit or a one-off. Diverging scale with a neutral midpoint at the due date, clamped at ±45 days so one very late payment does not wash out the rest. Rows are sorted by overall lateness, so the chronic payers sit together at the top. Blank cells are months with no paid invoice."
+  },
+  {
+    "id": "expenses-by-category",
+    "title": "Where the money goes",
+    "query": "SELECT description AS category,\n       SUM(debit_out) AS spent,\n       COUNT(*) AS payments,\n       ROUND(100.0 * SUM(debit_out) / (SELECT SUM(debit_out) FROM bank_transactions), 1) AS pct_of_spend\nFROM bank_transactions\nWHERE debit_out IS NOT NULL\nGROUP BY description\nORDER BY spent DESC",
+    "format": {
+      "value": "aud",
+      "fields": {
+        "spent": "aud",
+        "payments": "int",
+        "pct_of_spend": "pct"
+      }
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "grid": {
+        "top": 8,
+        "right": 64
+      },
+      "xAxis": {
+        "type": "value"
+      },
+      "yAxis": {
+        "type": "category",
+        "inverse": true
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Spent",
+          "barMaxWidth": 20,
+          "encode": {
+            "y": "category",
+            "x": "spent",
+            "tooltip": [
+              "spent",
+              "payments",
+              "pct_of_spend"
+            ]
+          },
+          "itemStyle": {
+            "color": "var(--chart-2)",
+            "borderRadius": [
+              0,
+              4,
+              4,
+              0
+            ]
+          },
+          "label": {
+            "show": true,
+            "position": "right"
+          }
+        }
+      ]
+    },
+    "notes": "Debits grouped by their bank description, sorted. One colour, because the categories have no order and length already carries the value. Rent and supplies are the fixed base; BAS is the lumpy one that explains the quarterly dips in cash flow."
+  },
+  {
+    "id": "match-method",
+    "title": "How payments were matched",
+    "query": "SELECT match_method,\n       COUNT(*) AS invoices,\n       SUM(paid_aud) AS matched_aud,\n       CASE WHEN match_method LIKE 'manual%' THEN 1 ELSE 0 END AS needs_human\nFROM invoices\nWHERE match_method IS NOT NULL\nGROUP BY match_method\nORDER BY invoices DESC",
+    "format": {
+      "value": "int",
+      "fields": {
+        "invoices": "int",
+        "matched_aud": "aud"
+      }
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "grid": {
+        "top": 8,
+        "right": 40
+      },
+      "xAxis": {
+        "type": "value"
+      },
+      "yAxis": {
+        "type": "category",
+        "inverse": true
+      },
+      "visualMap": {
+        "show": false,
+        "type": "piecewise",
+        "dimension": "needs_human",
+        "pieces": [
+          {
+            "value": 0,
+            "color": "var(--neutral)"
+          },
+          {
+            "value": 1,
+            "color": "var(--chart-7)"
+          }
+        ]
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Invoices",
+          "barMaxWidth": 20,
+          "encode": {
+            "y": "match_method",
+            "x": "invoices",
+            "tooltip": [
+              "invoices",
+              "matched_aud"
+            ]
+          },
+          "itemStyle": {
+            "borderRadius": [
+              0,
+              4,
+              4,
+              0
+            ]
+          },
+          "label": {
+            "show": true,
+            "position": "right"
+          }
+        }
+      ]
+    },
+    "notes": "How the money clerk tied each bank credit to its invoice. Emphasis, not a rainbow: the one bar that still needs the owner is coloured, the rest are muted. A rejected donut: four near-equal slices are hard to compare."
+  },
+  {
+    "id": "tasks-by-agent",
+    "title": "Work by agent and status",
+    "query": "SELECT assignee,\n       SUM(status = 'backlog')     AS backlog,\n       SUM(status = 'todo')        AS todo,\n       SUM(status = 'in_progress') AS in_progress,\n       SUM(status = 'in_review')   AS in_review,\n       SUM(status = 'blocked')     AS blocked,\n       SUM(status = 'done')        AS done,\n       COUNT(*)                    AS total\nFROM tasks\nGROUP BY assignee\nORDER BY total DESC",
+    "format": {
+      "value": "int"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "axis",
+        "axisPointer": {
+          "type": "shadow"
+        }
+      },
+      "legend": {},
+      "grid": {
+        "top": 36
+      },
+      "xAxis": {
+        "type": "value",
+        "minInterval": 1
+      },
+      "yAxis": {
+        "type": "category",
+        "inverse": true
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Done",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "done"
+          },
+          "itemStyle": {
+            "color": "var(--good)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "In review",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "in_review"
+          },
+          "itemStyle": {
+            "color": "var(--chart-3)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "In progress",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "in_progress"
+          },
+          "itemStyle": {
+            "color": "var(--chart-1)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "To do",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "todo"
+          },
+          "itemStyle": {
+            "color": "var(--chart-7)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "Backlog",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "backlog"
+          },
+          "itemStyle": {
+            "color": "var(--neutral)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        },
+        {
+          "type": "bar",
+          "name": "Blocked",
+          "stack": "s",
+          "barMaxWidth": 22,
+          "encode": {
+            "y": "assignee",
+            "x": "blocked"
+          },
+          "itemStyle": {
+            "color": "var(--bad)",
+            "borderColor": "var(--card)",
+            "borderWidth": 1
+          }
+        }
+      ]
+    },
+    "notes": "One bar per agent, stacked in pipeline order with blocked at the outer end where it is easiest to spot. Done and blocked take the status colours; the working states take series colours."
+  },
+  {
+    "id": "tasks-throughput",
+    "title": "Throughput by week",
+    "query": "WITH RECURSIVE wk(week_start) AS (\n  SELECT date(MIN(created_at), '-6 days', 'weekday 1') FROM tasks\n  UNION ALL\n  SELECT date(week_start, '+7 days') FROM wk\n  WHERE date(week_start, '+7 days') <= (SELECT MAX(created_at) FROM tasks)\n)\nSELECT CAST(strftime('%d', week_start) AS INTEGER) || ' ' || substr('JanFebMarAprMayJunJulAugSepOctNovDec', (CAST(strftime('%m', week_start) AS INTEGER) - 1) * 3 + 1, 3) AS week,\n       week_start,\n       (SELECT COUNT(*) FROM tasks WHERE created_at   >= week_start AND created_at   < date(week_start, '+7 days')) AS created,\n       (SELECT COUNT(*) FROM tasks WHERE completed_at >= week_start AND completed_at < date(week_start, '+7 days')) AS completed,\n       (SELECT COUNT(*) FROM tasks WHERE created_at < date(week_start, '+7 days')\n          AND (completed_at IS NULL OR completed_at >= date(week_start, '+7 days'))) AS open_at_week_end\nFROM wk\nORDER BY week_start",
+    "format": {
+      "value": "int"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "axis",
+        "axisPointer": {
+          "type": "shadow"
+        }
+      },
+      "legend": {},
+      "grid": {
+        "top": 36,
+        "bottom": 30
+      },
+      "xAxis": {
+        "type": "category",
+        "name": "Week starting",
+        "nameLocation": "middle",
+        "nameGap": 28
+      },
+      "yAxis": {
+        "type": "value",
+        "minInterval": 1
+      },
+      "series": [
+        {
+          "type": "bar",
+          "name": "Created",
+          "barMaxWidth": 16,
+          "barGap": "15%",
+          "encode": {
+            "x": "week",
+            "y": "created"
+          },
+          "itemStyle": {
+            "color": "var(--chart-7)",
+            "borderRadius": [
+              4,
+              4,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "type": "bar",
+          "name": "Completed",
+          "barMaxWidth": 16,
+          "encode": {
+            "x": "week",
+            "y": "completed"
+          },
+          "itemStyle": {
+            "color": "var(--good)",
+            "borderRadius": [
+              4,
+              4,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "type": "line",
+          "name": "Open at week end",
+          "encode": {
+            "x": "week",
+            "y": "open_at_week_end"
+          },
+          "symbol": "circle",
+          "symbolSize": 7,
+          "lineStyle": {
+            "width": 2,
+            "color": "var(--foreground)"
+          },
+          "itemStyle": {
+            "color": "var(--foreground)",
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "endLabel": {
+            "show": true
+          }
+        }
+      ]
+    },
+    "notes": "Weeks from a recursive spine (Monday start) so a quiet week still shows as zero. Created against completed, with the open pile as a line on the same count axis. If the line keeps climbing, agents are being handed work faster than they finish it."
+  },
+  {
+    "id": "relationship-map",
+    "title": "Agents, work and clients",
+    "queries": {
+      "nodes": "SELECT name, category, symbolSize, value, tip AS \"tooltip.formatter\" FROM (\n  SELECT assignee AS name, 0 AS category, 16 + 2 * COUNT(*) AS symbolSize, COUNT(*) AS value,\n         assignee || ': ' || COUNT(*) || ' tasks' AS tip, -COUNT(*) AS ord\n  FROM tasks GROUP BY assignee\n  UNION ALL\n  SELECT title, 1, 8 + 2 * COUNT(*), COUNT(*),\n         title || ': ' || COUNT(*) || ' tasks',\n         CASE WHEN title = 'Chase invoices over 30 days' THEN 1000 ELSE -COUNT(*) END\n  FROM tasks GROUP BY title\n  UNION ALL\n  SELECT client, 2,\n         ROUND(10 + 26 * sqrt(SUM(balance_aud) / (SELECT MAX(o) FROM (SELECT SUM(balance_aud) AS o FROM invoices WHERE days_past_due > 30 GROUP BY client)))),\n         SUM(balance_aud),\n         client || ': ' || printf('A$%,d', SUM(balance_aud)) || ' more than 30 days overdue',\n         -SUM(balance_aud)\n  FROM invoices WHERE days_past_due > 30 AND balance_aud > 0 GROUP BY client\n)\nORDER BY category, ord, name",
+      "links": "SELECT assignee AS source, title AS target, COUNT(*) AS value, 0.5 + COUNT(*) AS \"lineStyle.width\", 'solid' AS \"lineStyle.type\" FROM tasks GROUP BY assignee, title\nUNION ALL\nSELECT 'Chase invoices over 30 days', client, SUM(balance_aud), 1.5, 'dashed'\nFROM invoices WHERE days_past_due > 30 AND balance_aud > 0 GROUP BY client"
+    },
+    "bind": {
+      "series.0.data": "nodes",
+      "series.0.links": "links"
+    },
+    "chart": {
+      "tooltip": {
+        "trigger": "item"
+      },
+      "legend": {},
+      "series": [
+        {
+          "type": "graph",
+          "layout": "circular",
+          "circular": {
+            "rotateLabel": true
+          },
+          "roam": true,
+          "top": 150,
+          "bottom": 130,
+          "left": "center",
+          "tooltip": {
+            "formatter": "{b}"
+          },
+          "categories": [
+            {
+              "name": "Agent",
+              "itemStyle": {
+                "color": "var(--chart-1)"
+              }
+            },
+            {
+              "name": "Task type",
+              "itemStyle": {
+                "color": "var(--chart-7)"
+              }
+            },
+            {
+              "name": "Client 30+ days overdue",
+              "itemStyle": {
+                "color": "var(--bad)"
+              }
+            }
+          ],
+          "label": {
+            "show": true,
+            "position": "right",
+            "formatter": "{b}",
+            "color": "var(--foreground)",
+            "fontSize": 11
+          },
+          "labelLayout": {
+            "hideOverlap": true
+          },
+          "lineStyle": {
+            "color": "source",
+            "opacity": 0.45,
+            "curveness": 0.25
+          },
+          "itemStyle": {
+            "borderColor": "var(--card)",
+            "borderWidth": 2
+          },
+          "emphasis": {
+            "focus": "adjacency",
+            "lineStyle": {
+              "opacity": 0.9
+            }
+          }
+        }
+      ]
+    },
+    "notes": "Agents, task types and overdue clients sit on one circle in that order, placed by SQL ORDER BY, so the picture is the same on every load. Agents link to the kinds of task they hold (line weight = how many). The tasks table has no client or invoice column, so the only client link drawn is an inferred one, shown dashed: the task type \"Chase invoices over 30 days\" to every client with a balance more than 30 days overdue. Add client or invoice_no to tasks and the second half of the links query becomes a real join."
+  }
+]

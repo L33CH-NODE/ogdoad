@@ -53,6 +53,7 @@ export interface Overview {
   settings: Settings; accounts: Account[]; gst: GstMeter; findings: Finding[]; today: string;
   ageing: Record<"current" | "1-30" | "31-60" | "61-90" | "90+", { count: number; cents: number }>;
   counts: { drafts: number; issued: number; owed: number; clients: number };
+  bankToReview: number;
 }
 
 // --- Horos ---

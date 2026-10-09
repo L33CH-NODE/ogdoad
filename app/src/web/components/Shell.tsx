@@ -13,6 +13,7 @@ const NAV: Array<{ to: string; label: string; icon: IconName }> = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/money", label: "Money", icon: "money" },
   { to: "/money/clients", label: "Clients", icon: "clients" },
+  { to: "/money/bank", label: "Bank", icon: "bank" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
 

@@ -50,6 +50,18 @@ Two local files, read in place and never copied anywhere else:
 - **Numbering:** the next number continues after the highest imported one.
 - **The import is repeatable.** Each record keeps its external ref, so running it again updates in place instead of duplicating.
 
+## Money in: bank statements
+
+The bank's CSV export (no header row: date, signed amount, description, balance) is brought in from the Bank page. For each credit, in order:
+
+1. **Already on the books?** The same amount was recorded within three days (by the import, say). If so, it's linked, not recorded twice.
+2. **Names an invoice number:** recorded.
+3. **Exactly one open invoice for that amount, and the payer's name shows:** recorded.
+4. **Otherwise it's only a suggestion.** That covers an amount match without the payer's name, several invoices for that amount, or several of one payer's invoices that add up to it (a batch payment). The operator confirms which invoice it pays, or marks it "not an invoice payment".
+5. **The full amount of an invoice that's already paid, from the same payer:** flagged as a likely second payment, on Money and on Home.
+
+Personal-account lines that pay no invoice are dropped and never stored. Business-account credits are all kept, so unexplained income shows up for review. Payments out are skipped for now; the accountant pack will read business expenses later. Importing the same statement again changes nothing.
+
 ## The GST threshold meter
 
 **GST turnover** is the value of supplies made in the current month plus the previous 11 months (and, projected, the current month plus the next 11). GST-free NDIS income still counts. The meter sums invoice totals by supply date (service date, falling back to issue date) over that window. It warns at 75% and alerts at 90% of the $75,000 threshold. ATO rules should be re-checked against ato.gov.au before relying on the exact definition.

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "./styles/app.css";
 import { Shell } from "./components/Shell";
 import { match, usePath } from "./lib/router";
+import { BankPage } from "./pages/Bank";
 import { ClientPage, ClientsPage } from "./pages/Clients";
 import { HomePage } from "./pages/Home";
 import { InvoicePage } from "./pages/Invoice";
@@ -17,6 +18,7 @@ function Routes() {
   if (path === "/money") return <MoneyPage />;
   if ((params = match("/money/invoices/:id", path))) return <InvoicePage key={params.id} id={params.id} />;
   if (path === "/money/clients") return <ClientsPage />;
+  if (path === "/money/bank") return <BankPage />;
   if ((params = match("/money/clients/:id", path))) return <ClientPage key={params.id} id={params.id} />;
   if (path === "/settings") return <SettingsPage />;
   return <div className="card">Nothing here. <a href="/">Go home</a>.</div>;

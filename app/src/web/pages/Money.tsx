@@ -67,7 +67,7 @@ export function MoneyPage() {
           <AgeingBars ageing={o.ageing} />
         </section>
         <section className="card stack" aria-label="Late">
-          <h2>Late</h2>
+          <div className="row"><h2>Late</h2><span className="spacer" />{o.bankToReview ? <a className="chip current" {...linkProps("/money/bank")}>{o.bankToReview} bank line{o.bankToReview === 1 ? "" : "s"} to confirm</a> : null}</div>
           <div className="stat"><span className="big" style={{ color: late ? "var(--bad)" : undefined }}>{aud(late)}</span><span className="muted">{lateCount} past their due date</span></div>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Before chasing anything, check the bank: paid status here comes from money actually received.</p>
         </section>

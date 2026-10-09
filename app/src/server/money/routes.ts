@@ -4,7 +4,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { HttpError, readJson, sendJson } from "../http.js";
-import { doubleBillingFindings } from "./checks.js";
+import { confirmLine, ignoreLine, importStatement, reviewLines } from "./bank.js";
+import { doubleBillingFindings, type Finding } from "./checks.js";
 import { importPreviousSystem } from "./import.js";
 import { renderInvoicePdf, saveIssuedPdf } from "./pdf.js";
 import type { Money } from "./service.js";
@@ -23,7 +24,8 @@ export async function handleMoney(money: Money, req: IncomingMessage, res: Serve
       accounts: money.accounts(),
       ageing: money.ageing(),
       gst: money.gstMeter(),
-      findings: doubleBillingFindings(invoices),
+      findings: [...doubleBillingFindings(invoices), ...bankFindings(money)],
+      bankToReview: reviewLines(money).length,
       counts: {
         drafts: invoices.filter((i) => i.status === "draft").length,
         issued: invoices.filter((i) => i.status === "issued").length,
@@ -92,7 +94,30 @@ export async function handleMoney(money: Money, req: IncomingMessage, res: Serve
     return sendJson(res, 200, importPreviousSystem(money, { invoicesCsv: body.invoicesCsv, trackerCsv: typeof body.trackerCsv === "string" ? body.trackerCsv : undefined }, ACTOR));
   }
 
+  // Money in: bank statements (the bank's CSV, read on this machine).
+  if (resource === "bank") {
+    if (id === "import" && method === "POST") {
+      const body = await readJson(req, 16 * 1024 * 1024);
+      if (typeof body.csv !== "string") throw new HttpError(400, "no_file", "Choose the bank's CSV export.");
+      return sendJson(res, 200, importStatement(money, { accountId: String(body.accountId ?? ""), csv: body.csv }, ACTOR));
+    }
+    if (id === "review" && method === "GET") return sendJson(res, 200, reviewLines(money));
+    const lineAction = parts[3];
+    if (id === "lines" && action && lineAction === "confirm" && method === "POST") {
+      const body = await readJson(req);
+      return confirmLine(money, action, Array.isArray(body.invoiceIds) ? body.invoiceIds.map(String) : [], ACTOR), sendJson(res, 200, { ok: true });
+    }
+    if (id === "lines" && action && lineAction === "ignore" && method === "POST") return ignoreLine(money, action, ACTOR), sendJson(res, 200, { ok: true });
+  }
+
   if (resource === "events" && method === "GET") return sendJson(res, 200, money.events(url.searchParams.get("subject") ?? undefined));
 
   throw new HttpError(404, "not_found", "No such Money route.");
+}
+
+/** Credits that look like a second payment of an invoice that was already paid. */
+function bankFindings(money: Money): Finding[] {
+  return reviewLines(money)
+    .filter((l) => l.flag === "paid_twice")
+    .map((l) => ({ kind: "overpaid" as const, invoiceIds: l.groups.flat().map((i) => i.id), message: `A payment of $${(l.amountCents / 100).toFixed(2)} on ${l.postedOn} ${l.reason}. Check before chasing anything; it may need refunding.` }));
 }

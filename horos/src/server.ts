@@ -446,7 +446,7 @@ export class Horos {
     }
     this.broadcast("hire_restored", { id: hire.id, label: hire.label, resumed: resume });
     if (!opts.quiet) {
-      const how = resume ? "Resumed its session." : "Started a fresh session and re-sent its brief.";
+      const how = entry.role === "server" ? "It's running again." : resume ? "Resumed its session." : entry.brief ? "Started a fresh session and re-sent its brief." : "Started a fresh session.";
       this.notify({ level: "info", kind: "hire_back", title: `${hire.label} ${why}`, body: how, hireId: hire.id });
     }
     return hire;

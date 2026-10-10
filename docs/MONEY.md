@@ -66,6 +66,18 @@ Personal-account lines that pay no invoice are dropped and never stored. Busines
 
 **GST turnover** is the value of supplies made in the current month plus the previous 11 months (and, projected, the current month plus the next 11). GST-free NDIS income still counts. The meter sums invoice totals by supply date (service date, falling back to issue date) over that window. It warns at 75% and alerts at 90% of the $75,000 threshold. ATO rules should be re-checked against ato.gov.au before relying on the exact definition.
 
+## Backups, and getting the books back
+
+- **What's kept.** Every hour while Ogdoad is open, `~/.ogdoad/money/backups/` gets `money-<time>.db` (the books, still encrypted with the operator's key) and `vault-<time>.json` (the vault's wrapped keys). A copy is useless without its keys: the data key is random, and only the vault file holds it, wrapped by the password and by the recovery phrase. The last day's copies are all kept, then the newest of each day for a month.
+- **Keep one off the machine.** These copies live on the same disk as the books. Copy the backups folder to a USB stick or the home box now and then. The files are encrypted, so a stolen stick gives nothing away without the password or phrase.
+- **Getting them back:**
+  1. Stop Ogdoad (OGDOAD-STOP).
+  2. In `~/.ogdoad/money/`, move `money.db` (and any `money.db-wal`, `money.db-shm`) aside.
+  3. Copy the chosen `money-<time>.db` in as `money.db`.
+  4. If the vault file is lost or damaged too, copy `vault-<time>.json` in as `~/.ogdoad/vault/vault.json`. Keys from the same time match that copy; a later vault file works too, unless the vault was made again from scratch.
+  5. Start Ogdoad and unlock with the password, or recover with the phrase.
+- **The first key.** When the vault is first made, books kept before it are encrypted in place. A safety copy is kept until the encrypted file is proven (it opens with the key and every table has the same rows), and the books are put back untouched if it isn't.
+
 ## Phases
 
 1. **Core:** schema, settings, payment accounts, clients, draft → issue → void, numbering, PDFs, import of the old system, the GST meter, and the Money screen in the new UI.

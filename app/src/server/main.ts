@@ -15,6 +15,7 @@ import { OGDOAD_HOME } from "./money/db.js";
 import { practiceStatement, resetPractice } from "./money/practice.js";
 import { handleMoney } from "./money/routes.js";
 import { Vault } from "./vault.js";
+import { handleDashboards } from "./dash/routes.js";
 import { CalendarSync } from "./work/calendar.js";
 import { handleWork } from "./work/routes.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
@@ -143,7 +144,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", unlocked: keeper.status().unlocked });
     checkRequest(req, ALLOWED_ORIGINS);
     // A change that went through tells every open page, once it has.
-    const area = /^\/ogdoad\/(money|flow|work|practice)\//.exec(`${url.pathname}/`)?.[1];
+    const area = /^\/ogdoad\/(money|flow|work|dashboards|practice)\//.exec(`${url.pathname}/`)?.[1];
     if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => {
       if (res.statusCode >= 400) return;
       broadcast("changed", { area });
@@ -187,6 +188,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/ogdoad/money/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleMoney(money, req, res, url);
+    }
+    if (url.pathname === "/ogdoad/dashboards" || url.pathname.startsWith("/ogdoad/dashboards/")) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      return await handleDashboards(money, req, res, url);
     }
     if (url.pathname.startsWith("/ogdoad/work/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");

@@ -26,6 +26,7 @@ export const api = {
   get: <T>(path: string) => call<T>("GET", path),
   post: <T>(path: string, body: unknown = {}) => call<T>("POST", path, body),
   put: <T>(path: string, body: unknown) => call<T>("PUT", path, body),
+  del: <T>(path: string) => call<T>("DELETE", path),
 };
 
 // --- Money types (mirroring the server) ---
@@ -101,3 +102,10 @@ export interface Month { month: string; invoicedCents: number; receivedCents: nu
 export interface SophiaInfo { companyId: string; companyName: string; agentId?: string; taskId: string; hireId?: string }
 export interface CalendarSettings { kind: "none" | "caldav"; url: string; username: string; hasPassword: boolean; showNames: boolean; lastSyncAt: string | null; lastError: string | null }
 export interface CalendarReport { created: number; updated: number; deleted: number; moved: number; cancelled: number; errors: string[] }
+
+// --- Dashboards ---
+
+export interface ChartSpec { type: "bar" | "line" | "stat" | "table"; x?: string; y?: string[]; format?: "aud" | "number" | "hours" | "percent" }
+export type PanelResult = { ok: true; columns: string[]; rows: unknown[][] } | { ok: false; error: string };
+export interface Panel { id: string; title: string; sql: string; chart: ChartSpec; madeBy: string; position: number; createdAt: string; result: PanelResult }
+export interface Recipe { title: string; sql: string; chart: ChartSpec }

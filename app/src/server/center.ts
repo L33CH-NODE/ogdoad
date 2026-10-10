@@ -75,6 +75,12 @@ export function signals(money: Money, limit = 40): Signal[] {
         return { ...base, text: `finished a shift note: ${e.detail}`, tone: e.detail.includes("incident") ? ("warn" as const) : ("good" as const) };
       case "incident_reported":
         return { ...base, text: `marked an incident reported: ${e.detail}`, tone: "good" as const };
+      case "panel_added":
+        return { ...base, text: `added a dashboard panel: ${e.detail}`, tone: "c1" as const };
+      case "panel_removed":
+        return { ...base, text: `took down a dashboard panel: ${e.detail}`, tone: "muted" as const };
+      case "calendar_set":
+        return { ...base, text: e.detail === "off" ? "turned the calendar sync off" : `set the calendar sync to ${e.detail}`, tone: "muted" as const };
       case "shifts_billed":
         return { ...base, who: "Work", text: `drafted an invoice from ${e.detail}`, tone: "c1" as const };
       default:

@@ -4,11 +4,27 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { api, getAppInfo, type AppInfo, type Artifact, type FlowView, type HireInfo, type InvoiceSummary, type Month, type Overview, type RosterEntry, type Signal, type SophiaInfo, type VaultStatus } from "../lib/api";
+import { api, getAppInfo, type AppInfo, type Artifact, type FlowView, type HireInfo, type InvoiceSummary, type Overview, type Panel, type Recipe, type RosterEntry, type Signal, type SophiaInfo, type VaultStatus } from "../lib/api";
 import { useHoros, useNotifications, useTeam } from "../lib/horos";
 import { useLive } from "../lib/live";
 
 export interface SophiaReply { id: string; body: string; at: string }
+/** A panel recipe SOPHIA sent back in a reply, waiting for the operator to look at it. */
+export interface SophiaRecipe extends Recipe { replyId: string; at: string }
+
+/** Recipes in a reply: JSON in a fenced block tagged ogdoad-recipe. Anything that doesn't parse is skipped. */
+export function recipesIn(reply: SophiaReply): SophiaRecipe[] {
+  const out: SophiaRecipe[] = [];
+  for (const m of reply.body.matchAll(/```ogdoad-recipe\s*([\s\S]*?)```/g)) {
+    try {
+      const r = JSON.parse(m[1]);
+      if (typeof r.title === "string" && typeof r.sql === "string" && r.chart && typeof r.chart.type === "string") out.push({ title: r.title, sql: r.sql, chart: r.chart, replyId: reply.id, at: reply.at });
+    } catch {
+      // Not a recipe after all.
+    }
+  }
+  return out;
+}
 
 export interface CenterData {
   info: AppInfo | null;
@@ -25,7 +41,12 @@ export interface CenterData {
   unread: number;
   markRead: () => void;
   artifacts: Artifact[] | null;
-  monthly: Month[] | null;
+  panels: Panel[] | null;
+  reloadPanels: () => void;
+  /** Recipes SOPHIA has sent, newest first. */
+  sophiaRecipes: SophiaRecipe[];
+  /** Ask SOPHIA for a panel: she gets the request and the tables' shape, never a row. */
+  askPanel: (request: string) => Promise<void>;
   deep: { on: boolean; held: number; shared: boolean };
   setDeep: (on: boolean) => void;
   /** Put a line in Signals for this session (what you typed, what Ogdoad answered). */
@@ -64,7 +85,7 @@ export function CenterProvider({ children }: { children: ReactNode }) {
   const invoices = useLive<InvoiceSummary[]>("/ogdoad/money/invoices", ["money", "work", "practice"]);
   const moneySignals = useLive<Signal[]>("/ogdoad/signals?limit=60");
   const artifacts = useLive<Artifact[]>("/ogdoad/artifacts", ["money", "work", "practice"]);
-  const monthly = useLive<Month[]>("/ogdoad/monthly", ["money", "work", "practice"]);
+  const panels = useLive<Panel[]>("/ogdoad/dashboards");
 
   const team = useTeam();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
@@ -139,6 +160,30 @@ export function CenterProvider({ children }: { children: ReactNode }) {
   }, [moneySignals.data, notes, replies, local, team, deep.on]);
 
   const sophiaReply = askedAt ? replies.find((r) => r.at > askedAt) ?? null : null;
+  const sophiaRecipes = useMemo(() => replies.flatMap(recipesIn), [replies]);
+
+  const askPanel = useCallback(async (request: string) => {
+    if (!sophia) {
+      say("Ogdoad", "SOPHIA isn't set up yet, so there's no one to ask. You can write a panel yourself in Dashboards.", "warn");
+      return;
+    }
+    const { text } = await api.get<{ text: string }>("/ogdoad/dashboards/schema");
+    const body = [
+      `Dashboard request from the operator: "${request.trim()}"`,
+      "",
+      "Please reply with one panel recipe, as JSON in a fenced code block tagged ogdoad-recipe, like this:",
+      "```ogdoad-recipe",
+      '{"title": "Owed to you", "sql": "SELECT SUM(total - paid) AS owed FROM invoices WHERE status = \'issued\'", "chart": {"type": "stat", "y": ["owed"], "format": "aud"}}',
+      "```",
+      "The query runs on the operator's machine (SQLite), over these tables only. You won't see any rows, and you don't need to:",
+      text,
+      "",
+      "chart.type is bar, line, stat or table. x is the column along the bottom (bar, line). y lists the numeric columns to draw. format is aud, number, hours or percent. Amounts are dollars.",
+    ].join("\n");
+    await api.post(`/api/issues/${sophia.taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+    say("you", `asked SOPHIA for a panel: ${request.trim()}`);
+    setAskedAt(new Date().toISOString());
+  }, [sophia, say]);
 
   const value: CenterData = {
     info, vault,
@@ -146,7 +191,8 @@ export function CenterProvider({ children }: { children: ReactNode }) {
     overview: overview.data, invoices: invoices.data,
     team, roster, sophia, sophiaReply,
     signals, unread, markRead,
-    artifacts: artifacts.data, monthly: monthly.data,
+    artifacts: artifacts.data,
+    panels: panels.data, reloadPanels: panels.reload, sophiaRecipes, askPanel,
     deep: { ...deep, held: Math.max(deep.held, heldHere) }, setDeep, say,
     markAsked: () => setAskedAt(new Date().toISOString()),
   };

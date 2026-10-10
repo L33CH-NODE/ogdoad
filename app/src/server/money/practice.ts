@@ -64,6 +64,13 @@ export function seedPractice(money: Money): void {
   flow.add({ title: "Renew the first-aid certificate", context: "It runs out at the end of the month. Book a course." });
 }
 
+/** Bring older practice books up to date: the roster, if they have no shifts yet. */
+export function topUpPractice(money: Money): void {
+  const none = !(money.db.prepare("SELECT COUNT(*) AS n FROM shifts").get() as { n: number }).n;
+  const clients = money.clients().filter((c) => CLIENTS.some((x) => x.name === c.name));
+  if (none && clients.length === CLIENTS.length) seedShifts(money, CLIENTS.map((x) => clients.find((c) => c.name === x.name)!.id));
+}
+
 /** A made-up roster: shifts today and ahead, a few finished with notes (ready to bill), one still
  * waiting on its note, and one with an incident to report. */
 function seedShifts(money: Money, [harbour, kestrel, mill, northside]: string[]): void {

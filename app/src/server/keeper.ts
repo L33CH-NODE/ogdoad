@@ -8,7 +8,7 @@ import type { IncomingMessage } from "node:http";
 
 import { HttpError } from "./http.js";
 import { encryptExistingDb, isPlaintextDb, MONEY_DB, openMoneyDb } from "./money/db.js";
-import { seedPractice } from "./money/practice.js";
+import { seedPractice, topUpPractice } from "./money/practice.js";
 import { Money } from "./money/service.js";
 import { Vault, VaultError } from "./vault.js";
 
@@ -136,6 +136,8 @@ export class Keeper {
     if (this.practice) {
       this.money = new Money(openMoneyDb());
       if (!this.money.invoices().length) seedPractice(this.money);
+      // Practice books made before Work existed get its made-up roster once.
+      else topUpPractice(this.money);
       return;
     }
     const key = this.vault!.key("money db");

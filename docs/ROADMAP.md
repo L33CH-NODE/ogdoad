@@ -21,7 +21,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    - SOPHIA's ranked banner on top (blockers waiting on the operator and anything important, ordered by what gets things moving), with the agent dashboard squares below it.
    - The dashboard runtime and the dashboard-craft skill.
    - SOPHIA's chat bar, Team, the notification centre with a deep-work lock, the graceful-shutdown button, and the skins.
-   - Then Paperclip's old UI is retired. (2026-10-10: the conversation with SOPHIA, the team's tasks, question cards, approvals and the graceful shutdown are all in the control center now. Hiring from a screen too. Left: agent settings, budgets, projects.)
+   - Then Paperclip's old UI is retired. (2026-10-10: the conversation with SOPHIA, the team's tasks, question cards, approvals and the graceful shutdown are all in the control center now. Hiring from a screen too, and projects as live rooms. Left: agent settings, budgets.)
 4. **Agents near money, and the membrane.**
    - A local Ledger seat: bank matching, ageing, chasing drafts the operator sends.
    - The membrane: stand-ins, the Tier 1 pane, the crossings log, privacy per data class, the exfil-allowed flag.
@@ -51,7 +51,7 @@ Frontier intelligence without handing over the business.
 - **Built so far (2026-10-10):**
   - **The crossings log.** Every message, answer and panel request sent to a hire is noted as it leaves: who got it, through which harness, and whether that harness is a cloud model. It shows in Signals and in Settings under "What the cloud has seen".
   - **Panels written blind.** A dashboard panel is a query plus a chart spec. A hire writes it from the curated tables' shape alone; it runs on the operator's machine, in a sealed copy without notes, bank or NDIS details, and the hire never sees a row.
-- **Next (spec, 2026-10-10): rooms, the dispatcher, the membrane and the watch.**
+- **Next (spec, 2026-10-10; the rooms are built): rooms, the dispatcher, the membrane and the watch.**
   - Live project rooms where hires talk to each other and to the operator.
   - A local dispatcher that proposes the lineup.
   - The membrane out and back, with the operator checking what leaves.

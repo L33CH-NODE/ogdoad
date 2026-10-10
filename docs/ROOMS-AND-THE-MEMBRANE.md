@@ -1,6 +1,6 @@
 # Rooms, the dispatcher, the membrane and the watch
 
-The operator's idea (2026-10-10). Status: a spec. Nothing in it is built yet.
+The operator's idea (2026-10-10). Status: step 1, the rooms, is built (2026-10-10, see `CONTROL-CENTER.md`). The rest is still a spec.
 
 A job moves from the operator to the best mix of hires and back again. The hires talk to each other and to the operator in a live room, so the business gets done in the open. No real identity ever reaches a cloud model, and anything risky waits for the operator.
 
@@ -100,7 +100,7 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
 
 ## Build order
 
-1. **Rooms.** A live room per project over the issue threads, with Horos presence. No models.
+1. **Rooms.** A live room per project over the issue threads, with Horos presence. No models. *Built 2026-10-10.*
 2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator.
 3. **The watch's gate** on permission prompts, with the policy file.
 4. **The dispatcher's lineups.**

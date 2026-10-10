@@ -59,7 +59,15 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
 - **The team's tasks** are listed under the constellation: who has each one, and where it stands. Any task opens as the same kind of conversation.
 - **Every hire's room shows its live terminal**, and can answer it. While the hire waits on a decision, typing presses keys.
 - **Hire someone** from the Team zone: a harness found on this machine (cloud or local, said plainly), a name, what it's for, and whether to keep it. It gets a folder of its own, and its first message is noted in the crossings log, like anything typed into its terminal.
-- **Left for the classic view:** agent settings, budgets and projects.
+- **Project rooms** (built 2026-10-10). Each project is a live room where the hires talk to each other and to the operator in the open.
+  - The room's own thread and every part of the job (a sub-task with a hire on it) read as one stream in time order, with a lane for each part.
+  - Members show their presence and whether they run in the cloud or locally. The engine's run events show who is working on which part right now.
+  - The operator speaks to the room or to one part, and types `@` to mention a hire. The engine wakes whoever is mentioned.
+  - A part's brief tells its hire who else is on the job, ready to mention, so hires bring each other in too.
+  - Every message is noted in the crossings log once for each hire it reaches.
+  - The practice copy shows the real team's rooms but can't start work in them.
+  - See `ROOMS-AND-THE-MEMBRANE.md`.
+- **Left for the classic view:** agent settings and budgets.
 
 ## Artifacts: what got made
 

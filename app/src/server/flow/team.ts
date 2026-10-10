@@ -62,6 +62,16 @@ export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIs
       });
       continue;
     }
+    // An approval is decided right in Flow.
+    if (i.sourceKind === "approval" && i.subject.kind === "approval") {
+      out.push({
+        key: `team:approval:${i.subject.id}`,
+        title: i.subject.title ? `Approve or turn down: ${clip(i.subject.title, 120)}` : "Approve or turn down",
+        context: i.whyNow, source: "team", ref: `/flow/approve/${i.subject.id}`,
+        urgency: Math.max(2, urgency) as Raised["urgency"], blocking: true,
+      });
+      continue;
+    }
     const opening = OPENING[i.sourceKind] ?? "Needs you";
     out.push({
       key: `team:${i.sourceKind}:${i.subject.id}`,

@@ -184,3 +184,16 @@ test("a crossing names who got it, through what, and whether it's a cloud model;
   assert.match(panel.what, /asked for a panel \(the tables' shape went too, no rows\): hours by week/);
   assert.ok(signals(m).some((s) => s.who === "crossing" && s.text.startsWith("to SOPHIA (Claude Code, a cloud model): Ring")));
 });
+
+test("an approval lands in Flow to be decided there, and can't just be marked done", async () => {
+  const { m, flow } = setup();
+  const approval = {
+    sourceKind: "approval", subject: { kind: "approval", id: "ap-1", title: "Hire Ledger, a local bookkeeper", identifier: null, status: "pending", href: "/OGD/approvals/ap-1" },
+    whyNow: "SOPHIA asked to hire", severity: "high" as const, relatedIssue: null, originAgentName: "SOPHIA", dismissal: null, snoozedUntil: null, detail: null,
+  };
+  const [r] = raisedFromAttention([approval], [], "http://127.0.0.1:3100");
+  assert.deepEqual([r.key, r.ref, r.title, r.blocking], ["team:approval:ap-1", "/flow/approve/ap-1", "Approve or turn down: Hire Ledger, a local bookkeeper", true]);
+  await syncFlow(m, { team: async () => [r] });
+  const t = flow.view().now!;
+  assert.throws(() => flow.act(t.id, "done"), /Approve it or turn it down/);
+});

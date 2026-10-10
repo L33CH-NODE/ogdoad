@@ -62,6 +62,7 @@ export interface FlowView {
 /** Raised work that clears itself when it's done where it lives, so Done alone is refused. */
 const CLEARED_BY_DOING: Array<[string, string]> = [
   ["team:ask:", "Answer the question: it clears itself once it's answered."],
+  ["team:approval:", "Approve it or turn it down: it clears itself once it's decided."],
   ["work:note:", "Write the note: it clears itself once it's finished."],
   ["work:bill:", "Make the draft in Work: it clears itself once the shifts are on it."],
 ];

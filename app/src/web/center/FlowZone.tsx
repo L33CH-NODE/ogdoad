@@ -8,6 +8,7 @@ import { Icon } from "../components/icons";
 import { api, type Task } from "../lib/api";
 import { aud } from "../lib/format";
 import { match, navigate, openRef, usePath } from "../lib/router";
+import { ApproveCard } from "./ApproveCard";
 import { AskCard } from "./AskCard";
 import { typing, useZoom, Zone } from "./ControlCenter";
 import { shortName, useCenter } from "./data";
@@ -15,7 +16,7 @@ import { shortName, useCenter } from "./data";
 const SOURCE: Record<Task["source"], string> = { you: "yours", money: "Money", bank: "Bank", work: "Work", team: "Team" };
 
 /** Raised work that clears by doing it where it lives: its main button goes there, and D leaves it alone. */
-const DO_IT: Array<[string, string]> = [["team:ask:", "Answer"], ["work:note:", "Write it"], ["work:bill:", "Bill it"]];
+const DO_IT: Array<[string, string]> = [["team:ask:", "Answer"], ["team:approval:", "Decide"], ["work:note:", "Write it"], ["work:bill:", "Bill it"]];
 export const doIt = (t: Task | null): string | null => (t?.key ? DO_IT.find(([prefix]) => t.key!.startsWith(prefix))?.[1] ?? null : null);
 
 export function FlowZone() {
@@ -48,9 +49,10 @@ export function FlowZone() {
   const now = flow?.now ?? null;
   const doing = doIt(now);
   const ask = match("/flow/ask/:issue/:interaction", path);
+  const approval = match("/flow/approve/:id", path)?.id;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!now || busy || ask || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!now || busy || ask || approval || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       const action = { d: doing ? null : "done", s: "skip", p: "park" }[e.key.toLowerCase()];
       if (action) {
         e.preventDefault();
@@ -59,7 +61,7 @@ export function FlowZone() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [now?.id, busy, !!ask]);
+  }, [now?.id, busy, !!ask, !!approval]);
 
   const currents = team.filter((h) => h.role !== "server" && h.state === "working");
   const chip = flow ? (
@@ -136,7 +138,7 @@ export function FlowZone() {
     <Zone id="flow" chip={chip}>
       <div className="room-cols">
         <div className="stack" style={{ gap: 12 }}>
-          {ask ? <AskCard issueId={ask.issue} interactionId={ask.interaction} /> : nowCard}
+          {ask ? <AskCard issueId={ask.issue} interactionId={ask.interaction} /> : approval ? <ApproveCard id={approval} /> : nowCard}
           {flow?.next.length ? <><span className="zlabel">Next</span><div className="stack" style={{ gap: 4 }}>{flow.next.map((t, i) => row(t, i + 2, { park: true }))}</div></> : null}
           {flow?.later.length ? <><span className="zlabel">Later</span><div className="stack" style={{ gap: 4 }}>{flow.later.map((t, i) => row(t, i + 5, { park: true }))}</div></> : null}
           {addBox}

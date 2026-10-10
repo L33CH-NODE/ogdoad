@@ -7,7 +7,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { handleCenter, type CenterContext } from "./center.js";
-import { recordCrossing } from "./crossings.js";
+import { recipientFor, recordCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
@@ -214,8 +214,10 @@ const server = createServer(async (req, res) => {
       const books = money;
       return proxyHttp(paperclip, req, res, crossing && books ? (status, body) => {
         if (status >= 400) return;
-        recordCrossing(books, crossing[1], crossing[2] === "comments" ? "message" : "answer", body);
-        broadcast("changed", { area: "crossing" });
+        void recipientFor(crossing[1], SERVER_URL).then((to) => {
+          recordCrossing(books, crossing[1], crossing[2] === "comments" ? "message" : "answer", body, to);
+          broadcast("changed", { area: "crossing" });
+        }).catch(() => {});
       } : undefined);
     }
     if (url.pathname.startsWith("/horos/")) return proxyHttp(horos, req, res);

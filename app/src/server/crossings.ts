@@ -40,21 +40,49 @@ function readJsonFile(file: string): any {
   }
 }
 
-/** Who reads a task's comments. SOPHIA's own task is known; other tasks go to "the team" for now. */
-export function recipientOf(issueId: string, home = OGDOAD_HOME): { who: string; via: string; where: Where } {
+export interface Recipient { who: string; via: string; where: Where }
+
+function describe(hire: any, who: string): Recipient {
+  const h = hire ? HARNESSES[hire.harness] : undefined;
+  return { who, via: h?.name ?? hire?.harness ?? "its harness", where: h?.where ?? "unknown" };
+}
+
+function rosterHires(home: string): any[] {
+  const roster = readJsonFile(join(home, "horos", "roster.json"));
+  return Array.isArray(roster) ? roster : roster?.hires ?? [];
+}
+
+/** Who reads a task's comments, when it's SOPHIA's own task (known without asking anyone). */
+export function recipientOf(issueId: string, home = OGDOAD_HOME): Recipient | null {
   const sophia = readJsonFile(join(home, "sophia.json"));
-  if (sophia && sophia.taskId === issueId) {
-    const roster = readJsonFile(join(home, "horos", "roster.json"));
-    const hires: any[] = Array.isArray(roster) ? roster : roster?.hires ?? [];
-    const hire = hires.find((h) => h.id === sophia.hireId);
-    const h = hire ? HARNESSES[hire.harness] : undefined;
-    return { who: "SOPHIA", via: h?.name ?? hire?.harness ?? "her harness", where: h?.where ?? "unknown" };
+  if (!sophia || sophia.taskId !== issueId) return null;
+  return describe(rosterHires(home).find((h) => h.id === sophia.hireId), "SOPHIA");
+}
+
+/**
+ * Who reads a task's comments: SOPHIA for her own task; otherwise the task's assignee, matched to the
+ * hire whose seat that agent is (Horos's roster), so the harness (and the cloud) is named.
+ */
+export async function recipientFor(issueId: string, serverUrl: string, home = OGDOAD_HOME): Promise<Recipient> {
+  const known = recipientOf(issueId, home);
+  if (known) return known;
+  try {
+    const r = await fetch(`${serverUrl}/api/issues/${encodeURIComponent(issueId)}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json" } });
+    const issue = r.ok ? ((await r.json()) as { assigneeAgentId?: string | null }) : null;
+    const agentId = issue?.assigneeAgentId;
+    if (agentId) {
+      const hire = rosterHires(home).find((h) => h.seat?.agentId === agentId);
+      if (hire) return describe(hire, String(hire.label ?? "a hire").replace(/ - .*$/, ""));
+      return { who: "an agent", via: "the Ogdoad server", where: "unknown" };
+    }
+  } catch {
+    // Unknown is still recorded.
   }
   return { who: "the team", via: "the Ogdoad server", where: "unknown" };
 }
 
 /** Note a crossing. body is what the browser sent (a comment, or a question card's answers). */
-export function recordCrossing(money: Money, issueId: string, kind: "message" | "answer", body: Buffer, home = OGDOAD_HOME): void {
+export function recordCrossing(money: Money, issueId: string, kind: "message" | "answer", body: Buffer, to: Recipient): void {
   let what = "";
   try {
     const j = JSON.parse(body.toString("utf8"));
@@ -68,9 +96,8 @@ export function recordCrossing(money: Money, issueId: string, kind: "message" | 
   } catch {
     what = kind === "message" ? "a message" : "answers to a question card";
   }
-  const r = recipientOf(issueId, home);
   money.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'operator', 'crossing', ?, ?)")
-    .run(new Date().toISOString(), issueId, JSON.stringify({ ...r, what: what.slice(0, 280) }));
+    .run(new Date().toISOString(), issueId, JSON.stringify({ ...to, what: what.slice(0, 280) }));
 }
 
 export function crossings(money: Money, limit = 100): Crossing[] {

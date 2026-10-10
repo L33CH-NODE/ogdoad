@@ -72,4 +72,18 @@ export function getAppInfo(): Promise<AppInfo> {
 // --- Horos ---
 
 export interface Notification { id: number; at: string; level: "error" | "warn" | "info" | "pulse"; kind: string; title: string; body: string; hireId?: string }
-export interface HireInfo { id: string; label: string; harness: string; state: string; pid: number }
+export interface HireInfo { id: string; label: string; harness: string; state: string; pid: number; kept?: boolean; role?: "server" | "hire"; provides?: string | null; onDemand?: boolean; startedAt?: string; title?: string }
+export interface RosterEntry { id: string; label?: string; harness: string; role?: "server"; provides?: string; onDemand?: boolean; running: boolean; resumable: boolean }
+
+// --- The control center ---
+
+export interface Task {
+  id: string; key: string | null; title: string; context: string; source: "you" | "money" | "bank" | "work" | "team"; ref: string | null;
+  cents: number | null; dueOn: string | null; urgency: 0 | 1 | 2 | 3; blocking: boolean; state: "open" | "parked" | "done" | "dropped";
+  createdAt: string; updatedAt: string; skippedAt: string | null; focusAt: string | null; closedAt: string | null; closedBy: string | null; score?: number;
+}
+export interface FlowView { now: Task | null; next: Task[]; later: Task[]; parked: Task[]; done: Task[]; doneToday: number; streak: number }
+export interface Signal { id: number | string; at: string; who: string; text: string; tone: "good" | "c1" | "warn" | "bad" | "muted" | "primary"; kind: string }
+export interface Artifact { id: string; kind: "invoice"; title: string; by: string; via: string; at: string; tier: string; cloudSaw: string; sealed: boolean; open: string; ref: string }
+export interface Month { month: string; invoicedCents: number; receivedCents: number }
+export interface SophiaInfo { companyId: string; companyName: string; taskId: string; hireId?: string }

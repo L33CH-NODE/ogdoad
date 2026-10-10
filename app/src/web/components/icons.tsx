@@ -16,6 +16,15 @@ const PATHS = {
   file: "M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7zM14 3v4h4",
   power: "M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0",
   bank: "M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18",
+  expand: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7",
+  shrink: "M4 14h6v6M20 10h-6V4M10 14l-7 7M14 10l7-7",
+  lock: "M6 11V8a6 6 0 0 1 12 0v3M5 11h14v10H5z",
+  chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
+  note: "M5 4h10l4 4v12H5zM15 4v4h4M8 12h8M8 16h5",
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  skip: "M6 6l8 6-8 6zM18 6v12",
+  park: "M8 5v14M16 5v14",
+  open: "M7 17L17 7M9 7h8v8",
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -120,36 +120,11 @@ h3 { font-size: 16px; font-weight: 600; }
 .mono { font-family: "Geist Mono Variable", ui-monospace, monospace; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* ---------- Shell: floating glass ---------- */
+/* ---------- Page pieces (Money's rooms) ---------- */
 
-.float {
-  background: var(--glass);
-  backdrop-filter: blur(20px) saturate(1.25);
-  -webkit-backdrop-filter: blur(20px) saturate(1.25);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow), var(--glow);
-}
-.shell { min-height: 100vh; padding: 16px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
-.side { flex: 0 0 252px; border-radius: 24px; padding: 12px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
-.main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding-bottom: 96px; }
-@media (max-width: 760px) {
-  .side { flex-basis: 100%; position: static; }
-}
-
-.brand { display: flex; align-items: center; gap: 12px; padding: 6px 8px; }
-.brand-mark { width: 36px; height: 36px; border-radius: 11px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; flex: 0 0 auto; }
-.nav { display: flex; flex-direction: column; gap: 2px; }
-.nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--muted); font-weight: 500; transition: background .2s, color .2s; }
-.nav a:hover { background: var(--faint); color: var(--fg); }
-.nav a[aria-current="page"] { background: var(--faint); color: var(--fg); font-weight: 600; }
-:root[data-skin="cyberpunk-uv"] .nav a[aria-current="page"] { box-shadow: 0 0 0 1px oklch(0.68 0.21 300 / 0.35), 0 0 22px -6px oklch(0.68 0.21 300 / 0.7); }
-.nav .badge { margin-left: auto; }
-.section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 12px 4px; }
-
-.page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 10px 4px 2px; }
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 4px 2px 2px; }
 .page-head p { margin: 4px 0 0; color: var(--muted); }
 .page-head .stack { align-items: flex-start; }
-.bell-dock { position: fixed; top: 16px; right: 16px; z-index: 25; }
 .grid.fit { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 
 /* ---------- Components ---------- */
@@ -238,34 +213,9 @@ table.table { width: 100%; border-collapse: collapse; }
 .geo-spin-slow { animation: geo-spin 240s linear infinite; transform-origin: 200px 200px; }
 @keyframes geo-spin { to { transform: rotate(360deg); } }
 
-/* ---------- The practice copy: impossible to mistake for the real books ---------- */
+/* ---------- SOPHIA's orb ---------- */
 
-.practice-ribbon {
-  flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 16px;
-  background: repeating-linear-gradient(135deg, oklch(0.83 0.16 80 / 0.22) 0 14px, oklch(0.83 0.16 80 / 0.1) 14px 28px);
-  border: 1px solid oklch(0.72 0.16 70 / 0.6); color: var(--fg); font-size: 13px;
-}
-.practice-ribbon strong { text-transform: uppercase; letter-spacing: 0.08em; color: oklch(0.55 0.14 60); }
-:root[data-skin="ogdoad-dark"] .practice-ribbon strong, :root[data-skin="cyberpunk-uv"] .practice-ribbon strong { color: oklch(0.85 0.15 80); }
-.practice-ribbon a { margin-left: auto; font-weight: 600; text-decoration: underline; }
-:root[data-practice="1"] .brand-mark { background: oklch(0.72 0.16 70); }
-
-/* ---------- SOPHIA's bar and the bell ---------- */
-
-.composer-dock { position: fixed; left: 0; right: 0; bottom: 16px; display: flex; justify-content: center; pointer-events: none; z-index: 20; }
-.composer { pointer-events: auto; width: min(720px, calc(100% - 32px)); border-radius: 999px; padding: 6px 6px 6px 10px; display: flex; align-items: center; gap: 10px; }
-.composer:focus-within { box-shadow: var(--shadow), 0 0 0 2px var(--primary); }
-.composer input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 15px; padding: 10px 4px; outline: none; }
-.composer input::placeholder { color: var(--muted); }
 .orb { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: radial-gradient(circle at 34% 30%, oklch(0.93 0.06 300), var(--primary) 58%, oklch(0.32 0.14 288)); animation: breathe 6s ease-in-out infinite; }
-.send { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; cursor: pointer; }
-
-.bell { position: relative; }
-.bell > .btn { background: var(--glass); backdrop-filter: blur(20px); box-shadow: var(--shadow), var(--glow); }
-.bell-panel { position: absolute; right: 0; top: 52px; width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; border-radius: 20px; padding: 8px; z-index: 30; }
-.note { display: flex; gap: 10px; padding: 10px; border-radius: 12px; }
-.note:hover { background: var(--faint); }
-.note .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: 0 0 auto; }
 
 /* ---------- Motion, kept tasteful ---------- */
 

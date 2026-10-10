@@ -43,7 +43,45 @@ function KeyCard() {
         <div className="row" style={{ alignSelf: "end" }}><button className="btn" disabled={busy || !oldPassword || newPassword.length < 10}>{busy ? "Changing…" : "Change password"}</button></div>
       </form>
       {note ? <p className={note.ok ? "muted" : "error-text"} role="status" style={{ margin: 0 }}>{note.text}</p> : null}
+      <Backups />
     </section>
+  );
+}
+
+interface BackupList { practice: boolean; dir: string; list: Array<{ stamp: string; at: string; bytes: number; withKeys: boolean }> }
+
+/** The books' backups: encrypted copies with the vault's keys beside them. */
+function Backups() {
+  const { data, reload } = useLive<BackupList>("/ogdoad/backups");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!data || data.practice) return null;
+  const last = data.list[0];
+  const now = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/ogdoad/backups");
+      reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="stack" style={{ gap: 6, borderTop: "1px solid var(--edge)", paddingTop: 12 }}>
+      <div className="row">
+        <strong style={{ fontSize: 14 }}>Backups</strong>
+        <span className="muted" style={{ fontSize: 13 }}>{last ? `last ${ago(last.at)}, ${data.list.length} kept` : "none yet"}</span>
+        <span className="spacer" />
+        <button className="btn small" disabled={busy} onClick={() => void now()}>{busy ? "Backing up…" : "Back up now"}</button>
+      </div>
+      <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+        Every hour while Ogdoad is open, a copy of your books goes to <span className="mono">{data.dir}</span>, still encrypted with your key, with the vault's wrapped keys beside it. The last day's copies are kept, then one a day for a month. Keep a copy off this machine too (a USB stick, or your home box): a copy on the same disk doesn't survive the disk.
+      </p>
+      {error ? <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p> : null}
+    </div>
   );
 }
 

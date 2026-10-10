@@ -2,7 +2,7 @@
 // vault (SQLCipher format), and migrated forward on open. Without the key the file is unreadable:
 // no SQLite header, no plaintext.
 
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,14 +50,43 @@ export function isPlaintextDb(file = MONEY_DB): boolean {
   return head.toString("latin1", 0, 15) === "SQLite format 3";
 }
 
-/** Encrypt an existing plaintext database in place (when the vault is first made). */
+/** Rows in every table: what an encrypted copy has to match. */
+function tableCounts(db: MoneyDb): Record<string, number> {
+  const names = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as Array<{ name: string }>).map((r) => r.name);
+  return Object.fromEntries(names.map((n) => [n, (db.prepare(`SELECT COUNT(*) AS c FROM "${n}"`).get() as { c: number }).c]));
+}
+
+/**
+ * Encrypt an existing plaintext database in place (when the vault is first made). A safety copy is
+ * kept until the encrypted file is proven: no plaintext header, it opens with the key, and every
+ * table has the same rows. If anything doesn't check out, the books are put back as they were.
+ */
 export function encryptExistingDb(file: string, key: Buffer): void {
   const db = new Database(file);
   // Fold the write-ahead log in first; rekeying works on a rollback journal, not WAL.
   db.pragma("wal_checkpoint(TRUNCATE)");
   db.pragma("journal_mode = DELETE");
-  applyKey(db, key, "rekey");
+  const before = tableCounts(db);
   db.close();
+  const safety = `${file}.before-key`;
+  copyFileSync(file, safety);
+  try {
+    const plain = new Database(file);
+    applyKey(plain, key, "rekey");
+    plain.close();
+    if (isPlaintextDb(file)) throw new Error("the file is still readable without the key");
+    const check = new Database(file, { readonly: true });
+    applyKey(check, key, "key");
+    const after = tableCounts(check);
+    check.close();
+    const lost = Object.keys(before).filter((t) => before[t] !== after[t]);
+    if (lost.length) throw new Error(`rows differ in ${lost.join(", ")}`);
+  } catch (err) {
+    copyFileSync(safety, file);
+    unlinkSync(safety);
+    throw new Error(`Encrypting the books didn't check out (${(err as Error).message}), so they were put back exactly as they were.`);
+  }
+  unlinkSync(safety);
 }
 
 function migrate(db: MoneyDb): void {

@@ -6,6 +6,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { handleCenter, type CenterContext } from "./center.js";
 import { recipientFor, recordCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
@@ -132,6 +133,21 @@ function syncCalendarSoon(delay = 5000): void {
 }
 setInterval(() => syncCalendarSoon(0), 10 * 60_000).unref();
 
+// The books are backed up while they're open: whenever the newest copy is over an hour old.
+// The practice copy's books are made up, so it doesn't.
+function backupIfDue(): void {
+  const money = keeper.money;
+  if (PRACTICE || !money) return;
+  const last = listBackups()[0];
+  if (last && Date.now() - Date.parse(last.at) < 60 * 60_000) return;
+  try {
+    backupNow(money);
+  } catch (err) {
+    notify("A backup of your books failed", (err as Error).message);
+  }
+}
+setInterval(backupIfDue, 10 * 60_000).unref();
+
 const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
   broadcast("locked", { why });
   for (const s of streams) s.end();
@@ -201,6 +217,13 @@ const server = createServer(async (req, res) => {
     if (/^\/ogdoad\/(flow|signals|artifacts|monthly|crossings)(\/|$)/.test(url.pathname)) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       if (await handleCenter(money, req, res, url, center)) return;
+    }
+    if (url.pathname === "/ogdoad/backups" && money) {
+      if (req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, dir: BACKUP_DIR, list: PRACTICE ? [] : listBackups() });
+      if (req.method === "POST") {
+        if (PRACTICE) throw new HttpError(400, "practice", "The practice copy's books are made up, so they aren't backed up.");
+        return sendJson(res, 201, backupNow(money));
+      }
     }
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });

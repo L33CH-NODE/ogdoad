@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { addDays, type Money } from "./money/service.js";
+import { raisedFromWork, Work } from "./work/work.js";
 
 const aud = (cents: number) => (cents / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
 
@@ -58,6 +59,23 @@ export function signals(money: Money, limit = 40): Signal[] {
         return { ...base, text: "changed Money's settings", tone: "muted" as const };
       case "account_created":
         return { ...base, text: `added a ${e.detail} account`, tone: "muted" as const };
+      // Work's trail names the shift, never what its note says.
+      case "shift_added":
+        return { ...base, text: `rostered a shift: ${e.detail}`, tone: "c1" as const };
+      case "shift_updated":
+        return { ...base, text: `moved or changed a shift: ${e.detail}`, tone: "muted" as const };
+      case "shift_cancelled":
+        return { ...base, text: `cancelled a shift: ${e.detail}`, tone: "muted" as const };
+      case "shift_restored":
+        return { ...base, text: `brought back a shift: ${e.detail}`, tone: "muted" as const };
+      case "note_saved":
+        return { ...base, text: `saved a draft note: ${e.detail}`, tone: "muted" as const };
+      case "note_finished":
+        return { ...base, text: `finished a shift note: ${e.detail}`, tone: e.detail.includes("incident") ? ("warn" as const) : ("good" as const) };
+      case "incident_reported":
+        return { ...base, text: `marked an incident reported: ${e.detail}`, tone: "good" as const };
+      case "shifts_billed":
+        return { ...base, who: "Work", text: `drafted an invoice from ${e.detail}`, tone: "c1" as const };
       default:
         if (e.kind.startsWith("task_")) return { ...base, text: `${e.kind.slice(5)}: ${e.detail}`, tone: "primary" as const };
         return { ...base, text: e.kind.replaceAll("_", " "), tone: "muted" as const };
@@ -67,7 +85,7 @@ export function signals(money: Money, limit = 40): Signal[] {
 
 export interface Artifact {
   id: string;
-  kind: "invoice";
+  kind: "invoice" | "note";
   title: string;
   by: string;
   via: string;
@@ -75,18 +93,38 @@ export interface Artifact {
   tier: "local only";
   cloudSaw: string;
   sealed: boolean;
-  open: string;
+  /** A file to open (an invoice's PDF); null when it opens in place. */
+  open: string | null;
   ref: string;
 }
 
-/** What got made. Invoices first; shift notes and the hires' work join as they arrive. */
+/** What got made: issued invoices and finished shift notes, newest first. The hires' work joins later. */
 export function artifacts(money: Money, limit = 60): Artifact[] {
+  const notes = (money.db.prepare(`SELECT s.id, s.day, s.participant_name, c.name, c.participant_name AS client_participant, n.updated_at, n.written_by
+    FROM shift_notes n JOIN shifts s ON s.id = n.shift_id JOIN clients c ON c.id = s.client_id
+    WHERE n.final = 1 ORDER BY n.updated_at DESC LIMIT ?`).all(limit) as any[]).map((r): Artifact => ({
+    id: r.id,
+    kind: "note",
+    title: `Shift note · ${r.participant_name || r.client_participant || r.name} · ${r.day}`,
+    by: r.written_by === "you" ? "you" : r.written_by,
+    via: "Work",
+    at: r.updated_at,
+    tier: "local only",
+    cloudSaw: "nothing",
+    sealed: false,
+    open: null,
+    ref: `/work/shift/${r.id}`,
+  }));
+  return [...invoiceArtifacts(money, limit), ...notes].sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
+function invoiceArtifacts(money: Money, limit: number): Artifact[] {
   const rows = money.db.prepare(`SELECT i.id, i.number, i.issue_date, i.source, i.pdf_path, i.status, c.name,
       (SELECT e.at FROM events e WHERE e.subject_id = i.id AND e.kind = 'invoice_issued' ORDER BY e.id DESC LIMIT 1) AS issued_at,
       (SELECT e.actor FROM events e WHERE e.subject_id = i.id AND e.kind = 'invoice_issued' ORDER BY e.id DESC LIMIT 1) AS issued_by
     FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('issued', 'void')
     ORDER BY i.issue_date DESC, i.number DESC LIMIT ?`).all(limit) as any[];
-  return rows.map((r) => ({
+  return rows.map((r): Artifact => ({
     id: r.id,
     kind: "invoice",
     title: `Invoice ${r.number}${r.status === "void" ? " (void)" : ""} · ${r.name}`,
@@ -126,8 +164,18 @@ export interface CenterContext {
 export async function syncFlow(money: Money, ctx: CenterContext): Promise<Flow> {
   const flow = new Flow(money);
   const team = (await ctx.team?.()) ?? null;
-  flow.sync([...raisedFromMoney(money), ...(team ?? [])], team ? ["money:", "bank:", "team:"] : ["money:", "bank:"]);
+  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today())];
+  flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "team:"] : ["money:", "bank:", "work:"]);
   return flow;
+}
+
+/** Done, skip, park... on a Flow task, with what that means where the work lives. */
+export function actOnTask(money: Money, id: string, action: string) {
+  const flow = new Flow(money);
+  const key = flow.task(id).key;
+  // "Report the incident", done: that's the operator saying it was reported.
+  if (action === "done" && key?.startsWith("work:incident:")) new Work(money).incidentReported(key.slice("work:incident:".length));
+  return flow.act(id, action);
 }
 
 /** /ogdoad/flow, /ogdoad/signals, /ogdoad/artifacts, /ogdoad/monthly. Returns false when it isn't ours. */
@@ -139,7 +187,7 @@ export async function handleCenter(money: Money, req: IncomingMessage, res: Serv
   if (parts[0] === "flow") {
     if (parts.length === 1 && method === "GET") return sendJson(res, 200, (await syncFlow(money, ctx)).view()), true;
     if (parts.length === 1 && method === "POST") return sendJson(res, 201, flow.add(await readJson(req))), true;
-    if (parts.length === 3 && method === "POST") return sendJson(res, 200, flow.act(parts[1], parts[2])), true;
+    if (parts.length === 3 && method === "POST") return sendJson(res, 200, actOnTask(money, parts[1], parts[2])), true;
     throw new HttpError(404, "not_found", "No such Flow route.");
   }
   if (parts[0] === "signals" && method === "GET") return sendJson(res, 200, signals(money, Math.min(200, Number(url.searchParams.get("limit") ?? 40) || 40))), true;

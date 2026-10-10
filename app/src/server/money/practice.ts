@@ -3,6 +3,7 @@
 // Nothing here is real: every name, number and amount is invented.
 
 import { Flow } from "../flow/flow.js";
+import { Work } from "../work/work.js";
 import { addDays, type Money } from "./service.js";
 
 const CLIENTS = [
@@ -17,7 +18,7 @@ export function resetPractice(money: Money): void {
   const db = money.db;
   db.exec("BEGIN");
   try {
-    for (const table of ["tasks", "bank_line_payments", "bank_lines", "payments", "invoice_lines", "invoices", "clients", "events"]) db.exec(`DELETE FROM ${table}`);
+    for (const table of ["tasks", "shift_notes", "shifts", "bank_line_payments", "bank_lines", "payments", "invoice_lines", "invoices", "clients", "events"]) db.exec(`DELETE FROM ${table}`);
     db.exec("UPDATE settings SET default_account_id = NULL");
     db.exec("DELETE FROM payment_accounts");
     db.exec("COMMIT");
@@ -56,10 +57,34 @@ export function seedPractice(money: Money): void {
     }
   }
   money.createDraft({ clientId: clients[1].id, lines: [{ description: "Support work: daily living", quantity: 3, unitCents: 6547 }] }, actor);
+  seedShifts(money, clients.map((c) => c.id));
   // A couple of the operator's own tasks, so Flow has more than Money's work in it.
   const flow = new Flow(money);
   flow.add({ title: "Ring Harbour about next month's roster", context: "Pat Example asked for the November shifts by Friday." });
   flow.add({ title: "Renew the first-aid certificate", context: "It runs out at the end of the month. Book a course." });
+}
+
+/** A made-up roster: shifts today and ahead, a few finished with notes (ready to bill), one still
+ * waiting on its note, and one with an incident to report. */
+function seedShifts(money: Money, [harbour, kestrel, mill, northside]: string[]): void {
+  const work = new Work(money, "practice");
+  const today = money.today();
+  const add = (clientId: string, back: number, start: string, end: string, support: string, km = 0, repeatWeeks = 0) =>
+    work.add({ clientId, day: addDays(today, -back), start, end, support, rateCents: 6547, km, kmRateCents: 99, repeatWeeks });
+  const noted = (shift: { id: string }, body: string, more: { goals?: string; incident?: boolean; incidentDetail?: string } = {}) =>
+    work.writeNote(shift.id, { body, goals: more.goals ?? "", followUp: "", incident: more.incident ?? false, incidentDetail: more.incidentDetail ?? "", final: true });
+
+  noted(add(harbour, 6, "09:00", "12:00", "Community access", 22)[0], "Library, then the shops. Chose lunch and paid at the till with one prompt.", { goals: "Handling money; trying a new place" });
+  noted(add(kestrel, 5, "13:00", "16:30", "Daily living", 8)[0], "Cooked pasta together. Washed up without reminders.", { goals: "Cooking a simple meal" });
+  noted(add(harbour, 3, "09:00", "12:00", "Community access", 18)[0], "Swimming at the local pool. Tired afterwards but happy.", {
+    incident: true, incidentDetail: "Slipped on the wet tiles by the change rooms. No injury; pool staff told; first aid not needed.",
+  });
+  noted(add(mill, 2, "10:00", "13:00", "Social and community participation", 30)[0], "Art group. Finished the painting started last week.");
+  add(mill, 1, "10:00", "13:00", "Social and community participation", 30);
+  add(harbour, 0, "09:00", "12:30", "Community access", 18);
+  add(kestrel, 0, "14:00", "16:00", "Daily living", 6);
+  add(kestrel, -1, "09:30", "12:30", "Daily living", 6);
+  add(northside, -2, "13:00", "15:00", "Capacity building", 12, 3);
 }
 
 /**

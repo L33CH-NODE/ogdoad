@@ -6,6 +6,7 @@ import { Octagram } from "../components/Geometry";
 import { api, type Task } from "../lib/api";
 import { navigate, openRef } from "../lib/router";
 import { shortName, useCenter } from "./data";
+import { doIt } from "./FlowZone";
 
 interface Item {
   key: string;
@@ -32,7 +33,7 @@ export function Pulse() {
   }
   const open = flow ? [flow.now, ...flow.next, ...flow.later].filter((t): t is Task => !!t) : [];
   for (const t of open.filter((x) => x.blocking || x.urgency >= 2)) {
-    items.push({ key: t.id, title: t.title, why: t.context, tone: t.urgency >= 3 ? "bad" : t.urgency === 2 ? "warn" : "info", action: t.key?.startsWith("team:ask:") ? "Answer" : t.ref ? "Do it" : "Focus", act: () => focus(t), score: t.score ?? 0 });
+    items.push({ key: t.id, title: t.title, why: t.context, tone: t.urgency >= 3 ? "bad" : t.urgency === 2 ? "warn" : "info", action: doIt(t) ?? (t.ref ? "Do it" : "Focus"), act: () => focus(t), score: t.score ?? 0 });
   }
   items.sort((a, b) => b.score - a.score);
   const [lead, ...rest] = items;

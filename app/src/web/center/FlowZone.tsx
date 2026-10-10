@@ -14,6 +14,10 @@ import { shortName, useCenter } from "./data";
 
 const SOURCE: Record<Task["source"], string> = { you: "yours", money: "Money", bank: "Bank", work: "Work", team: "Team" };
 
+/** Raised work that clears by doing it where it lives: its main button goes there, and D leaves it alone. */
+const DO_IT: Array<[string, string]> = [["team:ask:", "Answer"], ["work:note:", "Write it"], ["work:bill:", "Bill it"]];
+export const doIt = (t: Task | null): string | null => (t?.key ? DO_IT.find(([prefix]) => t.key!.startsWith(prefix))?.[1] ?? null : null);
+
 export function FlowZone() {
   const { flow, reloadFlow, team, deep, setDeep, say } = useCenter();
   const path = usePath();
@@ -42,12 +46,12 @@ export function FlowZone() {
   };
 
   const now = flow?.now ?? null;
-  const asking = !!now?.key?.startsWith("team:ask:");
+  const doing = doIt(now);
   const ask = match("/flow/ask/:issue/:interaction", path);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!now || busy || ask || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      const action = { d: asking ? null : "done", s: "skip", p: "park" }[e.key.toLowerCase()];
+      const action = { d: doing ? null : "done", s: "skip", p: "park" }[e.key.toLowerCase()];
       if (action) {
         e.preventDefault();
         void act(now, action);
@@ -69,13 +73,13 @@ export function FlowZone() {
       {now.context ? <span className="muted now-context">{now.context}</span> : null}
       <div className="now-meta">
         <span className="chip quiet">{SOURCE[now.source]}{now.cents ? ` · ${aud(now.cents, { cents: false })}` : ""}</span>
-        {now.ref && !asking ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => openRef(now.ref!)}>Open it{/^https?:/.test(now.ref) ? " (classic view)" : ""}</button> : null}
+        {now.ref && !doing ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => openRef(now.ref!)}>Open it{/^https?:/.test(now.ref) ? " (classic view)" : ""}</button> : null}
       </div>
       <div className="now-acts">
         <button className="btn small" disabled={busy} onClick={() => act(now, "park")} title="Park it (P)">Park <kbd>P</kbd></button>
         <button className="btn small" disabled={busy} onClick={() => act(now, "skip")} title="Not now (S)">Skip <kbd>S</kbd></button>
-        {asking
-          ? <button className="btn small primary" onClick={() => navigate(now.ref!)} title="Answer it here">Answer</button>
+        {doing
+          ? <button className="btn small primary" onClick={() => openRef(now.ref!)} title="It clears itself once it's done">{doing}</button>
           : <button className="btn small primary" disabled={busy} onClick={() => act(now, "done")} title="Done (D)">Done <kbd>D</kbd></button>}
       </div>
     </div>

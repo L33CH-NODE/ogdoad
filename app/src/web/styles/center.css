@@ -200,6 +200,41 @@ kbd { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 10
 .empty-day { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--muted); }
 .nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--bad); transition: left 1s linear; }
 .nowline::before { content: ""; position: absolute; top: 2px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+/* Work: shifts on today's line, the week, and billing. */
+.shift-block { position: absolute; top: 5px; bottom: 5px; min-width: 6px; padding: 0 8px; border-radius: 7px; border: 1px solid color-mix(in oklch, var(--tone, var(--c1)) 60%, transparent); background: color-mix(in oklch, var(--tone, var(--c1)) 16%, var(--zone)); color: var(--fg); font: inherit; font-size: 11.5px; font-weight: 600; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; transition: filter .2s; }
+.shift-block span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.shift-block:hover { filter: brightness(1.15); }
+.shift-block.now { background: color-mix(in oklch, var(--primary) 28%, var(--zone)); border-color: var(--primary); animation: onshift 4s ease-in-out infinite; }
+@keyframes onshift { 50% { box-shadow: inset 0 0 0 1px var(--primary), 0 0 12px color-mix(in oklch, var(--primary) 45%, transparent); } }
+.t-warn { --tone: var(--warn); }
+.t-good { --tone: var(--good); }
+.t-c1 { --tone: var(--c1); }
+.t-bad { --tone: var(--bad); }
+.t-primary { --tone: var(--primary); }
+.t-muted { --tone: var(--muted); }
+.chip.t-warn, .chip.t-good, .chip.t-bad, .chip.t-primary, .chip.t-c1 { color: var(--tone); }
+.week { display: flex; flex-direction: column; gap: 6px; }
+.week-day { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--edge); }
+.week-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.week-date { flex: 0 0 82px; font-size: 12px; color: var(--muted); padding-top: 7px; }
+.week-day.today .week-date { color: var(--primary); font-weight: 600; }
+.week-none { font-size: 12px; padding-top: 6px; }
+.week-shift { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 8px; border-radius: 10px; border: 1px solid transparent; background: var(--faint); color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.week-shift:hover, .week-shift.picked { border-color: color-mix(in oklch, var(--primary) 45%, transparent); }
+.week-shift.cancelled { opacity: 0.55; }
+.week-shift.cancelled .week-who { text-decoration: line-through; }
+.week-time { font-size: 11.5px; color: var(--muted); white-space: nowrap; min-width: 112px; }
+.week-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.week-shift .chip { flex: 0 0 auto; }
+.bill-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid transparent; }
+.bill-row.picked { border-color: color-mix(in oklch, var(--primary) 50%, transparent); }
+.tier0 { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; margin: 0; }
+.tier0 svg { flex: 0 0 auto; margin-top: 2px; color: var(--good); }
+.form-grid.tight { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+label.check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; cursor: pointer; }
+label.check input { width: 16px; height: 16px; accent-color: var(--primary); }
+.icon-btn.flip svg { transform: rotate(180deg); }
+
 .timeline-hours { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); }
 
 /* ---------- VI. Artifacts ---------- */
@@ -297,4 +332,10 @@ button.vault-chip:hover { color: var(--fg); }
   .cmd-row { gap: 8px; }
   .prompt { display: none; }
   .vault-chip { font-size: 0; gap: 0; }
+  .week-date { flex-basis: 58px; }
+  .week-shift { flex-wrap: wrap; gap: 4px 10px; }
+  .week-time { min-width: 0; }
+  .week-who { order: 3; flex-basis: 100%; white-space: normal; }
+  .week-shift .chip { margin-left: auto; }
+  .bill-row { flex-wrap: wrap; }
 }

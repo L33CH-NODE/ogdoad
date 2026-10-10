@@ -60,11 +60,11 @@ export function CenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const flow = useLive<FlowView>("/ogdoad/flow");
-  const overview = useLive<Overview>("/ogdoad/money/overview", ["money", "practice"]);
-  const invoices = useLive<InvoiceSummary[]>("/ogdoad/money/invoices", ["money", "practice"]);
+  const overview = useLive<Overview>("/ogdoad/money/overview", ["money", "work", "practice"]);
+  const invoices = useLive<InvoiceSummary[]>("/ogdoad/money/invoices", ["money", "work", "practice"]);
   const moneySignals = useLive<Signal[]>("/ogdoad/signals?limit=60");
-  const artifacts = useLive<Artifact[]>("/ogdoad/artifacts", ["money", "practice"]);
-  const monthly = useLive<Month[]>("/ogdoad/monthly", ["money", "practice"]);
+  const artifacts = useLive<Artifact[]>("/ogdoad/artifacts", ["money", "work", "practice"]);
+  const monthly = useLive<Month[]>("/ogdoad/monthly", ["money", "work", "practice"]);
 
   const team = useTeam();
   const [roster, setRoster] = useState<RosterEntry[]>([]);

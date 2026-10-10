@@ -1,6 +1,6 @@
 // VI. Artifacts: the shelf of everything made in the business, newest first, each with where it came
-// from: who made it, how, its privacy tier and what the cloud saw while it was made. Invoices first;
-// shift notes and the hires' documents and dashboards join as they're produced.
+// from: who made it, how, its privacy tier and what the cloud saw while it was made. Issued invoices
+// and finished shift notes so far; the hires' documents and dashboards join as they're produced.
 
 import { useMemo, useState } from "react";
 
@@ -14,7 +14,7 @@ import { useCenter } from "./data";
 function Item({ a, picked }: { a: Artifact; picked?: boolean }) {
   return (
     <button className={`shelf-item${picked ? " picked" : ""}`} onClick={() => navigate(`/artifacts/${a.id}`)}>
-      <span className="shelf-icon"><Icon name="money" size={16} /></span>
+      <span className="shelf-icon"><Icon name={a.kind === "note" ? "note" : "money"} size={16} /></span>
       <span className="shelf-text">
         <span className="shelf-title">{a.title}</span>
         <span className="muted">{a.by} · {ago(a.at)}</span>
@@ -39,7 +39,7 @@ export function ArtifactsZone() {
       <Zone id="artifacts" chip={chip}>
         <div className="stack shelf" style={{ gap: 4 }}>
           {list.slice(0, 6).map((a) => <Item key={a.id} a={a} />)}
-          {!list.length ? <span className="muted" style={{ fontSize: 13 }}>Nothing made yet. Issued invoices land here first, then shift notes and the hires' work.</span> : null}
+          {!list.length ? <span className="muted" style={{ fontSize: 13 }}>Nothing made yet. Issued invoices and finished shift notes land here, then the hires' work.</span> : null}
         </div>
       </Zone>
     );
@@ -50,22 +50,22 @@ export function ArtifactsZone() {
       <div className="room-cols">
         <div className="stack" style={{ gap: 8, minWidth: 0 }}>
           <label htmlFor="shelf-q" className="sr">Search what got made</label>
-          <input id="shelf-q" className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by number or client" autoComplete="off" />
+          <input id="shelf-q" className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by number, client or participant" autoComplete="off" />
           <div className="stack shelf" style={{ gap: 4 }}>{shown.map((a) => <Item key={a.id} a={a} picked={a.id === picked?.id} />)}</div>
         </div>
         {picked ? (
           <div className="stack provenance enter" key={picked.id} style={{ gap: 12 }}>
             <strong style={{ fontSize: 18 }}>{picked.title}</strong>
             <dl>
-              <dt>Made by</dt><dd>{picked.by}{picked.via === "Money" ? ", in Money" : ", brought in"}</dd>
+              <dt>Made by</dt><dd>{picked.by}{picked.via === "imported" ? ", brought in" : `, in ${picked.via}`}</dd>
               <dt>When</dt><dd>{new Date(picked.at).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}</dd>
               <dt>Privacy</dt><dd>{picked.tier}</dd>
               <dt>The cloud saw</dt><dd>{picked.cloudSaw}</dd>
               <dt>At rest</dt><dd>{info?.practice ? "not encrypted: the practice copy's books are made up" : picked.sealed ? "sealed with your key" : "in the encrypted books (no sealed copy yet)"}</dd>
             </dl>
             <div className="row">
-              <a className="btn primary" href={picked.open} target="_blank" rel="noreferrer"><Icon name="external" size={16} /> Open the PDF</a>
-              <button className="btn" onClick={() => navigate(picked.ref)}>Go to the invoice</button>
+              {picked.open ? <a className="btn primary" href={picked.open} target="_blank" rel="noreferrer"><Icon name="external" size={16} /> Open the PDF</a> : null}
+              <button className={`btn${picked.open ? "" : " primary"}`} onClick={() => navigate(picked.ref)}>{picked.kind === "note" ? "Open the note" : "Go to the invoice"}</button>
             </div>
             <p className="muted" style={{ fontSize: 13, margin: 0 }}>Sharing is always your act: nothing here leaves this machine unless you send it.</p>
           </div>

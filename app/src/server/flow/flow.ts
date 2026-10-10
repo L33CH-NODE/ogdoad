@@ -59,6 +59,13 @@ export interface FlowView {
   streak: number;
 }
 
+/** Raised work that clears itself when it's done where it lives, so Done alone is refused. */
+const CLEARED_BY_DOING: Array<[string, string]> = [
+  ["team:ask:", "Answer the question: it clears itself once it's answered."],
+  ["work:note:", "Write the note: it clears itself once it's finished."],
+  ["work:bill:", "Make the draft in Work: it clears itself once the shifts are on it."],
+];
+
 const iso = () => new Date().toISOString();
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 12);
 const aud = (cents: number) => (cents / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
@@ -223,8 +230,9 @@ export class Flow {
     const set = (sql: string, ...params: unknown[]) => this.db.prepare(`UPDATE tasks SET ${sql}, updated_at = ? WHERE id = ?`).run(...params, now, id);
     if (action === "done") {
       if (t.state === "done" || t.state === "dropped") throw new MoneyError("closed", "That task is already closed.");
-      // Marking a question done would leave the hire waiting; the answer is what clears it.
-      if (t.key?.startsWith("team:ask:")) throw new MoneyError("answer_it", "Answer the question: it clears itself once it's answered.");
+      // Saying it's done would leave the work undone (a hire waiting, a note unwritten); doing it is what clears it.
+      const doing = CLEARED_BY_DOING.find(([prefix]) => t.key?.startsWith(prefix));
+      if (doing) throw new MoneyError("do_it", doing[1]);
       set("state = 'done', closed_by = 'you', closed_at = ?, focus_at = NULL", now);
     } else if (action === "skip") {
       set("skipped_at = ?, focus_at = NULL", now);

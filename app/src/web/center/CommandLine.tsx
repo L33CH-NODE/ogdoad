@@ -5,10 +5,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "../components/icons";
-import { api } from "../lib/api";
+import { api, type Shift } from "../lib/api";
 import { aud } from "../lib/format";
 import { navigate } from "../lib/router";
 import { useCenter } from "./data";
+import { hm, localDay, who } from "./workBits";
 
 const SKINS = [
   { id: "ogdoad-dark", label: "Dark" },
@@ -19,6 +20,8 @@ const PLACES = ["flow", "team", "money", "work", "artifacts", "signals", "dashbo
 const COMMANDS: Array<{ say: string; hint: string }> = [
   ...PLACES.map((p) => ({ say: `go ${p}`, hint: `Open ${p[0].toUpperCase()}${p.slice(1)}` })),
   { say: "new invoice", hint: "Start a draft" },
+  { say: "new shift", hint: "Roster a shift" },
+  { say: "what's on today?", hint: "Today's shifts, from Work" },
   { say: "add ", hint: "Add a task: add ring Harbour about the roster" },
   { say: "what's late?", hint: "Late invoices, from your books" },
   { say: "/deep", hint: "Deep work on or off" },
@@ -85,6 +88,14 @@ export function CommandLine() {
     if (lower === "/deep" || lower === "deep work") return setDeep(!deep.on);
     if (lower === "/skin" || lower === "skin") return nextSkin();
     if (/^(new|start an?) invoice/.test(lower)) return navigate("/money/invoices/new");
+    if (/^(new|add|roster)( an?)? shift/.test(lower)) return navigate("/work/new");
+    if (/what'?s on|today'?s shifts|^today\??$/.test(lower)) {
+      say("you", said);
+      const day = localDay();
+      const list = (await api.get<Shift[]>(`/ogdoad/work/shifts?from=${day}&to=${day}`).catch(() => [] as Shift[])).filter((s) => s.status !== "cancelled");
+      if (!list.length) return say("Ogdoad", "Nothing on today. A free day.", "good");
+      return say("Ogdoad", `${list.length} shift${list.length === 1 ? "" : "s"} today: ${list.map((s) => `${who(s)} ${hm(s.start)}–${hm(s.end)}${s.phase === "now" ? " (on now)" : ""}`).join(", ")}.`, "c1");
+    }
     const task = /^(?:add|todo|task|\+)\s+(.+)$/i.exec(said)?.[1];
     if (task) {
       try {

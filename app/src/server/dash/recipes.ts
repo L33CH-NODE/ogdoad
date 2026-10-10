@@ -39,6 +39,9 @@ const RUNNER = fileURLToPath(new URL("./runner.js", import.meta.url));
 const ROW_LIMIT = 500;
 const TIME_LIMIT_MS = 5000;
 
+/** The last results per open set of books, with the data version they were read at. */
+const cache = new WeakMap<Money, { version: string; panels: PanelWithResult[] }>();
+
 const toPanel = (r: any): Panel => ({ id: r.id, title: r.title, sql: r.sql, chart: JSON.parse(r.chart), madeBy: r.made_by, position: r.position, createdAt: r.created_at });
 
 /** Check a recipe's shape. The query itself is checked by running it. */
@@ -100,10 +103,23 @@ export class Dashboards {
     return (this.db.prepare("SELECT * FROM dashboards ORDER BY position, created_at").all() as any[]).map(toPanel);
   }
 
+  /** What the curated tables were read from: when none of it has moved, the last results still stand. */
+  private version(): string {
+    const r = this.db.prepare(`SELECT (SELECT MAX(id) FROM events) AS e, (SELECT MAX(updated_at) FROM tasks) AS t, (SELECT COUNT(*) FROM tasks) AS tc,
+      (SELECT MAX(updated_at) FROM shifts) AS s, (SELECT MAX(updated_at) FROM invoices) AS i, (SELECT COUNT(*) FROM payments) AS p, (SELECT MAX(updated_at) FROM dashboards) AS d, (SELECT COUNT(*) FROM dashboards) AS dc`).get() as Record<string, unknown>;
+    // The day matters too: a panel can ask for "this month".
+    return `${Object.values(r).join("|")}|${this.money.today()}`;
+  }
+
   async withResults(): Promise<PanelWithResult[]> {
+    const version = this.version();
+    const hit = cache.get(this.money);
+    if (hit && hit.version === version) return hit.panels;
     const panels = this.list();
     const results = await runQueries(this.money, panels.map((p) => p.sql));
-    return panels.map((p, i) => ({ ...p, result: chartFits(p.chart, results[i]) }));
+    const out = panels.map((p, i) => ({ ...p, result: chartFits(p.chart, results[i]) }));
+    cache.set(this.money, { version, panels: out });
+    return out;
   }
 
   async preview(input: { sql?: unknown; chart?: unknown; title?: unknown }): Promise<RunResult> {

@@ -76,3 +76,11 @@ test("a panel is added only when its chart fits its query; adding and removing i
   assert.ok(s.includes("added a dashboard panel: Owed (by SOPHIA)"));
   assert.ok(s.includes("took down a dashboard panel: Owed"));
 });
+
+test("panels are read again only when something they read has moved", async () => {
+  const { m, dash } = setup();
+  const first = await dash.withResults();
+  assert.equal(await dash.withResults(), first, "nothing moved: the same results, no new run");
+  m.createClient({ name: "Kestrel Support Co" }, "operator");
+  assert.notEqual(await dash.withResults(), first, "the books moved: read again");
+});

@@ -58,7 +58,8 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
 - **SOPHIA's room opens on the conversation:** her task's thread as messages, her question cards in line, and a reply box. Her terminal is a tab away.
 - **The team's tasks** are listed under the constellation: who has each one, and where it stands. Any task opens as the same kind of conversation.
 - **Every hire's room shows its live terminal**, and can answer it. While the hire waits on a decision, typing presses keys.
-- **Left for the classic view:** hiring a new agent from a screen (SOPHIA hires through Horos for now), agent settings, budgets and projects.
+- **Hire someone** from the Team zone: a harness found on this machine (cloud or local, said plainly), a name, what it's for, and whether to keep it. It gets a folder of its own, and its first message is noted in the crossings log, like anything typed into its terminal.
+- **Left for the classic view:** agent settings, budgets and projects.
 
 ## Artifacts: what got made
 

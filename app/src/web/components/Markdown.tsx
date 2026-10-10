@@ -6,7 +6,8 @@ import type { ReactNode } from "react";
 
 function inline(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\((https?:\/\/[^)\s]+)\))/g;
+  // A mention in the engine's own form, [@Name](agent://id), shows as a name chip.
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[@[^\]]+\]\(agent:\/\/[^)\s]+\)|\[[^\]]+\]\((https?:\/\/[^)\s]+)\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -15,6 +16,7 @@ function inline(text: string, key: string): ReactNode[] {
     const t = m[0];
     if (t.startsWith("**")) out.push(<strong key={`${key}-${i++}`}>{t.slice(2, -2)}</strong>);
     else if (t.startsWith("`")) out.push(<code key={`${key}-${i++}`}>{t.slice(1, -1)}</code>);
+    else if (t.startsWith("[@")) out.push(<span key={`${key}-${i++}`} className="mention">@{/^\[@([^\]]+)\]/.exec(t)![1]}</span>);
     else out.push(<a key={`${key}-${i++}`} href={m[2]} target="_blank" rel="noreferrer noopener">{/^\[([^\]]+)\]/.exec(t)![1]}</a>);
     last = m.index + t.length;
   }

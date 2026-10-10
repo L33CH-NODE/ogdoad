@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { handleCenter, type CenterContext } from "./center.js";
-import { recipientFor, recipientOfAgent, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
+import { recipientFor, recipientOfAgent, recipientOfHire, recipientsOfComment, recordCrossing, recordDirectCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { teamArtifacts } from "./teamArtifacts.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
@@ -22,6 +22,7 @@ import { Vault } from "./vault.js";
 import { handleDashboards } from "./dash/routes.js";
 import { CalendarSync } from "./work/calendar.js";
 import { handleWork } from "./work/routes.js";
+import { handleRooms } from "./rooms.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
 
 const PORT = Number(process.env.OGDOAD_APP_PORT ?? 3101);
@@ -167,7 +168,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", unlocked: keeper.status().unlocked });
     checkRequest(req, ALLOWED_ORIGINS);
     // A change that went through tells every open page, once it has.
-    const area = /^\/ogdoad\/(money|flow|work|dashboards|practice)\//.exec(`${url.pathname}/`)?.[1];
+    const area = /^\/ogdoad\/(money|flow|work|dashboards|practice|rooms)\//.exec(`${url.pathname}/`)?.[1];
     if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => {
       if (res.statusCode >= 400) return;
       broadcast("changed", { area });
@@ -220,6 +221,11 @@ const server = createServer(async (req, res) => {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleWork(money, req, res, url, { practice: PRACTICE });
     }
+    if (url.pathname === "/ogdoad/rooms" || url.pathname.startsWith("/ogdoad/rooms/")) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      const s = readSophia();
+      return await handleRooms(money, req, res, url, s ? { serverUrl: SERVER_URL, companyId: s.companyId, practice: PRACTICE } : null);
+    }
     if (/^\/ogdoad\/(flow|signals|artifacts|monthly|crossings)(\/|$)/.test(url.pathname)) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       if (await handleCenter(money, req, res, url, center)) return;
@@ -267,12 +273,16 @@ const server = createServer(async (req, res) => {
       // A message or an answer leaving for a hire is a crossing: noted once the server has it.
       const crossing = req.method === "POST" ? /^\/api\/issues\/([^/]+)\/(comments|interactions\/[^/]+\/respond)$/.exec(url.pathname) : null;
       const books = money;
+      // A message reaches the task's reader and everyone it mentions (each is woken), so each is noted.
       return proxyHttp(paperclip, req, res, crossing && books ? (status, body) => {
         if (status >= 400) return;
-        void recipientFor(crossing[1], SERVER_URL).then((to) => {
-          recordCrossing(books, crossing[1], crossing[2] === "comments" ? "message" : "answer", body, to);
+        void (async () => {
+          const message = crossing[2] === "comments";
+          const text = message ? String((JSON.parse(body.toString("utf8") || "{}") as { body?: string }).body ?? "") : "";
+          const to = message ? await recipientsOfComment(crossing[1], text, SERVER_URL) : [await recipientFor(crossing[1], SERVER_URL)];
+          for (const r of to) recordCrossing(books, crossing[1], message ? "message" : "answer", body, r);
           broadcast("changed", { area: "crossing" });
-        }).catch(() => {});
+        })().catch(() => {});
       } : undefined);
     }
     if (url.pathname.startsWith("/horos/")) {

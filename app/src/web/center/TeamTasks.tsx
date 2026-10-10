@@ -11,7 +11,7 @@ import { useCenter } from "./data";
 export interface TeamTask { id: string; identifier: string | null; title: string; status: string; assigneeAgentId: string | null; assigneeUserId: string | null; updatedAt: string }
 interface Agent { id: string; name: string }
 
-const STATUS: Record<string, { word: string; tone: string }> = {
+export const STATUS: Record<string, { word: string; tone: string }> = {
   backlog: { word: "later", tone: "" }, todo: { word: "to do", tone: "t-c1" }, in_progress: { word: "in hand", tone: "t-primary" },
   in_review: { word: "in review", tone: "t-c1" }, blocked: { word: "blocked", tone: "t-warn" }, done: { word: "done", tone: "t-good" }, cancelled: { word: "cancelled", tone: "" },
 };

@@ -109,3 +109,16 @@ export interface ChartSpec { type: "bar" | "line" | "stat" | "table"; x?: string
 export type PanelResult = { ok: true; columns: string[]; rows: unknown[][] } | { ok: false; error: string };
 export interface Panel { id: string; title: string; sql: string; chart: ChartSpec; madeBy: string; position: number; createdAt: string; result: PanelResult }
 export interface Recipe { title: string; sql: string; chart: ChartSpec }
+
+// --- Rooms (mirroring the server) ---
+
+export interface RoomMember { agentId: string; name: string; hireId: string | null; harness: string | null; where: "cloud" | "local" | "either" | "unknown" }
+export interface RoomPart { id: string; identifier: string | null; title: string; status: string; agentId: string | null; yours: boolean; thread: boolean; createdAt: string; updatedAt: string }
+export type RoomMessage =
+  | { id: string; at: string; partId: string; kind: "said"; from: "you" | "agent"; agentId: string | null; body: string }
+  | { id: string; at: string; partId: string; kind: "opened"; agentId: string | null; byYou: boolean; title: string };
+export interface RoomSummary { id: string; name: string; status: string; color: string | null; lastAt: string; partCount: number; openCount: number; memberIds: string[]; memberHireIds: string[]; hasThread: boolean }
+export interface Room extends RoomSummary {
+  description: string; leadAgentId: string | null; threadId: string | null; parts: RoomPart[]; members: RoomMember[]; everyone: RoomMember[];
+  messages: RoomMessage[]; running: Array<{ agentId: string; issueId: string; status: string; startedAt: string | null }>;
+}

@@ -12,11 +12,11 @@ import { Conversation } from "./Conversation";
 import { HireForm } from "./HireForm";
 import { TaskList, TaskRoom, useTeamTasks } from "./TeamTasks";
 import { shortName, useCenter } from "./data";
+import { COLOR, WORD } from "./presence";
+import { NewRoom, RoomList, RoomView } from "./Rooms";
 
 interface Person { id: string; name: string; harness: string; state: string; kept: boolean; title?: string }
 
-const COLOR: Record<string, string> = { working: "var(--c1)", blocked: "var(--warn)", idle: "var(--muted)", done: "var(--good)", starting: "var(--muted)", resting: "var(--idle)" };
-const WORD: Record<string, string> = { working: "working", blocked: "needs you", idle: "idle", done: "finished", starting: "starting", resting: "resting" };
 const SEAT_R = 70;
 const seat = (i: number) => {
   const a = (-90 + i * 45) * (Math.PI / 180);
@@ -171,6 +171,7 @@ function TeamRoom({ people, core, seats, selectedId, taskId, hiring, chip, syste
         <div className="stack" style={{ gap: 12 }}>
           <div className="constellation-wrap big"><Constellation core={core} seats={seats} selected={selected?.id} /></div>
           <div className="row" style={{ justifyContent: "space-between" }}>{systemsRow}<button className="btn small" onClick={() => navigate("/team/hire")}>Hire someone</button></div>
+          <RoomList />
           <TaskList tasks={tasks} nameOf={nameOf} picked={taskId} />
         </div>
         {hiring ? <HireForm />
@@ -186,8 +187,9 @@ export function TeamZone() {
   const open = useZoom() === "team";
   const parts = usePath().split("/").filter(Boolean);
   const taskId = parts[1] === "task" ? parts[2] : undefined;
+  const roomId = parts[1] === "room" ? parts[2] : undefined;
   const hiring = parts[1] === "hire";
-  const selectedId = taskId || hiring ? undefined : parts[1];
+  const selectedId = taskId || hiring || roomId ? undefined : parts[1];
   const { people, core, seats, systems } = useTeamView();
   const working = people.filter((p) => p.state === "working").length;
   const waiting = people.filter((p) => p.state === "blocked").length;
@@ -206,5 +208,7 @@ export function TeamZone() {
       </Zone>
     );
   }
+  // A project room takes the whole zone: the conversation needs the width.
+  if (roomId) return <Zone id="team" chip={chip}>{roomId === "new" ? <NewRoom /> : <RoomView id={roomId} />}</Zone>;
   return <TeamRoom people={people} core={core} seats={seats} selectedId={selectedId} taskId={taskId} hiring={hiring} chip={chip} systemsRow={systemsRow} />;
 }

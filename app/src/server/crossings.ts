@@ -93,6 +93,36 @@ export function recipientOfAgent(agentId: string | null | undefined, home = OGDO
   return hire ? describe(hire, String(hire.label ?? "a hire").replace(/ - .*$/, "")) : { who: agentId ? "an agent" : "the team", via: "the Ogdoad server", where: "unknown" };
 }
 
+/** The agents a message mentions, in the engine's own form: [@Name](agent://<id>). Each once. */
+export function mentionsIn(text: string): string[] {
+  return [...new Set([...text.matchAll(/\[@[^\]]*\]\(agent:\/\/([^)\s]+)\)/g)].map((m) => m[1]))];
+}
+
+/** The hire whose seat an agent is, if Horos keeps one: for presence and the cloud/local tag. */
+export function hireOfAgent(agentId: string, home = OGDOAD_HOME): { hireId: string; harness: string; via: string; where: Where } | null {
+  const hire = rosterHires(home).find((h) => h.seat?.agentId === agentId);
+  if (!hire) return null;
+  const d = describe(hire, "");
+  return { hireId: String(hire.id), harness: String(hire.harness), via: d.via, where: d.where };
+}
+
+/**
+ * Everyone a comment reaches: the task's reader and every agent it mentions (the engine wakes each), once
+ * each. "The team" stands in only when nobody more specific gets it.
+ */
+export async function recipientsOfComment(issueId: string, text: string, serverUrl: string, home = OGDOAD_HOME): Promise<Recipient[]> {
+  const reader = await recipientFor(issueId, serverUrl, home);
+  const mentioned = mentionsIn(text).map((id) => recipientOfAgent(id, home));
+  const all = mentioned.length && reader.who === "the team" ? mentioned : [reader, ...mentioned];
+  const seen = new Set<string>();
+  return all.filter((r) => {
+    const k = `${r.who}|${r.via}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Note text that went straight to a hire (typed into its terminal, or its first message). */
 export function recordDirectCrossing(money: Money, hireId: string, text: string, to: Recipient): void {
   const what = text.replace(/\s+/g, " ").trim().slice(0, 280);
@@ -106,7 +136,8 @@ export function recordCrossing(money: Money, issueId: string, kind: "message" | 
   try {
     const j = JSON.parse(body.toString("utf8"));
     if (kind === "message") {
-      const text = String(j.body ?? "").replace(/\s+/g, " ").trim();
+      // Mentions read as names here, as they do in the room.
+      const text = String(j.body ?? "").replace(/\[@([^\]]*)\]\(agent:\/\/[^)\s]+\)/g, "@$1").replace(/\s+/g, " ").trim();
       what = /^Dashboard request from the operator:/.test(text) ? `asked for a panel (the tables' shape went too, no rows): ${/"([^"]*)"/.exec(text)?.[1] ?? ""}` : text;
     } else {
       const n = Array.isArray(j.answers) ? j.answers.length : 0;

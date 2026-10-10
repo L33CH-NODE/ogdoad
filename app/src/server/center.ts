@@ -103,17 +103,19 @@ export function signals(money: Money, limit = 40): Signal[] {
 
 export interface Artifact {
   id: string;
-  kind: "invoice" | "note";
+  kind: "invoice" | "note" | "document";
   title: string;
   by: string;
   via: string;
   at: string;
-  tier: "local only";
+  tier: "local only" | "made by a cloud hire" | "made on this machine" | "made by a hire";
   cloudSaw: string;
   sealed: boolean;
   /** A file to open (an invoice's PDF); null when it opens in place. */
   open: string | null;
   ref: string;
+  /** A hire's document: where its text lives on the Ogdoad server. */
+  source?: { issueId: string; key: string };
 }
 
 /** What got made: issued invoices and finished shift notes, newest first. The hires' work joins later. */
@@ -176,6 +178,8 @@ export function monthly(money: Money, months = 12): Array<{ month: string; invoi
 export interface CenterContext {
   /** What the team is waiting on the operator for; null when it couldn't be read (or isn't wanted here). */
   team?: () => Promise<Raised[] | null>;
+  /** What the hires have written, for the Artifacts shelf. */
+  teamArtifacts?: () => Promise<Artifact[] | null>;
 }
 
 /** Bring Flow up to date with everything that raises work: Money and the bank, and the team when it answers. */
@@ -209,7 +213,10 @@ export async function handleCenter(money: Money, req: IncomingMessage, res: Serv
     throw new HttpError(404, "not_found", "No such Flow route.");
   }
   if (parts[0] === "signals" && method === "GET") return sendJson(res, 200, signals(money, Math.min(200, Number(url.searchParams.get("limit") ?? 40) || 40))), true;
-  if (parts[0] === "artifacts" && method === "GET") return sendJson(res, 200, artifacts(money)), true;
+  if (parts[0] === "artifacts" && method === "GET") {
+    const theirs = (await ctx.teamArtifacts?.()) ?? [];
+    return sendJson(res, 200, [...artifacts(money), ...theirs].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 80)), true;
+  }
   if (parts[0] === "monthly" && method === "GET") return sendJson(res, 200, monthly(money)), true;
   if (parts[0] === "crossings" && method === "GET") return sendJson(res, 200, crossings(money)), true;
   return false;

@@ -60,3 +60,31 @@ test("a hire gets its own folder and brief, and Horos is asked with its token", 
     h.close();
   }
 });
+
+test("the hires' documents reach the shelf with where they came from", async () => {
+  const { teamArtifacts } = await import("../teamArtifacts.js");
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const home = mkdtempSync(join(tmpdir(), "ogdoad-docs-"));
+  mkdirSync(join(home, "horos"));
+  writeFileSync(join(home, "horos", "roster.json"), JSON.stringify([{ id: "h1", harness: "claude", label: "SOPHIA - Claude Code", seat: { agentId: "ag-1" } }]));
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    const at = "2026-10-10T01:00:00.000Z";
+    if (req.url?.startsWith("/api/companies/co/issues")) return res.end(JSON.stringify([{ id: "i1", identifier: "OGD-1", title: "Set up", updatedAt: at }]));
+    if (req.url === "/api/companies/co/agents") return res.end(JSON.stringify([{ id: "ag-1", name: "SOPHIA - Claude Code" }]));
+    if (req.url === "/api/issues/i1/documents") return res.end(JSON.stringify([{ id: "d1", issueId: "i1", key: "profile", title: "Company profile", createdByAgentId: "ag-1", createdByUserId: null, updatedAt: at }]));
+    res.statusCode = 404;
+    res.end("[]");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const list = await teamArtifacts(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, "co", home);
+    assert.equal(list?.length, 1);
+    const [d] = list!;
+    assert.deepEqual([d.kind, d.title, d.by, d.via, d.tier, d.ref], ["document", "Company profile · OGD-1", "SOPHIA", "Claude Code", "made by a cloud hire", "/team/task/i1"]);
+    assert.deepEqual(d.source, { issueId: "i1", key: "profile" });
+    assert.equal(await teamArtifacts("http://127.0.0.1:9", "other", home), null, "a server that can't be read gives nothing, not an error");
+  } finally {
+    server.close();
+  }
+});

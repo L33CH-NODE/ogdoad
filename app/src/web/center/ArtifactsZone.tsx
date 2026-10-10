@@ -2,24 +2,37 @@
 // from: who made it, how, its privacy tier and what the cloud saw while it was made. Issued invoices
 // and finished shift notes so far; the hires' documents and dashboards join as they're produced.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "../components/icons";
-import type { Artifact } from "../lib/api";
+import { Markdown } from "../components/Markdown";
+import { api, type Artifact } from "../lib/api";
 import { ago } from "../lib/format";
 import { navigate, usePath } from "../lib/router";
 import { useZoom, Zone } from "./ControlCenter";
 import { useCenter } from "./data";
 
+/** A hire's document, read from the Ogdoad server when it's opened. */
+function DocumentText({ source }: { source: { issueId: string; key: string } }) {
+  const [body, setBody] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setBody(undefined);
+    api.get<{ body?: string }>(`/api/issues/${source.issueId}/documents/${encodeURIComponent(source.key)}`).then((d) => setBody(d.body ?? ""), () => setBody(null));
+  }, [source.issueId, source.key]);
+  if (body === undefined) return <span className="muted">Opening it…</span>;
+  if (body === null) return <span className="muted">It couldn't be read just now.</span>;
+  return <div className="doc-text"><Markdown text={body} /></div>;
+}
+
 function Item({ a, picked }: { a: Artifact; picked?: boolean }) {
   return (
     <button className={`shelf-item${picked ? " picked" : ""}`} onClick={() => navigate(`/artifacts/${a.id}`)}>
-      <span className="shelf-icon"><Icon name={a.kind === "note" ? "note" : "money"} size={16} /></span>
+      <span className="shelf-icon"><Icon name={a.kind === "note" ? "note" : a.kind === "document" ? "file" : "money"} size={16} /></span>
       <span className="shelf-text">
         <span className="shelf-title">{a.title}</span>
         <span className="muted">{a.by} · {ago(a.at)}</span>
       </span>
-      <span className="chip quiet tier">{a.tier}</span>
+      <span className={`chip quiet tier${a.tier.includes("cloud") ? " t-warn" : ""}`}>{a.tier}</span>
     </button>
   );
 }
@@ -57,16 +70,17 @@ export function ArtifactsZone() {
           <div className="stack provenance enter" key={picked.id} style={{ gap: 12 }}>
             <strong style={{ fontSize: 18 }}>{picked.title}</strong>
             <dl>
-              <dt>Made by</dt><dd>{picked.by}{picked.via === "imported" ? ", brought in" : `, in ${picked.via}`}</dd>
+              <dt>Made by</dt><dd>{picked.by}{picked.via === "imported" ? ", brought in" : picked.kind === "document" ? `, through ${picked.via}` : `, in ${picked.via}`}</dd>
               <dt>When</dt><dd>{new Date(picked.at).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}</dd>
               <dt>Privacy</dt><dd>{picked.tier}</dd>
               <dt>The cloud saw</dt><dd>{picked.cloudSaw}</dd>
-              <dt>At rest</dt><dd>{info?.practice ? "not encrypted: the practice copy's books are made up" : picked.sealed ? "sealed with your key" : "in the encrypted books (no sealed copy yet)"}</dd>
+              <dt>At rest</dt><dd>{picked.kind === "document" ? "in the Ogdoad server's database (not yet encrypted)" : info?.practice ? "not encrypted: the practice copy's books are made up" : picked.sealed ? "sealed with your key" : "in the encrypted books (no sealed copy yet)"}</dd>
             </dl>
             <div className="row">
               {picked.open ? <a className="btn primary" href={picked.open} target="_blank" rel="noreferrer"><Icon name="external" size={16} /> Open the PDF</a> : null}
-              <button className={`btn${picked.open ? "" : " primary"}`} onClick={() => navigate(picked.ref)}>{picked.kind === "note" ? "Open the note" : "Go to the invoice"}</button>
+              <button className={`btn${picked.open ? "" : " primary"}`} onClick={() => navigate(picked.ref)}>{picked.kind === "note" ? "Open the note" : picked.kind === "document" ? "Go to the task" : "Go to the invoice"}</button>
             </div>
+            {picked.kind === "document" && picked.source ? <DocumentText source={picked.source} /> : null}
             <p className="muted" style={{ fontSize: 13, margin: 0 }}>Sharing is always your act: nothing here leaves this machine unless you send it.</p>
           </div>
         ) : <p className="muted">Pick something to see where it came from.</p>}

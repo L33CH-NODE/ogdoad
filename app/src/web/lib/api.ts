@@ -85,7 +85,7 @@ export interface Task {
 }
 export interface FlowView { now: Task | null; next: Task[]; later: Task[]; parked: Task[]; done: Task[]; doneToday: number; streak: number }
 export interface Signal { id: number | string; at: string; who: string; text: string; tone: "good" | "c1" | "warn" | "bad" | "muted" | "primary"; kind: string }
-export interface Artifact { id: string; kind: "invoice" | "note"; title: string; by: string; via: string; at: string; tier: string; cloudSaw: string; sealed: boolean; open: string | null; ref: string }
+export interface Artifact { id: string; kind: "invoice" | "note" | "document"; title: string; by: string; via: string; at: string; tier: string; cloudSaw: string; sealed: boolean; open: string | null; ref: string; source?: { issueId: string; key: string } }
 
 // --- Work types (mirroring the server) ---
 

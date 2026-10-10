@@ -10,6 +10,7 @@ import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { handleCenter, type CenterContext } from "./center.js";
 import { recipientFor, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
+import { teamArtifacts } from "./teamArtifacts.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
 import { hire } from "./hire.js";
@@ -94,6 +95,10 @@ const center: CenterContext = {
   team: async () => {
     const s = TEAM_FLOW ? readSophia() : null;
     return s ? raisedFromTeam({ serverUrl: SERVER_URL, companyId: s.companyId, classicUrl: CLASSIC_URL }) : null;
+  },
+  teamArtifacts: async () => {
+    const s = TEAM_FLOW ? readSophia() : null;
+    return s ? teamArtifacts(SERVER_URL, s.companyId) : null;
   },
 };
 

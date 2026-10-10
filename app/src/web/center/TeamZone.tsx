@@ -1,13 +1,14 @@
 // III. Team: the hires as a constellation on the octagram, SOPHIA at its heart. Eight seats, one on each
 // point of the two squares. Working hires are linked to the core with a moving thread, a hire waiting on
 // you glows amber, resting ones dim. The servers that carry them sit on a line below. Opened, pick a
-// hire to watch its terminal live and answer it.
+// hire to watch its terminal live and answer it; SOPHIA's room opens on your conversation with her.
 
 import { useEffect, useState } from "react";
 
 import { api, type HireInfo } from "../lib/api";
 import { navigate, usePath } from "../lib/router";
 import { useZoom, Zone } from "./ControlCenter";
+import { Conversation } from "./Conversation";
 import { shortName, useCenter } from "./data";
 
 interface Person { id: string; name: string; harness: string; state: string; kept: boolean; title?: string }
@@ -89,6 +90,10 @@ function Constellation({ core, seats, selected }: { core: Person | null; seats: 
 }
 
 function HireRoom({ person }: { person: Person }) {
+  const { sophia } = useCenter();
+  const talkable = sophia?.hireId === person.id ? sophia.taskId : null;
+  const [view, setView] = useState<"talk" | "screen">(talkable ? "talk" : "screen");
+  useEffect(() => setView(talkable ? "talk" : "screen"), [person.id, talkable]);
   const [lines, setLines] = useState<string[] | null>(null);
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
@@ -96,7 +101,7 @@ function HireRoom({ person }: { person: Person }) {
   const running = person.state !== "resting";
   useEffect(() => {
     setLines(null);
-    if (!running) return;
+    if (!running || view !== "screen") return;
     let alive = true;
     const load = () => api.get<{ lines: string[] }>(`/horos/v1/hires/${person.id}/screen?lines=60`).then((r) => alive && setLines(r.lines), () => alive && setLines([]));
     load();
@@ -105,7 +110,7 @@ function HireRoom({ person }: { person: Person }) {
       alive = false;
       clearInterval(t);
     };
-  }, [person.id, running]);
+  }, [person.id, running, view]);
 
   const run = (p: Promise<unknown>, done: string) => p.then(() => setNote(done), (e) => setNote((e as Error).message)).finally(() => setTimeout(() => setNote(null), 5000));
   // Waiting on a decision, a hire takes keys, not a new prompt: what you type is pressed as-is, and
@@ -125,6 +130,12 @@ function HireRoom({ person }: { person: Person }) {
         <span className="chip quiet">{person.harness}</span>
         <span className="chip" style={{ color: COLOR[person.state] }}>{WORD[person.state] ?? person.state}</span>
         <span className="spacer" />
+        {talkable ? (
+          <div className="seg" role="tablist" aria-label="View">
+            <button role="tab" aria-selected={view === "talk"} className={view === "talk" ? "on" : ""} onClick={() => setView("talk")}>Conversation</button>
+            <button role="tab" aria-selected={view === "screen"} className={view === "screen" ? "on" : ""} onClick={() => setView("screen")}>Terminal</button>
+          </div>
+        ) : null}
         {person.kept && !running ? <button className="btn small primary" onClick={() => run(api.post(`/horos/v1/roster/${person.id}/wake`), "Waking it.")}>Wake</button> : null}
         {person.kept && running ? (
           sure
@@ -132,7 +143,7 @@ function HireRoom({ person }: { person: Person }) {
             : <button className="btn small" onClick={() => setSure(true)}>Restart</button>
         ) : null}
       </div>
-      {running ? (
+      {talkable && view === "talk" ? <Conversation taskId={talkable} name={person.name} /> : running ? (
         <>
           <pre className="screen" aria-label={`${person.name}'s terminal`}>{lines === null ? "Reading its screen…" : lines.join("\n").trimEnd() || "(the screen is empty)"}</pre>
           <form className="row" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); send(); }}>

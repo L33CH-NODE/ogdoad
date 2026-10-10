@@ -228,6 +228,26 @@ kbd { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 10
 .week-shift .chip { flex: 0 0 auto; }
 .bill-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid transparent; }
 .bill-row.picked { border-color: color-mix(in oklch, var(--primary) 50%, transparent); }
+/* A conversation with a hire. */
+.seg { display: inline-flex; padding: 2px; border-radius: 10px; background: var(--faint); gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+.seg button.on { background: var(--zone2); color: var(--fg); box-shadow: 0 0 0 1px var(--edge); }
+.thread { display: flex; flex-direction: column; gap: 10px; max-height: min(56vh, 560px); overflow: auto; padding: 4px 2px; }
+.msg { display: flex; flex-direction: column; gap: 4px; max-width: 88%; padding: 10px 12px; border-radius: 14px; background: var(--zone2); border: 1px solid var(--edge); font-size: 13.5px; line-height: 1.5; }
+.msg.them { align-self: flex-start; border-top-left-radius: 4px; }
+.msg.you { align-self: flex-end; border-top-right-radius: 4px; background: color-mix(in oklch, var(--primary) 12%, var(--zone2)); border-color: color-mix(in oklch, var(--primary) 30%, var(--edge)); }
+.msg.card { align-self: flex-start; border-style: dashed; }
+.msg.card.waiting { border-color: color-mix(in oklch, var(--warn) 60%, transparent); border-style: solid; }
+.msg-who { font-size: 11px; color: var(--muted); font-weight: 600; }
+.md p { margin: 0 0 6px; }
+.md p:last-child { margin-bottom: 0; }
+.md ul, .md ol { margin: 2px 0 6px; padding-left: 20px; }
+.md code { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--faint); }
+.md .md-code { margin: 4px 0 6px; padding: 8px 10px; border-radius: 8px; background: var(--screen-bg, var(--faint)); font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; }
+.md .md-h { display: block; margin: 4px 0 2px; }
+.md a { color: var(--primary); }
+.reply-box { display: flex; gap: 8px; align-items: flex-end; }
+.reply-box textarea { flex: 1; min-height: 44px; resize: vertical; font-size: 13.5px; }
 .shutdown-veil { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: color-mix(in oklch, var(--ground) 82%, transparent); backdrop-filter: blur(6px); }
 .crossings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; }
 .crossings li { display: flex; align-items: baseline; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--faint); font-size: 13px; min-width: 0; }

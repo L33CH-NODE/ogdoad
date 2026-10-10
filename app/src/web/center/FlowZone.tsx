@@ -16,7 +16,7 @@ import { shortName, useCenter } from "./data";
 const SOURCE: Record<Task["source"], string> = { you: "yours", money: "Money", bank: "Bank", work: "Work", team: "Team" };
 
 /** Raised work that clears by doing it where it lives: its main button goes there, and D leaves it alone. */
-const DO_IT: Array<[string, string]> = [["team:ask:", "Answer"], ["team:approval:", "Decide"], ["work:note:", "Write it"], ["work:bill:", "Bill it"], ["money:late:", "Draft a reminder"]];
+const DO_IT: Array<[string, string]> = [["team:ask:", "Answer"], ["team:approval:", "Decide"], ["work:note:", "Write it"], ["work:bill:", "Bill it"], ["money:late:", "Draft a reminder"], ["work:calendar", "Fix it"], ["money:setup", "Finish it"], ["money:gst:over", "Open settings"]];
 export const doIt = (t: Task | null): string | null => (t?.key ? DO_IT.find(([prefix]) => t.key!.startsWith(prefix))?.[1] ?? null : null);
 
 export function FlowZone() {

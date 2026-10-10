@@ -87,6 +87,12 @@ export function recipientOfHire(hireId: string, home = OGDOAD_HOME, fallback?: {
   return describe(hire, String(hire?.label ?? "a hire").replace(/ - .*$/, ""));
 }
 
+/** The hire whose seat an agent is (for an approval's note, which goes back to the agent that asked). */
+export function recipientOfAgent(agentId: string | null | undefined, home = OGDOAD_HOME): Recipient {
+  const hire = agentId ? rosterHires(home).find((h) => h.seat?.agentId === agentId) : null;
+  return hire ? describe(hire, String(hire.label ?? "a hire").replace(/ - .*$/, "")) : { who: agentId ? "an agent" : "the team", via: "the Ogdoad server", where: "unknown" };
+}
+
 /** Note text that went straight to a hire (typed into its terminal, or its first message). */
 export function recordDirectCrossing(money: Money, hireId: string, text: string, to: Recipient): void {
   const what = text.replace(/\s+/g, " ").trim().slice(0, 280);

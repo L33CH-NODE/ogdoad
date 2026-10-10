@@ -57,6 +57,40 @@ function tableCounts(db: MoneyDb): Record<string, number> {
 }
 
 /**
+ * Finish a first encryption that was interrupted (the plaintext safety copy is still on disk). The
+ * encrypted file is kept when it opens with the key and has every row the copy has; otherwise the copy
+ * goes back (with any stale journal cleared, so SQLite can't replay it over the copy) and is encrypted
+ * again. Either way, no plaintext copy is left behind.
+ */
+export function settleFirstEncryption(file: string, key: Buffer): void {
+  const safety = `${file}.before-key`;
+  if (!existsSync(safety)) return;
+  let good = false;
+  try {
+    const plain = new Database(safety, { readonly: true });
+    const want = tableCounts(plain);
+    plain.close();
+    if (!isPlaintextDb(file)) {
+      const enc = new Database(file, { readonly: true });
+      applyKey(enc, key, "key");
+      const got = tableCounts(enc);
+      enc.close();
+      good = Object.keys(want).length > 0 && Object.keys(want).every((t) => want[t] === got[t]);
+    }
+  } catch {
+    good = false;
+  }
+  if (!good) {
+    for (const ext of ["-journal", "-wal", "-shm"]) if (existsSync(`${file}${ext}`)) unlinkSync(`${file}${ext}`);
+    copyFileSync(safety, file);
+    unlinkSync(safety);
+    encryptExistingDb(file, key);
+    return;
+  }
+  unlinkSync(safety);
+}
+
+/**
  * Encrypt an existing plaintext database in place (when the vault is first made). A safety copy is
  * kept until the encrypted file is proven: no plaintext header, it opens with the key, and every
  * table has the same rows. If anything doesn't check out, the books are put back as they were.

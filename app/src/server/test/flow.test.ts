@@ -241,3 +241,17 @@ test("what's typed straight into a hire's terminal is a crossing too, named by t
   assert.deepEqual([scout.who, scout.via, scout.where, scout.what, scout.issueId], ["Scout", "grok CLI", "cloud", "Find three local plan managers", "hire:h7"]);
   assert.deepEqual([ledger.who, ledger.where], ["Ledger", "local"]);
 });
+
+test("standing conditions can't be silenced with Done: the calendar failing, Money not set up", async () => {
+  const m = new Money(openMoneyDb(":memory:"));
+  const flow = new Flow(m);
+  flow.sync(raisedFromMoney(m), ["money:", "bank:"]);
+  const setup = flow.view().now!;
+  assert.equal(setup.key, "money:setup");
+  assert.throws(() => flow.act(setup.id, "done"), /Finish Money's settings/);
+  flow.sync([{ key: "work:calendar", title: "The calendar sync isn't working", context: "", source: "work", ref: "/work/calendar", urgency: 1 }], ["work:"]);
+  const cal = [flow.view().now, ...flow.view().next].find((t) => t?.key === "work:calendar")!;
+  assert.throws(() => flow.act(cal.id, "done"), /Fix the calendar settings/);
+  const { recipientOfAgent } = await import("../crossings.js");
+  assert.deepEqual(recipientOfAgent(null), { who: "the team", via: "the Ogdoad server", where: "unknown" });
+});

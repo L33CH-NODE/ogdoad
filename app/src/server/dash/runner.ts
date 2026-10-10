@@ -8,6 +8,10 @@ import type { CuratedTable } from "./curated.js";
 interface Job { tables: CuratedTable[]; queries: string[]; limit: number }
 export type RunResult = { ok: true; columns: string[]; rows: unknown[][] } | { ok: false; error: string };
 
+/** The most text one value may carry, and the most a whole result may. */
+const MAX_TEXT = 2000;
+const MAX_RESULT = 1_000_000;
+
 process.once("message", (job: Job) => {
   const db = new Database(":memory:");
   for (const t of job.tables) {
@@ -24,9 +28,20 @@ process.once("message", (job: Job) => {
       if (!stmt.reader) return { ok: false, error: "A panel's query has to be a SELECT." };
       const columns = stmt.columns().map((c) => c.name);
       const rows: unknown[][] = [];
+      // A panel shows numbers and short text. Anything bigger is cut down here, in this process, so a
+      // huge value (a 200 MB blob, say) never reaches the app.
+      let size = 0;
+      const small = (v: unknown): unknown => {
+        if (typeof v === "bigint") return Number(v);
+        if (v instanceof Uint8Array) return `(${v.length.toLocaleString("en-AU")} bytes of binary)`;
+        if (typeof v === "string" && v.length > MAX_TEXT) return `${v.slice(0, MAX_TEXT)}…`;
+        return v;
+      };
       for (const r of stmt.raw().iterate() as Iterable<unknown[]>) {
-        rows.push(r.map((v) => (typeof v === "bigint" ? Number(v) : v)));
-        if (rows.length >= job.limit) break;
+        const row = r.map(small);
+        size += row.reduce<number>((a, v) => a + (typeof v === "string" ? v.length : 8), 0);
+        rows.push(row);
+        if (rows.length >= job.limit || size > MAX_RESULT) break;
       }
       return { ok: true, columns, rows };
     } catch (err) {

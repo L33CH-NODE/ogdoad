@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { handleCenter, type CenterContext } from "./center.js";
-import { recipientFor, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
+import { recipientFor, recipientOfAgent, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { teamArtifacts } from "./teamArtifacts.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
@@ -250,6 +250,20 @@ const server = createServer(async (req, res) => {
       return void res.end(practiceStatement(money));
     }
     if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
+      // An approval's decision (and its note) goes back to the agent that asked: a crossing too.
+      const decided = req.method === "POST" ? /^\/api\/approvals\/([^/]+)\/(approve|reject)$/.exec(url.pathname) : null;
+      if (decided && money) {
+        const books = money;
+        return proxyHttp(paperclip, req, res, (status, body) => {
+          if (status >= 400) return;
+          void (async () => {
+            const a = (await fetch(`${SERVER_URL}/api/approvals/${encodeURIComponent(decided[1])}`, { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).catch(() => null)) as { requestedByAgentId?: string | null } | null;
+            const note = String((JSON.parse(body.toString("utf8") || "{}") as { decisionNote?: string }).decisionNote ?? "").trim();
+            recordDirectCrossing(books, `approval:${decided[1]}`, `${decided[2] === "approve" ? "approved" : "turned down"} a request${note ? `: ${note}` : ""}`, recipientOfAgent(a?.requestedByAgentId));
+            broadcast("changed", { area: "crossing" });
+          })().catch(() => {});
+        });
+      }
       // A message or an answer leaving for a hire is a crossing: noted once the server has it.
       const crossing = req.method === "POST" ? /^\/api\/issues\/([^/]+)\/(comments|interactions\/[^/]+\/respond)$/.exec(url.pathname) : null;
       const books = money;
@@ -262,17 +276,20 @@ const server = createServer(async (req, res) => {
       } : undefined);
     }
     if (url.pathname.startsWith("/horos/")) {
-      // Typed straight into a hire's terminal: a crossing too, if that hire is a cloud model.
-      const typed = req.method === "POST" ? /^\/horos\/v1\/hires\/([^/]+)\/prompt$/.exec(url.pathname) : null;
+      // Typed straight into a hire's terminal (a prompt, or keys for a hire waiting on a decision): a
+      // crossing too. A hire that isn't kept on the roster is named from Horos's live list.
+      const typed = req.method === "POST" ? /^\/horos\/v1\/hires\/([^/]+)\/(prompt|keys)$/.exec(url.pathname) : null;
       const books = money;
       return proxyHttp(horos, req, res, typed && books ? (status, body) => {
         if (status >= 400) return;
-        try {
-          recordDirectCrossing(books, typed[1], String(JSON.parse(body.toString("utf8")).text ?? ""), recipientOfHire(typed[1]));
+        void (async () => {
+          const j = JSON.parse(body.toString("utf8") || "{}") as { text?: string; keys?: unknown[] };
+          const text = typed[2] === "prompt" ? String(j.text ?? "") : `pressed ${(Array.isArray(j.keys) ? j.keys : []).map(String).join(" ")}`;
+          const live = (await fetch(`${HOROS_URL}/v1/hires`, { headers: horos.headers!(), signal: AbortSignal.timeout(2500) }).then((r) => r.json()).catch(() => [])) as Array<{ id: string; label?: string; harness?: string }>;
+          const info = Array.isArray(live) ? live.find((h) => h.id === typed[1]) : undefined;
+          recordDirectCrossing(books, typed[1], text, recipientOfHire(typed[1], OGDOAD_HOME, info));
           broadcast("changed", { area: "crossing" });
-        } catch {
-          // Best effort, as with every crossing.
-        }
+        })().catch(() => {});
       } : undefined);
     }
     if (req.method !== "GET" && req.method !== "HEAD") throw new HttpError(404, "not_found", "Nothing here.");

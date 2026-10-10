@@ -84,3 +84,13 @@ test("panels are read again only when something they read has moved", async () =
   m.createClient({ name: "Kestrel Support Co" }, "operator");
   assert.notEqual(await dash.withResults(), first, "the books moved: read again");
 });
+
+test("a huge value is cut down where the query runs, so it never reaches the app", async () => {
+  const { dash } = setup();
+  const r = await dash.preview({ sql: "SELECT zeroblob(50000000) AS big, printf('%.5000c', 'x') AS long", chart: { type: "table" } });
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.equal(r.rows[0][0], "(50,000,000 bytes of binary)");
+    assert.equal(String(r.rows[0][1]).length, 2001);
+  }
+});

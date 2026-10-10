@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
 import { HttpError } from "./http.js";
-import { encryptExistingDb, isPlaintextDb, MONEY_DB, openMoneyDb } from "./money/db.js";
+import { encryptExistingDb, isPlaintextDb, MONEY_DB, openMoneyDb, settleFirstEncryption } from "./money/db.js";
 import { seedPractice, topUpPractice } from "./money/practice.js";
 import { Money } from "./money/service.js";
 import { Vault, VaultError } from "./vault.js";
@@ -141,6 +141,8 @@ export class Keeper {
       return;
     }
     const key = this.vault!.key("money db");
+    // A first encryption that was interrupted is finished (or redone) before anything else.
+    settleFirstEncryption(MONEY_DB, key);
     // Books kept before the vault existed are encrypted in place, once.
     if (isPlaintextDb(MONEY_DB)) encryptExistingDb(MONEY_DB, key);
     this.money = new Money(openMoneyDb(MONEY_DB, key));

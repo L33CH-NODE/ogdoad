@@ -66,6 +66,10 @@ const CLEARED_BY_DOING: Array<[string, string]> = [
   ["team:approval:", "Approve it or turn it down: it clears itself once it's decided."],
   ["work:note:", "Write the note: it clears itself once it's finished."],
   ["work:bill:", "Make the draft in Work: it clears itself once the shifts are on it."],
+  // Standing conditions: Done would hide them for good, while the thing is still wrong.
+  ["work:calendar", "Fix the calendar settings (or turn the sync off): it clears itself once the sync works."],
+  ["money:setup", "Finish Money's settings: it clears itself once they're complete."],
+  ["money:gst:over", "Once you've registered, tick it in Money's settings: it clears itself."],
 ];
 
 const iso = () => new Date().toISOString();
@@ -164,8 +168,9 @@ export class Flow {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), r.key, r.title, r.context, r.source, r.ref, r.cents ?? null, r.dueOn ?? null, r.urgency, r.blocking ? 1 : 0, now, now);
           continue;
         }
-        // Raised again after clearing itself (a payment reversed, say): it's open again.
-        const reopen = row.state === "done" && row.closed_by === "cleared";
+        // Raised again after clearing itself (a payment reversed, say): it's open again. So is work that
+        // only clears by doing it, if it was marked done before that rule (it's still raised, so it isn't done).
+        const reopen = row.state === "done" && (row.closed_by === "cleared" || CLEARED_BY_DOING.some(([p]) => r.key.startsWith(p)));
         if (row.state === "open" || row.state === "parked" || reopen) {
           this.db.prepare(`UPDATE tasks SET title = ?, context = ?, ref = ?, cents = ?, due_on = ?, urgency = ?, blocking = ?,
             state = CASE WHEN ? THEN 'open' ELSE state END, closed_at = CASE WHEN ? THEN NULL ELSE closed_at END, closed_by = CASE WHEN ? THEN NULL ELSE closed_by END,

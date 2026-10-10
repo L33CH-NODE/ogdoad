@@ -4,12 +4,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { backupNow, listBackups, prune } from "../backup.js";
-import { isPlaintextDb, openMoneyDb } from "../money/db.js";
+import { encryptExistingDb, isPlaintextDb, openMoneyDb, settleFirstEncryption } from "../money/db.js";
 import { Money } from "../money/service.js";
 
 function books() {
@@ -51,4 +51,42 @@ test("the last day's copies are all kept, then the newest of each day for a mont
   assert.ok(!kept.includes(at(24 * 40).toISOString()), "nothing past a month");
   assert.ok(removed.length >= 1);
   assert.equal(readdirSync(backups).filter((f) => f.startsWith("vault-")).length, 4, "keys go when their copy goes");
+});
+
+test("a first encryption that was interrupted is finished, or redone, and no plaintext copy is left", () => {
+  const plainBooks = () => {
+    const dir = mkdtempSync(join(tmpdir(), "ogdoad-settle-"));
+    const file = join(dir, "money.db");
+    const m = new Money(openMoneyDb(file));
+    m.createClient({ name: "Harbour Plan Managers" }, "operator");
+    m.db.close();
+    return file;
+  };
+  const key = randomBytes(32);
+  const names = (file: string) => {
+    const m = new Money(openMoneyDb(file, key));
+    const n = m.clients().map((c) => c.name);
+    m.db.close();
+    return n;
+  };
+
+  // Stopped after the encryption, before the copy was removed: the encrypted file is kept.
+  const a = plainBooks();
+  copyFileSync(a, `${a}.keep`);
+  encryptExistingDb(a, key);
+  copyFileSync(`${a}.keep`, `${a}.before-key`);
+  settleFirstEncryption(a, key);
+  assert.ok(!existsSync(`${a}.before-key`), "no plaintext copy left");
+  assert.equal(isPlaintextDb(a), false);
+  assert.deepEqual(names(a), ["Harbour Plan Managers"]);
+
+  // Stopped half way (the file is garbage): the copy goes back and is encrypted again.
+  const b = plainBooks();
+  copyFileSync(b, `${b}.before-key`);
+  writeFileSync(b, randomBytes(8192));
+  writeFileSync(`${b}-journal`, randomBytes(512));
+  settleFirstEncryption(b, key);
+  assert.ok(!existsSync(`${b}.before-key`) && !existsSync(`${b}-journal`));
+  assert.equal(isPlaintextDb(b), false);
+  assert.deepEqual(names(b), ["Harbour Plan Managers"]);
 });

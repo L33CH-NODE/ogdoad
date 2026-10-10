@@ -78,7 +78,10 @@ const escapeText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").
 /** The event for a shift: times in UTC (every client reads those), and a stand-in unless names are on. */
 export function shiftIcs(s: Shift, tz: string, uid: string, showNames: boolean, now = new Date()): string {
   const start = zonedToUtc(s.day, s.start, tz);
-  const end = new Date(start.getTime() + s.minutes * 60_000);
+  // The end is its own wall-clock time (the next day when it runs past midnight), not start plus
+  // minutes: on a daylight-saving night those differ by an hour.
+  const endsNextDay = s.end <= s.start;
+  const end = zonedToUtc(endsNextDay ? addDays(s.day, 1) : s.day, s.end, tz);
   const title = showNames ? `Shift · ${s.participantName || s.clientName}${s.participantName && s.participantName !== s.clientName ? ` (${s.clientName})` : ""}` : `Shift · ${s.standIn}`;
   return [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Ogdoad//Work//EN", "CALSCALE:GREGORIAN",
@@ -231,8 +234,10 @@ export class CalendarSync {
 
       for (const s of work.shifts({ from: addDays(this.money.today(), -KEEP_DAYS) })) {
         const mine = own.get(s.id) as { calendar_uid: string | null; calendar_etag: string | null; calendar_hash: string | null };
-        const uid = mine.calendar_uid;
-        const there = uid ? remote.get(uid) : undefined;
+        // A shift's event always has the same UID, so one Ogdoad lost track of (sync turned off and on
+        // again, say) is found again rather than made twice.
+        const uid = mine.calendar_uid ?? `ogdoad-${s.id}@ogdoad`;
+        const there = remote.get(uid);
         try {
           if (s.status === "cancelled") {
             if (there) {
@@ -240,16 +245,13 @@ export class CalendarSync {
               if (!res.ok && res.status !== 404) throw new Error(`the calendar answered ${res.status}`);
               report.deleted++;
             }
-            if (uid) keep.run(null, null, null, s.id);
-            continue;
-          }
-          if (!uid) {
-            await put(s, `ogdoad-${s.id}@ogdoad`, null, true);
+            if (mine.calendar_uid) keep.run(null, null, null, s.id);
             continue;
           }
           if (!there) {
-            // Deleted in the calendar: a shift still ahead is cancelled; one that's happened (or is billed) goes back.
-            if (s.phase === "ahead" && !s.billed) {
+            // Gone from a calendar it was in: a shift still ahead is cancelled; one that's happened (or is
+            // billed) goes back. Never in this calendar: it goes in.
+            if (mine.calendar_uid && s.phase === "ahead" && !s.billed) {
               work.setCancelled(s.id, true);
               keep.run(null, null, null, s.id);
               report.cancelled++;
@@ -258,15 +260,23 @@ export class CalendarSync {
             }
             continue;
           }
+          if (!mine.calendar_uid || !mine.calendar_etag) {
+            // There, but Ogdoad doesn't know its version (it lost track, or the server gave no ETag last
+            // time): Ogdoad's shift is the record, so its version goes over the top.
+            await put(s, uid, there.etag, false);
+            continue;
+          }
           if (there.etag !== mine.calendar_etag) {
-            // Changed in the calendar: take its times, if the shift can still change.
+            // Changed in the calendar: take its times if the shift can still change, then write Ogdoad's
+            // own version back, so the event says only what Ogdoad would say (a stand-in, unless names
+            // are on) and a shift that can't move goes back where it is.
             const ev = parseEvent(there.ics, tz);
             let now = s;
             if (ev && !s.billed && (ev.day !== s.day || ev.start !== s.start || ev.end !== s.end)) {
               now = work.update(s.id, { day: ev.day, start: ev.start, end: ev.end });
               report.moved++;
             }
-            keep.run(uid, there.etag, contentHash(shiftIcs(now, tz, uid, !!cfg.show_names)), s.id);
+            await put(now, uid, there.etag, false);
             continue;
           }
           if (contentHash(shiftIcs(s, tz, uid, !!cfg.show_names)) !== mine.calendar_hash) await put(s, uid, there.etag, false);

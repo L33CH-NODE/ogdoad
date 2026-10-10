@@ -11,7 +11,7 @@ import { syncFlow } from "../center.js";
 import { Flow } from "../flow/flow.js";
 import { openMoneyDb } from "../money/db.js";
 import { addDays, Money } from "../money/service.js";
-import { CalendarSync, parseEvent, parseMultistatus, standIn, zonedToUtc } from "../work/calendar.js";
+import { CalendarSync, parseEvent, parseMultistatus, shiftIcs, standIn, zonedToUtc } from "../work/calendar.js";
 import { Work } from "../work/work.js";
 
 test("wall-clock times become the right moments, across daylight saving", () => {
@@ -45,7 +45,7 @@ END:VCALENDAR</C:calendar-data></D:prop></D:propstat></D:response>
 });
 
 /** A small CalDAV server: one collection, events in memory, etags that change on every write. */
-async function fakeCalDav() {
+async function fakeCalDav(opts: { etagOnPut?: boolean } = {}) {
   const items = new Map<string, { ics: string; etag: string }>();
   let n = 0;
   const auths: string[] = [];
@@ -65,7 +65,8 @@ async function fakeCalDav() {
         if (req.headers["if-match"] && req.headers["if-match"] !== cur?.etag) return res.writeHead(412).end();
         const etag = `"v${++n}"`;
         items.set(path, { ics: body, etag });
-        return res.writeHead(cur ? 204 : 201, { etag }).end();
+        // Some servers change what they store and so leave the ETag out (RFC 4791 5.3.4).
+        return res.writeHead(cur ? 204 : 201, opts.etagOnPut === false ? {} : { etag }).end();
       }
       if (req.method === "DELETE") return items.delete(path) ? res.writeHead(204).end() : res.writeHead(404).end();
       res.writeHead(405).end();
@@ -168,4 +169,58 @@ test("a failing calendar says why, in Flow, until it works again", async () => {
   sync.configure({ kind: "none" });
   await syncFlow(m, {});
   assert.ok(!open().includes("work:calendar"), "turned off: nothing to fix");
+});
+
+test("names switched off are taken off events changed in the calendar; a lost track is picked up again; a daylight-saving night keeps its end", async () => {
+  const cal = await fakeCalDav();
+  try {
+    const { m, work, harbour, today } = setup();
+    const [s] = work.add({ clientId: harbour.id, day: addDays(today, 3), start: "09:00", end: "12:00" });
+    const sync = new CalendarSync(m);
+    sync.configure({ kind: "caldav", url: cal.url, showNames: true });
+    await sync.sync();
+    const uid = `ogdoad-${s.id}@ogdoad`;
+    // Touched in a calendar app (a note added), then names switched off.
+    cal.edit(uid, (ics) => ics.replace("TRANSP:OPAQUE", "TRANSP:OPAQUE\r\nDESCRIPTION:touched"));
+    sync.configure({ showNames: false });
+    await sync.sync();
+    const now = [...cal.items.values()][0].ics;
+    assert.ok(!now.includes("Participant A"), "the name is gone");
+    assert.match(now, /SUMMARY:Shift · C-\d{4}/);
+
+    // Turned off and on again with the same calendar: the event is picked up, not stuck.
+    sync.configure({ kind: "none" });
+    sync.configure({ kind: "caldav", url: cal.url });
+    work.update(s.id, { end: "12:30" });
+    const r = await sync.sync();
+    assert.equal(r.errors.length, 0);
+    assert.equal(cal.items.size, 1, "the same event, not a second one");
+    assert.equal(parseEvent([...cal.items.values()][0].ics, "Australia/Brisbane")?.end, "12:30", "and it says what Ogdoad says");
+  } finally {
+    cal.close();
+  }
+  // 4 October 2026 is when Sydney's clocks go forward: 22:00 to 06:00 is still 22:00 to 06:00.
+  const { m, work, harbour } = setup();
+  m.updateSettings({ timezone: "Australia/Sydney" }, "operator");
+  const [night] = work.add({ clientId: harbour.id, day: "2026-10-03", start: "22:00", end: "06:00" });
+  const ev = parseEvent(shiftIcs(night, "Australia/Sydney", "x", false), "Australia/Sydney");
+  assert.deepEqual([ev?.start, ev?.end], ["22:00", "06:00"]);
+});
+
+test("on a server that gives no ETag on writes, Ogdoad's own write is never mistaken for a change in the calendar", async () => {
+  const cal = await fakeCalDav({ etagOnPut: false });
+  try {
+    const { m, work, harbour, today } = setup();
+    const [s] = work.add({ clientId: harbour.id, day: addDays(today, 3), start: "09:00", end: "12:00" });
+    const sync = new CalendarSync(m);
+    sync.configure({ kind: "caldav", url: cal.url });
+    await sync.sync();
+    work.update(s.id, { end: "13:00" });
+    const r = await sync.sync();
+    assert.equal(r.moved, 0, "the shift isn't moved back");
+    assert.equal(work.shift(s.id).end, "13:00");
+    assert.equal(parseEvent([...cal.items.values()][0].ics, "Australia/Brisbane")?.end, "13:00", "and the calendar has the correction");
+  } finally {
+    cal.close();
+  }
 });

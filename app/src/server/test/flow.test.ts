@@ -225,3 +225,19 @@ test("a reminder is drafted for the operator to send, its tone follows how late 
   assert.match(after.context, /You sent a reminder on/);
   assert.equal(chaseDraft(m, old.id).lastChasedAt !== null, true);
 });
+
+test("what's typed straight into a hire's terminal is a crossing too, named by the hire's harness", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { recordDirectCrossing, recipientOfHire, crossings } = await import("../crossings.js");
+  const home = mkdtempSync(join(tmpdir(), "ogdoad-direct-"));
+  mkdirSync(join(home, "horos"));
+  writeFileSync(join(home, "horos", "roster.json"), JSON.stringify([{ id: "h7", harness: "grok", label: "Scout - grok CLI" }]));
+  const { m } = setup();
+  recordDirectCrossing(m, "h7", "Find three   local plan managers", recipientOfHire("h7", home));
+  recordDirectCrossing(m, "h8", "hello", recipientOfHire("h8", home, { label: "Ledger - Ollama", harness: "ollama" }));
+  const [ledger, scout] = crossings(m);
+  assert.deepEqual([scout.who, scout.via, scout.where, scout.what, scout.issueId], ["Scout", "grok CLI", "cloud", "Find three local plan managers", "hire:h7"]);
+  assert.deepEqual([ledger.who, ledger.where], ["Ledger", "local"]);
+});

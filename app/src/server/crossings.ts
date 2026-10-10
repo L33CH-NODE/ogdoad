@@ -81,6 +81,19 @@ export async function recipientFor(issueId: string, serverUrl: string, home = OG
   return { who: "the team", via: "the Ogdoad server", where: "unknown" };
 }
 
+/** Who a hire is, from Horos's roster: for what's typed straight into its terminal. */
+export function recipientOfHire(hireId: string, home = OGDOAD_HOME, fallback?: { label?: string; harness?: string }): Recipient {
+  const hire = rosterHires(home).find((h) => h.id === hireId) ?? (fallback ? { harness: fallback.harness, label: fallback.label } : null);
+  return describe(hire, String(hire?.label ?? "a hire").replace(/ - .*$/, ""));
+}
+
+/** Note text that went straight to a hire (typed into its terminal, or its first message). */
+export function recordDirectCrossing(money: Money, hireId: string, text: string, to: Recipient): void {
+  const what = text.replace(/\s+/g, " ").trim().slice(0, 280);
+  money.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'operator', 'crossing', ?, ?)")
+    .run(new Date().toISOString(), `hire:${hireId}`, JSON.stringify({ ...to, what: what || "a message" }));
+}
+
 /** Note a crossing. body is what the browser sent (a comment, or a question card's answers). */
 export function recordCrossing(money: Money, issueId: string, kind: "message" | "answer", body: Buffer, to: Recipient): void {
   let what = "";

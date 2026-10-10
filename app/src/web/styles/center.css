@@ -103,6 +103,7 @@ kbd { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 10
 .now-acts { justify-content: flex-end; }
 /* A hire's question card, answered in place. */
 .askcard { gap: 14px; }
+.harnesses { display: flex; flex-wrap: wrap; gap: 6px; }
 .approval-dl { margin: 0; display: grid; gap: 4px; font-size: 13px; }
 .approval-dl > div { display: grid; grid-template-columns: minmax(90px, 30%) minmax(0, 1fr); gap: 10px; }
 .approval-dl dt { color: var(--muted); }

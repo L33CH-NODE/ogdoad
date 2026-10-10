@@ -8,10 +8,11 @@ import { fileURLToPath } from "node:url";
 
 import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { handleCenter, type CenterContext } from "./center.js";
-import { recipientFor, recordCrossing } from "./crossings.js";
+import { recipientFor, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
+import { hire } from "./hire.js";
 import { Keeper } from "./keeper.js";
 import { OGDOAD_HOME } from "./money/db.js";
 import { practiceStatement, resetPractice } from "./money/practice.js";
@@ -225,6 +226,18 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 201, backupNow(money));
       }
     }
+    if (url.pathname === "/ogdoad/hire" && req.method === "POST") {
+      // The practice copy's books are made up, but its team would be real: no hiring from there.
+      if (PRACTICE) throw new HttpError(400, "practice", "Hire from your real Ogdoad: the practice copy shares the real team.");
+      const input = await readJson(req);
+      const made = (await hire({ base: HOROS_URL, headers: horos.headers! }, OGDOAD_HOME, input)) as { id: string; label?: string; harness?: string };
+      // Its first message goes straight to its harness.
+      if (money && String(input.brief ?? "").trim()) {
+        recordDirectCrossing(money, made.id, String(input.brief), recipientOfHire(made.id, OGDOAD_HOME, { label: made.label, harness: String(input.harness ?? "") }));
+        broadcast("changed", { area: "crossing" });
+      }
+      return sendJson(res, 201, made);
+    }
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/statement.csv" && req.method === "GET") {
@@ -243,7 +256,20 @@ const server = createServer(async (req, res) => {
         }).catch(() => {});
       } : undefined);
     }
-    if (url.pathname.startsWith("/horos/")) return proxyHttp(horos, req, res);
+    if (url.pathname.startsWith("/horos/")) {
+      // Typed straight into a hire's terminal: a crossing too, if that hire is a cloud model.
+      const typed = req.method === "POST" ? /^\/horos\/v1\/hires\/([^/]+)\/prompt$/.exec(url.pathname) : null;
+      const books = money;
+      return proxyHttp(horos, req, res, typed && books ? (status, body) => {
+        if (status >= 400) return;
+        try {
+          recordDirectCrossing(books, typed[1], String(JSON.parse(body.toString("utf8")).text ?? ""), recipientOfHire(typed[1]));
+          broadcast("changed", { area: "crossing" });
+        } catch {
+          // Best effort, as with every crossing.
+        }
+      } : undefined);
+    }
     if (req.method !== "GET" && req.method !== "HEAD") throw new HttpError(404, "not_found", "Nothing here.");
     return serveStatic(url.pathname, res);
   } catch (err) {

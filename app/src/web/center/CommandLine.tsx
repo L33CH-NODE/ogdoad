@@ -92,6 +92,7 @@ export function CommandLine() {
     if (/^(new|start an?) invoice/.test(lower)) return navigate("/money/invoices/new");
     if (/^(new|add|roster)( an?)? shift/.test(lower)) return navigate("/work/new");
     if (/cloud (has )?seen|what.*(left|crossed)|crossings/.test(lower)) return navigate("/settings");
+    if (/^\/?(shut ?down|shutdown|turn (it )?off)$/.test(lower)) return navigate("/settings");
     const panel = /^(?:make|build|show)(?: me)? (?:a |an )?(?:dashboard|panel|chart)(?: of| for| showing| with)?\s+(.+)$/i.exec(said)?.[1];
     if (panel) {
       navigate("/dashboards");

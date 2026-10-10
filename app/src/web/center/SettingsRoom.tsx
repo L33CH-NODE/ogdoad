@@ -2,6 +2,7 @@
 // what isn't yet, changing the password), what the cloud has seen, and Money's business details.
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Icon } from "../components/icons";
 import { api } from "../lib/api";
@@ -113,6 +114,63 @@ function CrossingsCard() {
   );
 }
 
+/** The graceful shutdown: running work finishes and saves, each hire signs off, then the server stops. */
+function ShutdownCard() {
+  const { info, team } = useCenter();
+  const [armed, setArmed] = useState(false);
+  const [state, setState] = useState<"idle" | "stopping" | "off" | "failed">("idle");
+  if (info?.practice) return null;
+  const working = team.filter((h) => h.role !== "server" && (h.state === "working" || h.state === "blocked")).length;
+  const stop = async () => {
+    setState("stopping");
+    try {
+      await api.post("/horos/v1/shutdown", {});
+    } catch {
+      // The app itself stops partway through; an error here usually just means it already has.
+    }
+    // Wait for this app to go quiet: that's the last thing to stop before the server.
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const up = await fetch("/healthz", { cache: "no-store" }).then((r) => r.ok, () => false);
+      if (!up) return setState("off");
+    }
+    setState("failed");
+  };
+  if (state !== "idle") {
+    // On the page itself, over everything: an opened zone's transform would trap a fixed layer.
+    return createPortal(
+      <div className="shutdown-veil" role="status" data-modal>
+        <div className="stage-card stack" style={{ gap: 12 }}>
+          <h2 className="stage-title">{state === "stopping" ? "Shutting down…" : state === "off" ? "Ogdoad is off." : "Still going"}</h2>
+          <p className="muted">
+            {state === "stopping" ? "Running work is finishing and saving, then each hire signs off, then the server closes its database. A hire waiting on a decision holds this up until it's answered or its wait runs out."
+              : state === "off" ? "Everything stopped cleanly, and your books are locked. Start it again with OGDOAD-START on your desktop; your hires come back where they were."
+              : "It's taking a while. A hire may be waiting on a decision, or a job may still be running. Horos keeps going, and your desktop alerts say what it's waiting on."}
+          </p>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+  return (
+    <section className="card stack" aria-label="Shut Ogdoad down" id="shutdown">
+      <div className="row"><Icon name="power" /><h3>Shut Ogdoad down</h3></div>
+      <p className="muted" style={{ margin: 0 }}>
+        Running work finishes and saves, each hire signs off through its own exit, then the server stops and closes its database cleanly. Start it again with OGDOAD-START on your desktop.
+        {working ? ` ${working} hire${working === 1 ? " is" : "s are"} busy right now.` : ""}
+      </p>
+      <div className="row">
+        {armed ? (
+          <>
+            <button className="btn" onClick={() => setArmed(false)}>Keep it running</button>
+            <button className="btn danger" onClick={() => void stop()}>Yes, shut it all down</button>
+          </>
+        ) : <button className="btn" onClick={() => setArmed(true)}>Shut down…</button>}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsRoom() {
   return (
     <section className="zone open settings-room" aria-label="Settings">
@@ -125,6 +183,7 @@ export function SettingsRoom() {
         <KeyCard />
         <CrossingsCard />
         <SettingsPage />
+        <ShutdownCard />
       </div>
     </section>
   );

@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { api, ApiError, type VaultStatus } from "../lib/api";
+import { api, ApiError, type Overview, type VaultStatus } from "../lib/api";
+import { navigate } from "../lib/router";
 import { Halo, Octagram } from "./Geometry";
 import { PlateOffer } from "./Plate";
 
@@ -154,10 +155,52 @@ function Onboarding({ onDone }: { onDone: () => void }) {
           <span className="mark"><Octagram size={44} spin /></span>
           <h2 className="stage-title">Your key is made.</h2>
           <p className="muted">Ogdoad's data is now encrypted with it. It's open for this session, and it locks itself after a while idle; your password opens it again. Your recovery phrase is the only other way in, so keep the paper safe.</p>
-          <div className="row"><span className="spacer" /><button className="btn primary" onClick={onDone}>Enter</button></div>
+          <BringIn onDone={onDone} />
         </div>
       ) : null}
     </Stage>
+  );
+}
+
+/**
+ * The last step of the arrival: bring the business in. Each part is optional and opens in its own room;
+ * what's already done says so (books kept before the key was made are still here, now encrypted).
+ */
+function BringIn({ onDone }: { onDone: () => void }) {
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [calendar, setCalendar] = useState<{ kind: string } | null>(null);
+  useEffect(() => {
+    api.get<Overview>("/ogdoad/money/overview").then(setOverview, () => {});
+    api.get<{ kind: string }>("/ogdoad/work/calendar").then(setCalendar, () => {});
+  }, []);
+  const s = overview?.settings;
+  const items = [
+    { label: "Your business details", why: "Name, ABN and the account you're paid into, so invoices can be issued.", done: !!(s?.businessName && s.abn && overview?.accounts.length), doneText: "Done", go: "/settings", action: "Add them" },
+    { label: "Your old invoicing site", why: "Its invoice export (and your reconciliation tracker), so numbering carries on.", done: (overview?.counts.issued ?? 0) > 0, doneText: `${overview?.counts.issued ?? 0} invoices in`, go: "/settings", action: "Bring it across" },
+    { label: "A bank statement", why: "Payments in get matched to invoices, so nothing is chased that's been paid.", done: false, doneText: "", go: "/money/bank", action: "Bring one in" },
+    { label: "Your calendar", why: "Your own CalDAV calendar, kept in step with your shifts. Stand-ins only, unless you choose names.", done: calendar?.kind === "caldav", doneText: "Connected", go: "/work/calendar", action: "Connect it" },
+  ];
+  const go = (path: string) => {
+    navigate(path);
+    onDone();
+  };
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <strong style={{ fontSize: 15 }}>Bring your business in</strong>
+      <span className="muted" style={{ fontSize: 13, marginTop: -6 }}>All optional, any order, any time. Everything is read on this machine and stays here.</span>
+      <ul className="bring">
+        {items.map((it) => (
+          <li key={it.label}>
+            <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+              <strong>{it.label}</strong>
+              <span className="muted">{it.why}</span>
+            </div>
+            {it.done ? <span className="chip quiet t-good">{it.doneText}</span> : <button className="btn small" onClick={() => go(it.go)}>{it.action}</button>}
+          </li>
+        ))}
+      </ul>
+      <div className="row"><span className="spacer" /><button className="btn primary" onClick={onDone}>Enter</button></div>
+    </div>
   );
 }
 

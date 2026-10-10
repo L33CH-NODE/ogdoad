@@ -46,6 +46,11 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
 - **Momentum:** a quiet sense of progress (done today, a streak). No guilt metrics.
 - **Deep-work lock:** silences everything but genuine emergencies until the operator comes back.
 - **Sources:** the operator's own tasks, the Ogdoad server's tasks assigned to the operator, and the work Money and Work create (bank lines to confirm, chases to send, shift notes due) all land in one flow.
+- **As built (2026-10-10):**
+  - Raised work is keyed by what it's about (`money:`, `bank:`, `work:`, `team:`), updates in place, and closes itself once it's dealt with. A source that can't be read clears nothing.
+  - The team's part is the Ogdoad server's attention feed (a hire's question card, approvals, failed runs, budget and error alerts) plus the tasks assigned to the operator. The app checks it every 20 s while a page is open.
+  - **A hire's question card is answered inside Flow** (`/flow/ask/:issue/:interaction`), through the same route the classic UI uses. Everything else from the team opens in the classic view for now.
+  - Some work clears only by doing it: a question, a note, a bill. Its main button goes there, and Done is refused. Done on an incident means "it was reported".
 
 ## Artifacts: what got made
 

@@ -8,7 +8,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
 
 0. **Loose ends.** ~~The Ogdoad server runs under Horos~~ (done: up first, down last, Postgres stopped cleanly). ~~Ollama on call~~ (done: Horos starts WSL Ollama when a local seat needs it and rests it after; the model store is empty, so the first local seat picks and pulls a model, on the operator's word). SOPHIA's setup interview finishes.
 1. **Money, on the new UI's skeleton.** (Built 2026-10-09: the app on :3101, Money on local SQLite, the importer, PDFs, the GST meter. Done once the operator has imported the old site and sent a real invoice.) The new app shell (floating layout, tokens, API client, Horos notification bell), with Money as its first screen. The invoices backend: history import, numbering that continues the old sequence, PDFs, two bank accounts, the GST-threshold meter. Operator-only. *Done when the operator stops using the old invoicing site.*
-1b. **Shifts, notes and the calendar** (operator-only, local): shifts synced with a sovereign CalDAV calendar or Google (stand-ins only), shift notes in the operator's own notes app, completed shifts flowing into invoice drafts. See "Work" below.
+1b. **Shifts, notes and the calendar** (operator-only, local): shifts synced with a sovereign CalDAV calendar or Google (stand-ins only), shift notes in the operator's own notes app, completed shifts flowing into invoice drafts. See "Work" below. (Built 2026-10-10: shifts, local shift notes, incidents, and finished shifts drafted into invoices, in the Work zone and Flow. Next: the calendar sync, then the link to the operator's own notes app.)
 2. **Lock the doors.**
    - Hires run as their own low-privilege identity.
    - Local-trusted mode is off: the operator's browser gets a session, agents only get per-run tokens.
@@ -170,6 +170,10 @@ Ideas, not started yet. Paperclip's controls are a budget cap, an approval butto
   - Incident notes start a visible deadline. Check the NDIS Commission's current reporting rules before relying on any timeframe.
 - **The operator's own sovereign notes app.** It's being built in parallel, and shift notes can live there: Ogdoad links each shift to its note and reads it back. The integration shape follows that app's storage and sync.
 - **Into Money.** Completed shifts with notes become invoice lines (hours × rate, travel km) on a draft per client per period, ready for the operator to check and issue. No more retyping hours.
+- **As built (2026-10-10).**
+  - Shifts and notes live in the encrypted Money database: a day, a start and an end on the business's own clock (an end before the start runs past midnight). A shift can repeat weekly, and starts from the client's last rate.
+  - A note has what happened, goals, follow-ups, and an incident flag with its detail. The trail and the Artifacts shelf only ever say that a note exists.
+  - Flow raises the note due after each shift, the incident to report (pointing at the NDIS Commission's current rules, never an invented deadline) and "Bill <client> for N shifts". The draft has a line per shift and one for its travel; a rejected draft or void invoice frees the shifts.
 
 ## Reach and privacy
 

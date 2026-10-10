@@ -124,7 +124,7 @@ function ShutdownCard() {
   const stop = async () => {
     setState("stopping");
     try {
-      await api.post("/horos/v1/shutdown", {});
+      await api.post("/horos/v1/shutdown", { graceful: true });
     } catch {
       // The app itself stops partway through; an error here usually just means it already has.
     }

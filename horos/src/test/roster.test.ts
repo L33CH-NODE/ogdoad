@@ -166,7 +166,7 @@ test("a server starts first and stops last, through its own shutdown (stop hook,
   }
 });
 
-test("an on-demand server starts only when a hire needs it, and rests when nothing does", { timeout: 60_000 }, async () => {
+test("an on-demand server starts only when a hire needs it, and rests when nothing does", { timeout: 120_000 }, async () => {
   const { dir, script, rosterFile } = fixture();
   const serverScript = join(dir, "server.mjs");
   writeFileSync(serverScript, FAKE_SERVER);

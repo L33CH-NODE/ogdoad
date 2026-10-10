@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { Icon } from "../components/icons";
 import { api, type Task } from "../lib/api";
 import { aud } from "../lib/format";
-import { navigate } from "../lib/router";
+import { match, navigate, openRef, usePath } from "../lib/router";
+import { AskCard } from "./AskCard";
 import { typing, useZoom, Zone } from "./ControlCenter";
 import { shortName, useCenter } from "./data";
 
@@ -15,6 +16,7 @@ const SOURCE: Record<Task["source"], string> = { you: "yours", money: "Money", b
 
 export function FlowZone() {
   const { flow, reloadFlow, team, deep, setDeep, say } = useCenter();
+  const path = usePath();
   const open = useZoom() === "flow";
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,10 +42,12 @@ export function FlowZone() {
   };
 
   const now = flow?.now ?? null;
+  const asking = !!now?.key?.startsWith("team:ask:");
+  const ask = match("/flow/ask/:issue/:interaction", path);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!now || busy || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      const action = { d: "done", s: "skip", p: "park" }[e.key.toLowerCase()];
+      if (!now || busy || ask || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const action = { d: asking ? null : "done", s: "skip", p: "park" }[e.key.toLowerCase()];
       if (action) {
         e.preventDefault();
         void act(now, action);
@@ -51,7 +55,7 @@ export function FlowZone() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [now?.id, busy]);
+  }, [now?.id, busy, !!ask]);
 
   const currents = team.filter((h) => h.role !== "server" && h.state === "working");
   const chip = flow ? (
@@ -65,12 +69,14 @@ export function FlowZone() {
       {now.context ? <span className="muted now-context">{now.context}</span> : null}
       <div className="now-meta">
         <span className="chip quiet">{SOURCE[now.source]}{now.cents ? ` · ${aud(now.cents, { cents: false })}` : ""}</span>
-        {now.ref ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => navigate(now.ref!)}>Open it</button> : null}
+        {now.ref && !asking ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => openRef(now.ref!)}>Open it{/^https?:/.test(now.ref) ? " (classic view)" : ""}</button> : null}
       </div>
       <div className="now-acts">
         <button className="btn small" disabled={busy} onClick={() => act(now, "park")} title="Park it (P)">Park <kbd>P</kbd></button>
         <button className="btn small" disabled={busy} onClick={() => act(now, "skip")} title="Not now (S)">Skip <kbd>S</kbd></button>
-        <button className="btn small primary" disabled={busy} onClick={() => act(now, "done")} title="Done (D)">Done <kbd>D</kbd></button>
+        {asking
+          ? <button className="btn small primary" onClick={() => navigate(now.ref!)} title="Answer it here">Answer</button>
+          : <button className="btn small primary" disabled={busy} onClick={() => act(now, "done")} title="Done (D)">Done <kbd>D</kbd></button>}
       </div>
     </div>
   ) : (
@@ -126,7 +132,7 @@ export function FlowZone() {
     <Zone id="flow" chip={chip}>
       <div className="room-cols">
         <div className="stack" style={{ gap: 12 }}>
-          {nowCard}
+          {ask ? <AskCard issueId={ask.issue} interactionId={ask.interaction} /> : nowCard}
           {flow?.next.length ? <><span className="zlabel">Next</span><div className="stack" style={{ gap: 4 }}>{flow.next.map((t, i) => row(t, i + 2, { park: true }))}</div></> : null}
           {flow?.later.length ? <><span className="zlabel">Later</span><div className="stack" style={{ gap: 4 }}>{flow.later.map((t, i) => row(t, i + 5, { park: true }))}</div></> : null}
           {addBox}

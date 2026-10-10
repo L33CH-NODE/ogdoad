@@ -4,8 +4,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { artifacts, monthly, signals } from "../center.js";
-import { Flow, raisedFromMoney } from "../flow/flow.js";
+import { artifacts, monthly, signals, syncFlow } from "../center.js";
+import { Flow, raisedFromMoney, type Raised } from "../flow/flow.js";
+import { raisedFromAttention } from "../flow/team.js";
 import { scoreTask } from "../flow/rank.js";
 import { importStatement } from "../money/bank.js";
 import { openMoneyDb } from "../money/db.js";
@@ -115,4 +116,40 @@ test("Signals reads like sentences; Artifacts carry where they came from; months
   const months = monthly(m);
   assert.equal(months.length, 12);
   assert.deepEqual(months.at(-1), { month: today.slice(0, 7), invoicedCents: 41460, receivedCents: 41460 });
+});
+
+test("the team's questions and tasks land in Flow; a question clears once answered, and an unreadable server wipes nothing", async () => {
+  const { m, flow } = setup();
+  const subject = (id: string, title: string | null) => ({ kind: "interaction", id, title, identifier: null, status: "pending", href: `/OGD/issues/OGD-1#interaction-${id}` });
+  const ask = {
+    sourceKind: "issue_thread_interaction", subject: subject("q1", "Your team (2 of 4)"), whyNow: "Waiting on your answer", severity: "medium" as const,
+    relatedIssue: { kind: "issue", id: "issue-1", title: "Set up", identifier: "OGD-1", status: "in_progress", href: "/OGD/issues/OGD-1" },
+    originAgentName: null, dismissal: null, snoozedUntil: null,
+    detail: { kind: "questions", firstQuestionText: "Who should be on the team first?", questionCount: 3, createdByAgentName: "SOPHIA - Sample Co" },
+  };
+  const failed = { ...ask, sourceKind: "failed_run", subject: { ...subject("run-9", "Nightly bank check"), kind: "run" }, severity: "high" as const, relatedIssue: null, detail: null, whyNow: "The run stopped with an error" };
+  const assigned = [
+    { id: "i-2", identifier: "OGD-2", title: "Sign the lease", status: "todo", priority: "high" },
+    { id: "i-3", identifier: "OGD-3", title: "Old thing", status: "done", priority: "low" },
+  ];
+  const raised = raisedFromAttention([ask, failed], assigned, "http://127.0.0.1:3100");
+  assert.deepEqual(raised.map((r) => r.key), ["team:ask:q1", "team:failed_run:run-9", "team:issue:i-2"], "done tasks stay out");
+  assert.equal(raised[0].title, "SOPHIA asks: Your team (2 of 4)");
+  assert.equal(raised[0].context, "Who should be on the team first? (3 questions)");
+  assert.equal(raised[0].ref, "/flow/ask/issue-1/q1", "answered in place");
+  assert.equal(raised[1].ref, "http://127.0.0.1:3100/OGD/issues/OGD-1#interaction-run-9", "the rest opens where it lives");
+  assert.equal(raised[2].ref, "http://127.0.0.1:3100/OGD/issues/OGD-2");
+
+  const sync = (team: Raised[] | null) => syncFlow(m, { team: async () => team });
+  await sync(raised);
+  const ids = () => [flow.view().now, ...flow.view().next].filter(Boolean).map((t) => t!.key);
+  assert.deepEqual(ids().sort(), ["team:ask:q1", "team:failed_run:run-9", "team:issue:i-2"].sort());
+  const q = flow.view().now!.key === "team:ask:q1" ? flow.view().now! : flow.view().next.find((t) => t.key === "team:ask:q1")!;
+  assert.throws(() => flow.act(q.id, "done"), /Answer the question/, "done would leave the hire waiting");
+
+  await sync(null);
+  assert.equal(ids().length, 3, "the server didn't answer: nothing is cleared");
+  await sync(raised.slice(1));
+  assert.ok(!ids().includes("team:ask:q1"), "answered: the question cleared itself");
+  assert.equal(flow.task(q.id).closedBy, "cleared");
 });

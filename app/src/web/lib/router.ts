@@ -43,3 +43,9 @@ export function linkProps(to: string) {
     },
   };
 }
+
+/** Go where a task points: a place in the control center, or (for what lives elsewhere) a new tab. */
+export function openRef(ref: string): void {
+  if (/^https?:/.test(ref)) window.open(ref, "_blank", "noopener");
+  else navigate(ref);
+}

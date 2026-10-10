@@ -223,6 +223,8 @@ export class Flow {
     const set = (sql: string, ...params: unknown[]) => this.db.prepare(`UPDATE tasks SET ${sql}, updated_at = ? WHERE id = ?`).run(...params, now, id);
     if (action === "done") {
       if (t.state === "done" || t.state === "dropped") throw new MoneyError("closed", "That task is already closed.");
+      // Marking a question done would leave the hire waiting; the answer is what clears it.
+      if (t.key?.startsWith("team:ask:")) throw new MoneyError("answer_it", "Answer the question: it clears itself once it's answered.");
       set("state = 'done', closed_by = 'you', closed_at = ?, focus_at = NULL", now);
     } else if (action === "skip") {
       set("skipped_at = ?, focus_at = NULL", now);

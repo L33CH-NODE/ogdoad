@@ -86,4 +86,4 @@ export interface FlowView { now: Task | null; next: Task[]; later: Task[]; parke
 export interface Signal { id: number | string; at: string; who: string; text: string; tone: "good" | "c1" | "warn" | "bad" | "muted" | "primary"; kind: string }
 export interface Artifact { id: string; kind: "invoice"; title: string; by: string; via: string; at: string; tier: string; cloudSaw: string; sealed: boolean; open: string; ref: string }
 export interface Month { month: string; invoicedCents: number; receivedCents: number }
-export interface SophiaInfo { companyId: string; companyName: string; taskId: string; hireId?: string }
+export interface SophiaInfo { companyId: string; companyName: string; agentId?: string; taskId: string; hireId?: string }

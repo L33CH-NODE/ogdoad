@@ -6,7 +6,8 @@ import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { handleCenter } from "./center.js";
+import { handleCenter, type CenterContext } from "./center.js";
+import { raisedFromTeam } from "./flow/team.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
 import { Keeper } from "./keeper.js";
@@ -80,6 +81,28 @@ setInterval(() => {
   for (const s of streams) s.write(": still here\n\n");
 }, 25_000).unref();
 
+/** The team in Flow: on in the real app; the practice copy keeps to its made-up books unless asked. */
+const TEAM_FLOW = (process.env.OGDOAD_TEAM_FLOW ?? (PRACTICE ? "0" : "1")) === "1";
+const CLASSIC_URL = process.env.OGDOAD_CLASSIC_URL ?? SERVER_URL;
+const center: CenterContext = {
+  team: async () => {
+    const s = TEAM_FLOW ? readSophia() : null;
+    return s ? raisedFromTeam({ serverUrl: SERVER_URL, companyId: s.companyId, classicUrl: CLASSIC_URL }) : null;
+  },
+};
+
+// The team doesn't write to this server, so Ogdoad looks: when what's waiting on the operator changes
+// (a hire asks something, an approval lands), every open page hears it.
+let teamSeen: string | null = null;
+setInterval(async () => {
+  if (!streams.size || !keeper.money) return;
+  const raised = await center.team!();
+  if (!raised) return;
+  const sig = raised.map((r) => `${r.key}|${r.title}`).sort().join("\n");
+  if (teamSeen !== null && sig !== teamSeen) broadcast("changed", { area: "team" });
+  teamSeen = sig;
+}, 20_000).unref();
+
 const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
   broadcast("locked", { why });
   for (const s of streams) s.end();
@@ -136,7 +159,7 @@ const server = createServer(async (req, res) => {
     }
     if (/^\/ogdoad\/(flow|signals|artifacts|monthly)(\/|$)/.test(url.pathname)) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
-      if (await handleCenter(money, req, res, url)) return;
+      if (await handleCenter(money, req, res, url, center)) return;
     }
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });

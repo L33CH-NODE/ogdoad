@@ -4,7 +4,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Flow, raisedFromMoney } from "./flow/flow.js";
+import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { addDays, type Money } from "./money/service.js";
 
@@ -117,17 +117,27 @@ export function monthly(money: Money, months = 12): Array<{ month: string; invoi
   return list.map((m) => ({ month: m, invoicedCents: invoiced.get(m) ?? 0, receivedCents: received.get(m) ?? 0 }));
 }
 
+export interface CenterContext {
+  /** What the team is waiting on the operator for; null when it couldn't be read (or isn't wanted here). */
+  team?: () => Promise<Raised[] | null>;
+}
+
+/** Bring Flow up to date with everything that raises work: Money and the bank, and the team when it answers. */
+export async function syncFlow(money: Money, ctx: CenterContext): Promise<Flow> {
+  const flow = new Flow(money);
+  const team = (await ctx.team?.()) ?? null;
+  flow.sync([...raisedFromMoney(money), ...(team ?? [])], team ? ["money:", "bank:", "team:"] : ["money:", "bank:"]);
+  return flow;
+}
+
 /** /ogdoad/flow, /ogdoad/signals, /ogdoad/artifacts, /ogdoad/monthly. Returns false when it isn't ours. */
-export async function handleCenter(money: Money, req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+export async function handleCenter(money: Money, req: IncomingMessage, res: ServerResponse, url: URL, ctx: CenterContext = {}): Promise<boolean> {
   const parts = url.pathname.split("/").filter(Boolean).slice(1); // after /ogdoad
   const method = req.method ?? "GET";
   const flow = new Flow(money);
 
   if (parts[0] === "flow") {
-    if (parts.length === 1 && method === "GET") {
-      flow.sync(raisedFromMoney(money), ["money:", "bank:"]);
-      return sendJson(res, 200, flow.view()), true;
-    }
+    if (parts.length === 1 && method === "GET") return sendJson(res, 200, (await syncFlow(money, ctx)).view()), true;
     if (parts.length === 1 && method === "POST") return sendJson(res, 201, flow.add(await readJson(req))), true;
     if (parts.length === 3 && method === "POST") return sendJson(res, 200, flow.act(parts[1], parts[2])), true;
     throw new HttpError(404, "not_found", "No such Flow route.");

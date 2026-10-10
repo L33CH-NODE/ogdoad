@@ -1,13 +1,17 @@
 // A conversation with SOPHIA, in the control center: her task's thread as messages, her question cards
 // in line (answered in Flow), and a box to reply. It's the same thread the classic view shows, so
-// nothing is lost either way, and every message sent from here is noted in the crossings log.
+// nothing is lost either way, and every message sent from here is noted in the crossings log. A message
+// goes through the membrane: one that names someone waits here for a check, and the hire's stand-ins
+// read as who they are.
 
 import { useEffect, useRef, useState } from "react";
 
 import { Markdown } from "../components/Markdown";
-import { api } from "../lib/api";
+import { api, isHeld, type Check, type MaybeHeld } from "../lib/api";
+import { useLinks } from "../lib/links";
 import { ago } from "../lib/format";
 import { navigate } from "../lib/router";
+import { CheckCard } from "./CheckCard";
 import { useCenter } from "./data";
 
 interface Comment { id: string; body: string; createdAt: string; authorType?: string; authorAgentId?: string | null }
@@ -21,7 +25,9 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [held, setHeld] = useState<Check[]>([]);
   const end = useRef<HTMLDivElement>(null);
+  const links = useLinks((items ?? []).map((it) => (it.kind === "comment" ? it.c.body : "")));
 
   const load = () =>
     Promise.all([
@@ -52,8 +58,9 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/api/issues/${taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+      const r = await api.post<MaybeHeld<unknown>>(`/api/issues/${taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
       setText("");
+      if (isHeld(r)) return setHeld((h) => [...h, r.held]);
       say("you", `to ${name}: ${body}`);
       markAsked();
       await load();
@@ -81,13 +88,22 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
         ) : (
           <div key={it.c.id} className={`msg ${fromHire(it.c) ? "them" : "you"}`}>
             <span className="msg-who">{fromHire(it.c) ? name : "you"} · {ago(it.c.createdAt)}</span>
-            <Markdown text={it.c.body} renderFence={(lang, _body, key) => lang === "ogdoad-recipe"
+            <Markdown text={it.c.body} links={links} renderFence={(lang, _body, key) => lang === "ogdoad-recipe"
               ? <button key={key} className="btn small" onClick={() => navigate("/dashboards")}>A panel recipe: look at it in Dashboards</button>
               : null} />
           </div>
         ))}
         <div ref={end} />
       </div>
+      {held.map((c) => (
+        <CheckCard key={c.id} id={c.id} initial={c} onDone={(o) => {
+          setHeld((h) => h.filter((x) => x.id !== c.id));
+          if (o.kind === "sent") {
+            markAsked();
+            void load();
+          }
+        }} />
+      ))}
       <form className="reply-box" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <label htmlFor="talk" className="sr">Message {name}</label>
         <textarea id="talk" className="input" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${name} (Ctrl+Enter sends)`}
@@ -95,7 +111,7 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
         <button className="btn small primary" type="submit" disabled={busy || !text.trim()}>{busy ? "Sending…" : "Send"}</button>
       </form>
       {error ? <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p> : null}
-      <span className="muted" style={{ fontSize: 11.5 }}>What you send goes to {name}'s harness and is noted in "What the cloud has seen".</span>
+      <span className="muted" style={{ fontSize: 11.5 }}>What you send goes to {name}'s harness, with your clients' details stood in, and is noted in "What the cloud has seen".</span>
     </div>
   );
 }

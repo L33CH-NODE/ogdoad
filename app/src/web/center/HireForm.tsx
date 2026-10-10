@@ -35,7 +35,11 @@ export function HireForm() {
     setBusy(true);
     setError(null);
     try {
-      const made = await api.post<{ id: string }>("/ogdoad/hire", { harness, model, label, brief, keep });
+      const made = await api.post<{ id: string } | { held: { id: string } }>("/ogdoad/hire", { harness, model, label, brief, keep });
+      if ("held" in made) {
+        say("Ogdoad", "Its first message names someone, so the hire waits for your check.", "warn");
+        return navigate(`/flow/check/${made.held.id}`);
+      }
       say("you", `hired ${label || spec!.name} (${spec!.name})`, "good");
       navigate(`/team/${made.id}`);
     } catch (err) {

@@ -5,7 +5,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "../components/icons";
-import { api, type Shift } from "../lib/api";
+import { Relinked } from "../components/Markdown";
+import { api, isHeld, type MaybeHeld, type Shift } from "../lib/api";
+import { useLinks } from "../lib/links";
 import { aud } from "../lib/format";
 import { navigate } from "../lib/router";
 import { useCenter } from "./data";
@@ -125,7 +127,11 @@ export function CommandLine() {
     if (!sophia) return say("Ogdoad", "SOPHIA isn't set up yet. Her setup is in the classic view; until then, commands still work here.", "warn");
     try {
       // A comment on her task wakes her, the same way the setup cards do.
-      await api.post(`/api/issues/${sophia.taskId}/comments`, { body: said, clientRequestId: crypto.randomUUID() });
+      const r = await api.post<MaybeHeld<unknown>>(`/api/issues/${sophia.taskId}/comments`, { body: said, clientRequestId: crypto.randomUUID() });
+      if (isHeld(r)) {
+        say("Ogdoad", "That names someone, so it's held: check exactly what SOPHIA would get, then send it.", "warn");
+        return navigate(`/flow/check/${r.held.id}`);
+      }
       say("you", `to SOPHIA: ${said}`);
       markAsked();
     } catch (err) {
@@ -155,12 +161,13 @@ export function CommandLine() {
   };
 
   const reply = sophiaReply && sophiaReply.id !== dismissed ? sophiaReply : null;
+  const links = useLinks([reply?.body]);
   return (
     <footer className="zone keep cmdline" style={{ gridArea: "cmd" }}>
       {reply ? (
         <div className="reply enter" role="status">
           <span className="orb small" aria-hidden="true" />
-          <p><strong>SOPHIA</strong> {reply.body.length > 420 ? `${reply.body.slice(0, 420)}… (the rest is on her task)` : reply.body}</p>
+          <p><strong>SOPHIA</strong> <Relinked text={reply.body.length > 420 ? `${reply.body.slice(0, 420)}… (the rest is on her task)` : reply.body} links={links} /></p>
           <button className="icon-btn" onClick={() => setDismissed(reply.id)} aria-label="Dismiss SOPHIA's reply"><Icon name="close" size={14} /></button>
         </div>
       ) : null}

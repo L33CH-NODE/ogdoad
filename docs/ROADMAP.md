@@ -51,11 +51,11 @@ Frontier intelligence without handing over the business.
 - **Built so far (2026-10-10):**
   - **The crossings log.** Every message, answer and panel request sent to a hire is noted as it leaves: who got it, through which harness, and whether that harness is a cloud model. It shows in Signals and in Settings under "What the cloud has seen".
   - **Panels written blind.** A dashboard panel is a query plus a chart spec. A hire writes it from the curated tables' shape alone; it runs on the operator's machine, in a sealed copy without notes, bank or NDIS details, and the hire never sees a row.
-- **Next (spec, 2026-10-10; the rooms are built): rooms, the dispatcher, the membrane and the watch.**
-  - Live project rooms where hires talk to each other and to the operator.
-  - A local dispatcher that proposes the lineup.
-  - The membrane out and back, with the operator checking what leaves.
+- **Next (spec, 2026-10-10; the rooms and the membrane are built): rooms, the dispatcher, the membrane and the watch.**
+  - Live project rooms where hires talk to each other and to the operator. *Built.*
+  - The membrane out and back, with the operator checking what leaves. *Built (its first two passes; the model backstop is later).*
   - A local heartbeat that holds anything spending, investing, outward or destructive.
+  - A local dispatcher that proposes the lineup.
   
   See `ROOMS-AND-THE-MEMBRANE.md`.
 - **Fully customisable privacy, set at setup and changeable any time.** The privacy level runs from one end of a spectrum to the other:

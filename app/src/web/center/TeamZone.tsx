@@ -5,8 +5,9 @@
 
 import { useEffect, useState } from "react";
 
-import { api, type HireInfo } from "../lib/api";
+import { api, isHeld, type Check, type HireInfo, type MaybeHeld } from "../lib/api";
 import { navigate, usePath } from "../lib/router";
+import { CheckCard } from "./CheckCard";
 import { useZoom, Zone } from "./ControlCenter";
 import { Conversation } from "./Conversation";
 import { HireForm } from "./HireForm";
@@ -99,6 +100,7 @@ function HireRoom({ person }: { person: Person }) {
   const [lines, setLines] = useState<string[] | null>(null);
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [held, setHeld] = useState<Check | null>(null);
   const [sure, setSure] = useState(false);
   const running = person.state !== "resting";
   useEffect(() => {
@@ -120,7 +122,13 @@ function HireRoom({ person }: { person: Person }) {
   const asking = person.state === "blocked";
   const send = () => {
     if (!text.trim()) return;
-    void run(asking ? api.post(`/horos/v1/hires/${person.id}/keys`, { keys: [text] }) : api.post(`/horos/v1/hires/${person.id}/prompt`, { text }), asking ? `Pressed ${text}.` : "Sent to its terminal.");
+    if (asking) void run(api.post(`/horos/v1/hires/${person.id}/keys`, { keys: [text] }), `Pressed ${text}.`);
+    else {
+      void api.post<MaybeHeld<unknown>>(`/horos/v1/hires/${person.id}/prompt`, { text }).then((r) => {
+        if (isHeld(r)) setHeld(r.held);
+        else setNote("Sent to its terminal.");
+      }, (e) => setNote((e as Error).message)).finally(() => setTimeout(() => setNote(null), 5000));
+    }
     setText("");
   };
   const key = (k: string) => void run(api.post(`/horos/v1/hires/${person.id}/keys`, { keys: [k] }), `Pressed ${k}.`);
@@ -156,6 +164,7 @@ function HireRoom({ person }: { person: Person }) {
           </form>
         </>
       ) : <p className="muted" style={{ margin: 0 }}>Resting. It wakes by itself when work is assigned to it{person.kept ? ", or wake it now" : ""}.</p>}
+      {held ? <CheckCard key={held.id} id={held.id} initial={held} onDone={(o) => { setHeld(null); setNote(o.kind === "sent" ? "Sent to its terminal, as checked." : "Not sent."); }} /> : null}
       {note ? <span className="muted" role="status" style={{ fontSize: 13 }}>{note}</span> : null}
     </div>
   );

@@ -32,6 +32,12 @@ const HARNESSES: Record<string, { name: string; where: Where }> = {
   ollama: { name: "Ollama", where: "local" },
 };
 
+/** A harness, named and placed: for a hire that isn't on the roster yet. */
+export function harnessInfo(harness: string): { via: string; where: Where } {
+  const h = HARNESSES[harness];
+  return { via: h?.name ?? harness, where: h?.where ?? "unknown" };
+}
+
 function readJsonFile(file: string): any {
   try {
     return JSON.parse(readFileSync(file, "utf8"));

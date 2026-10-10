@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, getAppInfo, type AppInfo, type Artifact, type FlowView, type HireInfo, type InvoiceSummary, type Overview, type Panel, type Recipe, type RosterEntry, type Signal, type SophiaInfo, type VaultStatus } from "../lib/api";
 import { useHoros, useNotifications, useTeam } from "../lib/horos";
 import { useLive } from "../lib/live";
+import { navigate } from "../lib/router";
 
 export interface SophiaReply { id: string; body: string; at: string }
 /** A panel recipe SOPHIA sent back in a reply, waiting for the operator to look at it. */
@@ -180,7 +181,11 @@ export function CenterProvider({ children }: { children: ReactNode }) {
       "",
       "chart.type is bar, line, stat or table. x is the column along the bottom (bar, line). y lists the numeric columns to draw. format is aud, number, hours or percent. Amounts are dollars.",
     ].join("\n");
-    await api.post(`/api/issues/${sophia.taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+    const r = await api.post<{ held?: { id: string } }>(`/api/issues/${sophia.taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+    if (r?.held) {
+      say("Ogdoad", "That request names someone, so it's held: check it in Flow before it goes.", "warn");
+      return navigate(`/flow/check/${r.held.id}`);
+    }
     say("you", `asked SOPHIA for a panel: ${request.trim()}`);
     setAskedAt(new Date().toISOString());
   }, [sophia, say]);

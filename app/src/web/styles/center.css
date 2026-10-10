@@ -402,6 +402,37 @@ button.vault-chip:hover { color: var(--fg); }
 .add-part { padding: 10px; border-radius: 12px; border: 1px dashed var(--edge); }
 .room-new { max-width: 640px; }
 
+/* ---------- The membrane ---------- */
+
+/* A stand-in, read back as who it is (dotted: the team only ever saw the stand-in). */
+.standin { border-bottom: 1px dotted color-mix(in oklch, var(--c1) 70%, transparent); color: inherit; cursor: help; }
+.standin.sent, .standin.unknown { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: .92em; padding: 0 4px; border-radius: 5px; border-bottom: 0; background: color-mix(in oklch, var(--c1) 12%, transparent); color: var(--c1); }
+.standin.unknown { background: color-mix(in oklch, var(--warn) 14%, transparent); color: var(--warn); }
+.check-card { gap: 10px; }
+.check-card::before { background: linear-gradient(var(--c1), color-mix(in oklch, var(--c1) 10%, transparent)); }
+.check-card.warn::before { background: linear-gradient(var(--warn), color-mix(in oklch, var(--warn) 10%, transparent)); }
+.check-where { font-size: 13px; color: var(--muted); }
+.check-where strong { color: var(--fg); }
+.check-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid var(--edge); overflow-wrap: anywhere; }
+.check-text mark { color: inherit; border-radius: 5px; padding: 0 3px; }
+.check-text mark.sub { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: .92em; background: color-mix(in oklch, var(--c1) 16%, transparent); color: var(--c1); }
+.check-text mark.hint-mark { background: color-mix(in oklch, var(--warn) 16%, transparent); }
+.check-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.check-list code { font-size: 12px; color: var(--c1); }
+.check-list .real { font-weight: 600; }
+.check-list.hints .real { color: var(--warn); }
+.look-line { font-size: 12px; color: var(--muted); }
+.look-line .real { color: var(--fg); font-weight: 600; }
+.msg.note { border-style: dashed; background: transparent; }
+.msg.alarm { border-color: color-mix(in oklch, var(--bad) 55%, var(--edge)); box-shadow: inset 3px 0 0 var(--bad); }
+.msg-warnings { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.msg-warnings li { color: var(--muted); }
+.msg-warnings li strong { font-weight: 600; margin-right: 4px; }
+.msg-warnings li.w-real strong { color: var(--bad); }
+.msg-warnings li.w-mangled strong, .msg-warnings li.w-unknown strong, .msg-warnings li.w-echo strong { color: var(--warn); }
+.member.paused { border-color: color-mix(in oklch, var(--warn) 50%, transparent); }
+.where.w-paused { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 40%, transparent); }
+
 /* ---------- Smaller screens ---------- */
 
 @media (max-width: 1320px) {

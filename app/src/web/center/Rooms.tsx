@@ -1,16 +1,18 @@
 // Project rooms, in the Team zone: each project as a live room where the operator and the hires talk.
 // A room reads every part's thread at once, shows who is on the job and who is working on which part
 // right now, and lets the operator speak to everyone or to one part, mentioning hires to bring them in.
-// Until the membrane is built, what's written here reaches the hires as written.
+// Everything written here goes through the membrane: real details become stand-ins, and anything that
+// names someone waits for the operator's check. The team's stand-ins read as who they are, here only.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { Markdown } from "../components/Markdown";
-import { api, type Room, type RoomMember, type RoomPart, type RoomSummary } from "../lib/api";
+import { api, isHeld, type Check, type Links, type MaybeHeld, type Room, type RoomMember, type RoomPart, type RoomSummary } from "../lib/api";
 import { useEngineEvents } from "../lib/engine";
 import { ago } from "../lib/format";
 import { useLive } from "../lib/live";
 import { navigate } from "../lib/router";
+import { CheckCard } from "./CheckCard";
 import { shortName, useCenter } from "./data";
 import { COLOR, WORD, presenceOf } from "./presence";
 import { STATUS } from "./TeamTasks";
@@ -46,6 +48,38 @@ function withMentions(text: string, picked: Record<string, string>): string {
     out = out.replace(new RegExp(`(^|[\\s(])@${escapeRe(name)}(?![\\w-])`, "g"), `$1[@${name}](agent://${id})`);
   }
   return out;
+}
+
+const KIND: Record<string, string> = {
+  who: "a client", me: "your business", email: "an email", phone: "a phone number", address: "an address", abn: "an ABN", ndis: "an NDIS number",
+  bank: "bank details", tfn: "a TFN", medicare: "a Medicare number", card: "a card number", dob: "a date of birth",
+};
+
+/** What the membrane would do with this text, asked a moment after typing stops (nothing is kept). */
+export function useMembraneLook(text: string, protect: string[]): { changes: Array<{ kind: string; original: string }>; flags: Array<{ kind: string; text: string }> } | null {
+  const [look, setLook] = useState<{ changes: Array<{ kind: string; original: string }>; flags: Array<{ kind: string; text: string }> } | null>(null);
+  useEffect(() => {
+    if (!text.trim()) return setLook(null);
+    const t = setTimeout(() => {
+      api.post<{ changes: Array<{ kind: string; original: string }>; flags: Array<{ kind: string; text: string }> }>("/ogdoad/membrane/check", { text, protect }).then(setLook, () => setLook(null));
+    }, 450);
+    return () => clearTimeout(t);
+  }, [text, protect.join(",")]);
+  return look;
+}
+
+/** "Juniper Ashgrove (a client) and an email will be stood in." */
+export function LookLine({ look }: { look: ReturnType<typeof useMembraneLook> }) {
+  if (!look || (!look.changes.length && !look.flags.length)) return null;
+  const seen = new Set<string>();
+  const subs = look.changes.filter((c) => !seen.has(c.original) && seen.add(c.original));
+  return (
+    <span className="look-line" role="status">
+      {subs.length ? <>Stood in before it leaves: {subs.slice(0, 4).map((c, i) => <span key={i}>{i ? ", " : ""}<span className="real">{c.original}</span> <span className="muted">({KIND[c.kind] ?? c.kind})</span></span>)}{subs.length > 4 ? `, and ${subs.length - 4} more` : ""}. </> : null}
+      {look.flags.length ? <>Worth a look: {look.flags.slice(0, 3).map((f) => f.text).join(", ")}. </> : null}
+      You'll see exactly what goes before it does.
+    </span>
+  );
 }
 
 export function RoomList() {
@@ -99,12 +133,15 @@ export function NewRoom() {
   const [lead, setLead] = useState(sophia?.agentId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [held, setHeld] = useState<Check | null>(null);
+  const look = useMembraneLook(`${name}\n${brief}`, (agents ?? []).map((a) => a.name));
 
   const open = async () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<RoomSummary>("/ogdoad/rooms", { name, brief, leadAgentId: lead || null });
+      const r = await api.post<MaybeHeld<RoomSummary>>("/ogdoad/rooms", { name, brief, leadAgentId: lead || null });
+      if (isHeld(r)) return setHeld(r.held);
       say("you", `opened a room: ${name}`);
       navigate(`/team/room/${r.id}`);
     } catch (err) {
@@ -113,6 +150,23 @@ export function NewRoom() {
       setBusy(false);
     }
   };
+
+  if (held) {
+    return (
+      <div className="stack room-new" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <button type="button" className="btn link small" onClick={() => setHeld(null)}>← Back to the brief</button>
+          <strong style={{ fontSize: 18 }}>Open a room</strong>
+        </div>
+        <CheckCard id={held.id} initial={held} onDone={(o) => {
+          if (o.kind === "sent") {
+            say("you", `opened a room: ${name}`);
+            navigate(`/team/room/${(o.result as RoomSummary).id}`);
+          } else navigate("/team");
+        }} />
+      </div>
+    );
+  }
 
   return (
     <form className="stack room-new" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); void open(); }}>
@@ -136,8 +190,9 @@ export function NewRoom() {
           {(agents ?? []).map((a) => <option key={a.agentId} value={a.agentId}>{a.name}</option>)}
         </select>
       </label>
-      <div className="notice warn" style={{ fontSize: 13 }}>
-        <span>The brief goes to the lead as written, and a cloud hire's provider sees it. Until the membrane is built, leave client names and numbers out.</span>
+      <LookLine look={look} />
+      <div className="notice" style={{ fontSize: 13 }}>
+        <span>Names and details from your books become stand-ins (like C-4821) before the lead sees this, so a cloud hire's provider never gets them. If anything is stood in, you'll see exactly what goes first.</span>
       </div>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" type="submit" disabled={busy || !name.trim()}>{busy ? "Opening…" : "Open the room"}</button>
@@ -148,10 +203,17 @@ export function NewRoom() {
 }
 
 export function RoomView({ id }: { id: string }) {
-  const { sophia, team, roster, info, say } = useCenter();
+  const { sophia, team, roster, info, say, reloadFlow } = useCenter();
   const { data: room, error, reload } = useLive<Room>(`/ogdoad/rooms/${id}`, ["rooms"]);
+  // Reading the room is what notices a real detail in a hire's message: Flow hears of it at once.
+  const alarms = room?.messages.filter((m) => m.kind === "said" && m.warnings?.some((w) => w.kind === "real")).length ?? 0;
+  useEffect(() => {
+    if (alarms) reloadFlow();
+  }, [alarms]);
   const soon = useSoon(reload);
   const [lane, setLane] = useState<string | null>(null);
+  const [asSent, setAsSent] = useState(false);
+  const [fresh, setFresh] = useState<Check[]>([]);
   const mentionRef = useRef<((m: RoomMember) => void) | null>(null);
 
   // Live: a comment, a task change or a run starting or ending on any of this room's parts.
@@ -189,6 +251,10 @@ export function RoomView({ id }: { id: string }) {
   const counts = new Map<string, number>();
   for (const m of room.messages) if (m.kind === "said") counts.set(m.partId, (counts.get(m.partId) ?? 0) + 1);
   const practice = !!info?.practice;
+  // Held for a check: what this page just sent, and anything still waiting from before.
+  // Oldest first, so the newest sits by the box it came from.
+  const heldIds = [...new Set([...room.held.map((h) => h.id), ...fresh.map((c) => c.id)])];
+  const resume = (m: RoomMember) => api.post(`/api/agents/${m.agentId}/resume`, {}).then(reload, (err) => say("Ogdoad", `Couldn't resume ${m.name}: ${(err as Error).message}`, "bad"));
 
   return (
     <div className="stack room" style={{ gap: 12 }}>
@@ -202,21 +268,41 @@ export function RoomView({ id }: { id: string }) {
           {room.members.map((m) => {
             const s = presenceOf(m.hireId, team, roster);
             return (
-              <button key={m.agentId} type="button" className="member" title={`${m.name}${m.harness ? ` · ${m.harness}` : ""} · ${WORD[s] ?? s}. Click to mention.`} onClick={() => mentionRef.current?.(m)}>
-                <span className={`pdot${s === "working" ? " beat" : ""}`} style={{ background: COLOR[s] }} />
-                {m.name}
-                {WHERE[m.where] ? <span className={`where w-${m.where}`}>{WHERE[m.where]}</span> : null}
-              </button>
+              <span key={m.agentId} className="row" style={{ gap: 4 }}>
+                <button type="button" className={`member${m.paused ? " paused" : ""}`} title={`${m.name}${m.harness ? ` · ${m.harness}` : ""} · ${m.paused ? "paused" : WORD[s] ?? s}. Click to mention.`} onClick={() => mentionRef.current?.(m)}>
+                  <span className={`pdot${s === "working" && !m.paused ? " beat" : ""}`} style={{ background: m.paused ? "var(--warn)" : COLOR[s] }} />
+                  {m.name}
+                  {m.paused ? <span className="where w-paused">paused</span> : WHERE[m.where] ? <span className={`where w-${m.where}`}>{WHERE[m.where]}</span> : null}
+                </button>
+                {m.paused && !practice ? <button type="button" className="btn small" onClick={() => void resume(m)} title={`Let ${m.name} take work again`}>Resume</button> : null}
+              </span>
             );
           })}
         </div>
       </div>
       {room.description ? <p className="muted room-brief">{room.description.split(/\n\s*---\s*\n/)[0]}</p> : null}
+      {Object.keys(room.links).length ? (
+        <div className="row" style={{ gap: 8 }}>
+          <div className="seg" role="tablist" aria-label="How names read">
+            <button role="tab" aria-selected={!asSent} className={!asSent ? "on" : ""} onClick={() => setAsSent(false)}>Real names</button>
+            <button role="tab" aria-selected={asSent} className={asSent ? "on" : ""} onClick={() => setAsSent(true)}>As the team sees it</button>
+          </div>
+          <span className="muted" style={{ fontSize: 12 }}>The team only ever has the stand-ins. Real names are put back here, on your screen.</span>
+        </div>
+      ) : null}
 
       <div className="room-grid">
         <div className="stack" style={{ gap: 10, minWidth: 0 }}>
-          <Stream room={room} lane={lane} setLane={setLane} nameOf={nameOf} people={people} partOf={partOf} />
-          <Composer room={room} lane={lane} people={people} mentionRef={mentionRef} onSent={(text) => { say("you", `in ${room.name}: ${text}`); reload(); }} />
+          <Stream room={room} lane={lane} setLane={setLane} nameOf={nameOf} people={people} partOf={partOf} links={room.links} asSent={asSent} />
+          {heldIds.map((id) => (
+            <CheckCard key={id} id={id} initial={fresh.find((c) => c.id === id)} onDone={(o) => {
+              setFresh((f) => f.filter((c) => c.id !== id));
+              if (o.kind === "sent") say("you", `in ${room.name}: sent what you checked`);
+              reload();
+            }} />
+          ))}
+          <Composer room={room} lane={lane} people={people} mentionRef={mentionRef} onSent={(text) => { say("you", `in ${room.name}: ${text}`); reload(); }}
+            onHeld={(c) => { setFresh((f) => [...f, c]); reload(); }} />
         </div>
         <aside className="stack room-side" aria-label="The parts of this job">
           <span className="zlabel">Parts of the job</span>
@@ -230,7 +316,7 @@ export function RoomView({ id }: { id: string }) {
               state={p.agentId ? presenceOf(people.get(p.agentId)?.hireId, team, roster) : "unknown"}
               working={room.running.some((r) => r.issueId === p.id)} />
           ))}
-          {practice ? <span className="muted" style={{ fontSize: 12 }}>Add parts from your real Ogdoad.</span> : <AddPart room={room} everyone={room.everyone} onAdded={reload} />}
+          {practice ? <span className="muted" style={{ fontSize: 12 }}>Add parts from your real Ogdoad.</span> : <AddPart room={room} everyone={room.everyone} onAdded={reload} onHeld={(c) => { setFresh((f) => [...f, c]); reload(); }} />}
         </aside>
       </div>
     </div>
@@ -254,8 +340,11 @@ function Lane({ part, picked, onPick, count, who, state, working }: { part: Room
   );
 }
 
-function Stream({ room, lane, setLane, nameOf, people, partOf }: {
+const WARN: Record<string, string> = { real: "A real detail", echo: "Written out", unknown: "Nobody", mangled: "Check this" };
+
+function Stream({ room, lane, setLane, nameOf, people, partOf, links, asSent }: {
   room: Room; lane: string | null; setLane: (id: string | null) => void; nameOf: (id: string | null) => string; people: Map<string, RoomMember>; partOf: (id: string) => RoomPart | undefined;
+  links: Links; asSent: boolean;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const shown = lane ? room.messages.filter((m) => m.partId === lane) : room.messages;
@@ -284,16 +373,30 @@ function Stream({ room, lane, setLane, nameOf, people, partOf }: {
             </div>
           );
         }
+        if (m.kind === "note") {
+          return (
+            <div key={m.id} className="msg you note">
+              <span className="msg-who">you, kept here{tag}<span> · {ago(m.at)}</span></span>
+              <Markdown text={m.body} />
+              <span className="muted" style={{ fontSize: 11.5 }}>Only you see this: it never left.</span>
+            </div>
+          );
+        }
         const who = m.from === "you" ? null : people.get(m.agentId ?? "");
         return (
-          <div key={m.id} className={`msg ${m.from === "you" ? "you" : "them"}`}>
+          <div key={m.id} className={`msg ${m.from === "you" ? "you" : "them"}${m.warnings?.some((w) => w.kind === "real") ? " alarm" : ""}`}>
             <span className="msg-who">
               {m.from === "you" ? "you" : who?.name ?? "An agent"}
               {who && WHERE[who.where] ? <span className={`where w-${who.where}`}>{WHERE[who.where]}</span> : null}
               {tag}
               <span> · {ago(m.at)}</span>
             </span>
-            <Markdown text={m.body} />
+            <Markdown text={m.body} links={links} asSent={asSent} />
+            {m.warnings?.length ? (
+              <ul className="msg-warnings">
+                {m.warnings.map((w, i) => <li key={i} className={`w-${w.kind}`}><strong>{WARN[w.kind] ?? w.kind}</strong> {w.why}</li>)}
+              </ul>
+            ) : null}
           </div>
         );
       })}
@@ -308,8 +411,9 @@ function Stream({ room, lane, setLane, nameOf, people, partOf }: {
   );
 }
 
-function Composer({ room, lane, people, mentionRef, onSent }: {
+function Composer({ room, lane, people, mentionRef, onSent, onHeld }: {
   room: Room; lane: string | null; people: Map<string, RoomMember>; mentionRef: React.MutableRefObject<((m: RoomMember) => void) | null>; onSent: (text: string) => void;
+  onHeld: (c: Check) => void;
 }) {
   const [text, setText] = useState("");
   const [to, setTo] = useState("");
@@ -335,6 +439,7 @@ function Composer({ room, lane, people, mentionRef, onSent }: {
   useEffect(() => setTo(lane && parts.some((p) => p.id === lane) ? lane : ""), [lane]);
 
   const everyone = room.everyone.length ? room.everyone : [...people.values()];
+  const look = useMembraneLook(text, everyone.map((m) => m.name));
   const matches = menu ? everyone.filter((m) => m.name.toLowerCase().startsWith(menu.q.toLowerCase())).slice(0, 6) : [];
 
   const insert = (m: RoomMember, from?: number, caret?: number) => {
@@ -359,10 +464,11 @@ function Composer({ room, lane, people, mentionRef, onSent }: {
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/ogdoad/rooms/${room.id}/say`, { body: withMentions(plain, picked), partId: to || undefined });
+      const r = await api.post<MaybeHeld<{ ok: true }>>(`/ogdoad/rooms/${room.id}/say`, { body: withMentions(plain, picked), partId: to || undefined });
       setText("");
       setPicked({});
-      onSent(plain);
+      if (isHeld(r)) onHeld(r.held);
+      else onSent(plain);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -419,12 +525,13 @@ function Composer({ room, lane, people, mentionRef, onSent }: {
         <button className="btn small primary" type="submit" disabled={busy || !text.trim()}>{busy ? "Sending…" : "Send"}</button>
       </div>
       {error ? <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p> : null}
+      <LookLine look={look} />
       <span className="muted" style={{ fontSize: 11.5 }}>Reaches {reaches}{Object.keys(picked).length ? `, and ${Object.keys(picked).map((n) => `@${n}`).join(", ")}` : ""}. Each is noted in "What the cloud has seen".</span>
     </form>
   );
 }
 
-function AddPart({ room, everyone, onAdded }: { room: Room; everyone: RoomMember[]; onAdded: () => void }) {
+function AddPart({ room, everyone, onAdded, onHeld }: { room: Room; everyone: RoomMember[]; onAdded: () => void; onHeld: (c: Check) => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
@@ -436,7 +543,8 @@ function AddPart({ room, everyone, onAdded }: { room: Room; everyone: RoomMember
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/ogdoad/rooms/${room.id}/parts`, { title, brief, agentId: who || null });
+      const r = await api.post<MaybeHeld<RoomPart>>(`/ogdoad/rooms/${room.id}/parts`, { title, brief, agentId: who || null });
+      if (isHeld(r)) onHeld(r.held);
       setTitle("");
       setBrief("");
       setWho("");
@@ -461,7 +569,7 @@ function AddPart({ room, everyone, onAdded }: { room: Room; everyone: RoomMember
         <button className="btn small" type="button" onClick={() => setOpen(false)}>Cancel</button>
       </div>
       {error ? <span className="error-text" role="alert" style={{ fontSize: 12.5 }}>{error}</span> : null}
-      <span className="muted" style={{ fontSize: 11.5 }}>Its hire is woken with the brief and told who else is on the job.</span>
+      <span className="muted" style={{ fontSize: 11.5 }}>Its hire is woken with the brief and told who else is on the job. Real names in it become stand-ins first.</span>
     </form>
   );
 }

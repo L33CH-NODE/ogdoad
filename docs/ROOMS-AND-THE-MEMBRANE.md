@@ -1,6 +1,6 @@
 # Rooms, the dispatcher, the membrane and the watch
 
-The operator's idea (2026-10-10). Status: step 1, the rooms, is built (2026-10-10, see `CONTROL-CENTER.md`). The rest is still a spec.
+The operator's idea (2026-10-10). Status: steps 1 and 2, the rooms and the membrane, are built (2026-10-10; see "The membrane as built" below and `CONTROL-CENTER.md`). The rest is still a spec.
 
 A job moves from the operator to the best mix of hires and back again. The hires talk to each other and to the operator in a live room, so the business gets done in the open. No real identity ever reaches a cloud model, and anything risky waits for the operator.
 
@@ -65,6 +65,29 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
   - A real value in a cloud hire's message should be impossible. If one appears, it's an alarm: the crossing is marked and the hire paused.
 - The stand-in map lives in the encrypted Money database. It's never in the engine's database, which stays plaintext until BitLocker (see `LOCK-THE-DOORS.md`).
 
+### The membrane as built (step 2)
+
+- **One gate for every way out.** A room's message, brief and part; a comment on any task (SOPHIA's conversation, the command line, a panel request: the app server answers `POST /api/issues/:id/comments` itself instead of passing it through); what's typed into a hire's terminal; and a new hire's first message.
+  - A local model's terminal and a local hire's first message go as written: Tier 0 may stay local.
+  - A question card's written answers and an approval's note leave with stand-ins, without a check, since they're part of an act the operator already chose.
+- **Passes, in order:**
+  1. Email addresses, so their letters are never split into names.
+  2. The books: clients, participants and contacts (any case, possessives, a one-letter slip in a name of five letters or more, a title and a surname, a first name alone), the business's own name and accounts, and every kept email, phone, address, NDIS number, ABN and account number in any spacing.
+     - A first name that's also a word (Will, Grace) counts only mid-sentence; at a sentence start it's flagged.
+     - A first name two people share is flagged, not replaced. A surname alone is flagged.
+     - The hires' own names and the engine's mentions are never touched.
+  3. Patterns with check digits: phones, ABN (mod 89), TFN (mod 11, with "TFN" before it or written 3-3-3), Medicare (check digit), cards (Luhn), BSB and account, NDIS numbers, street and postal addresses, dates of birth.
+  4. Hints, flagged and never replaced: an age, a health condition, a place. `quasiWarning()` in `app/src/server/membrane/quasi.ts` is the operator's rule for when they add up (default: two kinds together).
+- **Stand-ins** are a family word and four digits: `C-` (a client, participant or contact; the calendar's own stand-in where it's free), `ME-`, `EMAIL-`, `PHONE-`, `ADDR-`, `ABN-`, `NDIS-`, `BANK-`, `TFN-`, `MEDICARE-`, `CARD-`, `DOB-`. They're kept in `standins` in the encrypted books, one per detail, so a person reads the same in every message.
+- **The check.** Anything changed or flagged is held in `outbox` (encrypted, with the operator's own words) and shown as it would leave, stand-ins marked, with **Send as shown**, **Change it**, **Keep it here** (a room message becomes a note only the operator sees) and **Don't send**.
+  - What's sent is exactly what was shown (a digest of it); if the books changed in between, the card shows the new version instead.
+  - It shows where it was sent from (the room, under the box) and as a Flow card that clears only by deciding.
+  - The practice copy's books are made up, so everything it sends to the real team waits for a check.
+- **Back.** A room's stand-ins read as the real names on the operator's screen, dotted, with "As the team sees it" one click away. SOPHIA's conversation, her replies in the command line and "What the cloud has seen" read them back too.
+  - Every hire's message is checked: a stand-in nobody has, one written wrong (`C 4821`, `C-482`, "Client 4821"), and a detail Ogdoad stood in before, written out.
+  - **A client's real detail in a cloud hire's message is an alarm**: noted once, the hire paused through the engine, a desktop alert, and an urgent Flow card. Resuming is the operator's button in the room. The business's own details aren't alarms (the team works for it).
+- **Not yet:** the model backstop (pass 3), a watch that reads new messages without the room being open (step 3), and the hires' documents on the Artifacts shelf read back with real names.
+
 ## The watch (local heartbeat)
 
 - **Inputs.** It runs every 30 seconds or so, and on every event. It reads:
@@ -101,7 +124,7 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
 ## Build order
 
 1. **Rooms.** A live room per project over the issue threads, with Horos presence. No models. *Built 2026-10-10.*
-2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator.
+2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator. *Built 2026-10-10.*
 3. **The watch's gate** on permission prompts, with the policy file.
 4. **The dispatcher's lineups.**
 5. **The model backstop** for the membrane, and the Laya fine-tune.

@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { crossings } from "./crossings.js";
+import { raisedFromMembrane } from "./membrane/outbox.js";
 import { addDays, type Money } from "./money/service.js";
 import { raisedFromCalendar } from "./work/calendar.js";
 import { raisedFromWork, Work } from "./work/work.js";
@@ -83,6 +84,22 @@ export function signals(money: Money, limit = 40): Signal[] {
         } catch {}
         const where = d.where === "cloud" ? ", a cloud model" : d.where === "local" ? ", on this machine" : "";
         return { ...base, who: "crossing", text: `to ${d.who ?? "the team"} (${d.via ?? "?"}${where}): ${d.what ?? ""}`, tone: d.where === "cloud" ? ("warn" as const) : ("muted" as const) };
+      }
+      // The membrane's trail: what was held, and what became of it (never what it said).
+      case "held":
+        return { ...base, who: "membrane", text: `held ${e.detail === "say" ? "a message" : e.detail === "open" ? "a new room's brief" : e.detail === "part" ? "a new part's brief" : e.detail === "prompt" ? "what you typed to a hire" : "a new hire's first message"} for your check`, tone: "c1" as const };
+      case "held_sent":
+        return { ...base, who: "membrane", text: "sent what you checked, with stand-ins", tone: "good" as const };
+      case "held_kept":
+        return { ...base, who: "membrane", text: "kept a message here, as a note in its room", tone: "muted" as const };
+      case "held_dropped":
+        return { ...base, who: "membrane", text: "didn't send a held message", tone: "muted" as const };
+      case "membrane_alarm": {
+        let d: { who?: string; paused?: boolean } = {};
+        try {
+          d = JSON.parse(e.detail);
+        } catch {}
+        return { ...base, who: "membrane", text: `a client's real detail turned up in ${d.who ?? "a hire"}'s message${d.paused ? "; it's paused" : ""}`, tone: "bad" as const };
       }
       case "chased":
         return { ...base, text: `chased ${i?.number ?? "an invoice"} (${i?.name ?? ""}) by ${e.detail === "phone" ? "phone" : e.detail === "email" ? "email" : "another way"}`, tone: "c1" as const };
@@ -186,8 +203,8 @@ export interface CenterContext {
 export async function syncFlow(money: Money, ctx: CenterContext): Promise<Flow> {
   const flow = new Flow(money);
   const team = (await ctx.team?.()) ?? null;
-  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today()), ...raisedFromCalendar(money)];
-  flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "team:"] : ["money:", "bank:", "work:"]);
+  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today()), ...raisedFromCalendar(money), ...raisedFromMembrane(money)];
+  flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "membrane:", "team:"] : ["money:", "bank:", "work:", "membrane:"]);
   return flow;
 }
 

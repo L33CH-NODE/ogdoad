@@ -5,8 +5,10 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Icon } from "../components/icons";
+import { Relinked } from "../components/Markdown";
 import { api } from "../lib/api";
 import { ago } from "../lib/format";
+import { useLinks } from "../lib/links";
 import { useLive } from "../lib/live";
 import { navigate } from "../lib/router";
 import { SettingsPage } from "../pages/Settings";
@@ -92,12 +94,13 @@ interface Crossing { id: number; at: string; who: string; via: string; where: "c
 function CrossingsCard() {
   const { data } = useLive<Crossing[]>("/ogdoad/crossings", ["crossing"]);
   const list = data ?? [];
+  const links = useLinks(list.slice(0, 30).map((c) => c.what));
   const cloud = list.filter((c) => c.where === "cloud").length;
   return (
     <section className="card stack" aria-label="What the cloud has seen" id="crossings">
       <div className="row"><Icon name="send" /><h3>What the cloud has seen</h3><span className="spacer" /><span className={`chip ${cloud ? "warn-chip" : "paid"}`}>{cloud} to a cloud model</span></div>
       <p className="muted" style={{ margin: 0 }}>
-        Every message, answer and panel request you send a hire is noted here as it leaves: who got it, through which harness, and whether that harness runs in the cloud. Panels a hire writes run here, so the hire sees the tables' shape, never the rows. Your books, notes and clients' details only leave in what you write yourself.
+        Every message, answer and panel request you send a hire is noted here as it leaves: who got it, through which harness, and whether that harness runs in the cloud. Panels a hire writes run here, so the hire sees the tables' shape, never the rows. Your clients' details leave only as stand-ins (like C-4821): hover one to see who it is.
       </p>
       {list.length ? (
         <ul className="crossings">
@@ -105,7 +108,7 @@ function CrossingsCard() {
             <li key={c.id}>
               <span className="mono muted">{ago(c.at)}</span>
               <span className={`chip quiet ${c.where === "cloud" ? "t-warn" : c.where === "local" ? "t-good" : ""}`}>{c.who} · {c.via}{c.where === "cloud" ? " · cloud" : c.where === "local" ? " · local" : ""}</span>
-              <span className="crossing-what">{c.what}</span>
+              <span className="crossing-what"><Relinked text={c.what} links={links} asSent /></span>
             </li>
           ))}
         </ul>

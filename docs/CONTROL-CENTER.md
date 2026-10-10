@@ -67,6 +67,10 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
   - Every message is noted in the crossings log once for each hire it reaches.
   - The practice copy shows the real team's rooms but can't start work in them.
   - See `ROOMS-AND-THE-MEMBRANE.md`.
+- **The membrane** (built 2026-10-10). Whatever the operator writes for the team, anywhere, goes through it first.
+  - Real names and details from the books, and anything with the shape of one, become stand-ins like `C-4821`. The engine and the cloud only ever get the stand-ins.
+  - A message that named someone (or hints at who) waits as a check card, where it was written and in Flow: send it as shown, change it, keep it here, or don't send it. A hint line under the box says what will be stood in while you type.
+  - The team's stand-ins read as real names on the operator's screen only, and every hire's message is checked on the way back. A client's real detail in a cloud hire's message pauses that hire and raises an alarm.
 - **Left for the classic view:** agent settings and budgets.
 
 ## Artifacts: what got made

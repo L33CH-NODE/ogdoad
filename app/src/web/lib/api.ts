@@ -112,13 +112,32 @@ export interface Recipe { title: string; sql: string; chart: ChartSpec }
 
 // --- Rooms (mirroring the server) ---
 
-export interface RoomMember { agentId: string; name: string; hireId: string | null; harness: string | null; where: "cloud" | "local" | "either" | "unknown" }
+export interface RoomMember { agentId: string; name: string; hireId: string | null; harness: string | null; where: "cloud" | "local" | "either" | "unknown"; paused?: boolean }
 export interface RoomPart { id: string; identifier: string | null; title: string; status: string; agentId: string | null; yours: boolean; thread: boolean; createdAt: string; updatedAt: string }
 export type RoomMessage =
-  | { id: string; at: string; partId: string; kind: "said"; from: "you" | "agent"; agentId: string | null; body: string }
-  | { id: string; at: string; partId: string; kind: "opened"; agentId: string | null; byYou: boolean; title: string };
+  | { id: string; at: string; partId: string; kind: "said"; from: "you" | "agent"; agentId: string | null; body: string; warnings?: MembraneWarning[] }
+  | { id: string; at: string; partId: string; kind: "opened"; agentId: string | null; byYou: boolean; title: string }
+  | { id: string; at: string; partId: string; kind: "note"; body: string };
 export interface RoomSummary { id: string; name: string; status: string; color: string | null; lastAt: string; partCount: number; openCount: number; memberIds: string[]; memberHireIds: string[]; hasThread: boolean }
 export interface Room extends RoomSummary {
   description: string; leadAgentId: string | null; threadId: string | null; parts: RoomPart[]; members: RoomMember[]; everyone: RoomMember[];
   messages: RoomMessage[]; running: Array<{ agentId: string; issueId: string; status: string; startedAt: string | null }>;
+  links: Links; held: Array<{ id: string; kind: OutKind; createdAt: string }>;
 }
+
+// --- The membrane (mirroring the server) ---
+
+export type Links = Record<string, { real: string; kind: string }>;
+export type OutKind = "say" | "open" | "part" | "prompt" | "hire";
+export interface MembraneWarning { kind: "unknown" | "mangled" | "real" | "echo"; text: string; token?: string; why: string }
+export interface MembraneChange { start: number; end: number; original: string; token: string; kind: string; source: "books" | "pattern"; why: string }
+export interface MembraneFlag { start: number; end: number; text: string; kind: "age" | "condition" | "place" | "maybe-name" | "ambiguous"; why: string }
+export interface CheckPiece { label: string; real: string; text: string; changes: MembraneChange[]; flags: MembraneFlag[] }
+export interface Recipient { who: string; via: string; where: "cloud" | "local" | "either" | "unknown" }
+export interface Check {
+  id: string; kind: OutKind; state: "held" | "sent" | "kept" | "dropped"; createdAt: string; projectId: string | null; where: string; reaches: Recipient[];
+  pieces: CheckPiece[]; warn: boolean; hold: boolean; digest: string; canKeep: boolean; notes: string[];
+}
+/** What a send can come back as: done, or held for the operator's check. */
+export type MaybeHeld<T> = T | { held: Check };
+export const isHeld = <T,>(x: MaybeHeld<T>): x is { held: Check } => !!x && typeof x === "object" && "held" in (x as object);

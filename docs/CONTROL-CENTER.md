@@ -61,6 +61,12 @@ The shelf of everything produced in the business, by the operator or by any hire
 - **Each one can be** previewed in place, opened, pinned to the surface, handed to a hire to work on, or shared outward. Sharing is always the operator's act.
 - **One timeline,** filterable by kind, hire or client, and searchable from the command line.
 
+## Dashboards: panels written blind
+
+- **A panel is a recipe:** a SQLite query and a chart spec (bar, line, stat or table; which column along the bottom, which to draw, how to show the numbers). Never pasted numbers, and every panel shows its query.
+- **Queries run sealed.** Each run copies a few curated tables (invoices, payments, clients, shifts, tasks) into a fresh in-memory database, in a process of its own that's stopped after five seconds. Shift notes, bank lines, account numbers, contact details and NDIS numbers are never in it, and nothing can be written.
+- **Hires write them blind.** "Ask SOPHIA" sends the request and the tables' shape. Her reply carries a recipe, which runs here when the operator looks at it and is pinned on their word. The panel says who wrote it and that they never saw a row.
+
 ## Onboarding
 
 The first launch is a guided arrival, not a settings form:
@@ -71,7 +77,7 @@ The first launch is a guided arrival, not a settings form:
    - Ogdoad generates a 24-word recovery phrase. You write it down, then confirm three of the words.
    - Everything Ogdoad keeps is encrypted with a key that only your password or your phrase can unlock (see the vault, below).
 3. **Choose SOPHIA.** Ogdoad detects the harnesses and local models on this machine, asks how much you trust the cloud, recommends, and you confirm.
-4. **Bring your business in.** The old invoicing site, bank statements, and the calendar, each optional and skippable.
+4. **Bring your business in.** The old invoicing site, bank statements, and the calendar, each optional and skippable. (Built: the last step after the key, a checklist that opens each part in its own room and shows what's already done.)
 5. **Arrive.** The control center comes alive, and SOPHIA introduces herself in the command line.
 
 ## The vault: encrypted, unlocked only by your key

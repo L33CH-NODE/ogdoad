@@ -8,7 +8,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
 
 0. **Loose ends.** ~~The Ogdoad server runs under Horos~~ (done: up first, down last, Postgres stopped cleanly). ~~Ollama on call~~ (done: Horos starts WSL Ollama when a local seat needs it and rests it after; the model store is empty, so the first local seat picks and pulls a model, on the operator's word). SOPHIA's setup interview finishes.
 1. **Money, on the new UI's skeleton.** (Built 2026-10-09: the app on :3101, Money on local SQLite, the importer, PDFs, the GST meter. Done once the operator has imported the old site and sent a real invoice.) The new app shell (floating layout, tokens, API client, Horos notification bell), with Money as its first screen. The invoices backend: history import, numbering that continues the old sequence, PDFs, two bank accounts, the GST-threshold meter. Operator-only. *Done when the operator stops using the old invoicing site.*
-1b. **Shifts, notes and the calendar** (operator-only, local): shifts synced with a sovereign CalDAV calendar or Google (stand-ins only), shift notes in the operator's own notes app, completed shifts flowing into invoice drafts. See "Work" below. (Built 2026-10-10: shifts, local shift notes, incidents, and finished shifts drafted into invoices, in the Work zone and Flow. Next: the calendar sync, then the link to the operator's own notes app.)
+1b. **Shifts, notes and the calendar** (operator-only, local): shifts synced with a sovereign CalDAV calendar or Google (stand-ins only), shift notes in the operator's own notes app, completed shifts flowing into invoice drafts. See "Work" below. (Built 2026-10-10: shifts, local shift notes, incidents, finished shifts drafted into invoices, and the two-way CalDAV sync. Next: the link to the operator's own notes app, and Google Calendar behind Google's own sign-in.)
 2. **Lock the doors.**
    - Hires run as their own low-privilege identity.
    - Local-trusted mode is off: the operator's browser gets a session, agents only get per-run tokens.
@@ -48,6 +48,9 @@ Frontier intelligence without handing over the business.
 - **Tier 1, cloud-visible.** Only sanitised data, and only what the operator has chosen to share, ever reaches a cloud model. It appears in its own pane of the operator's UI, separate from any chat ("non-cross-chat"), so the operator can always see exactly what the cloud has seen.
 - **Back down.** The cloud model's answers return through the membrane, are re-linked to the real records locally, and flow into the local tiers. This happens only after the operator decides, and only within what they agreed to share.
 - **In practice:** a cloud SOPHIA reasons over Tier 1, while local seats do the Tier 0 work (invoices, bank matching, client records). Every crossing is logged, so the operator can review what was shared, with whom, and when.
+- **Built so far (2026-10-10):**
+  - **The crossings log.** Every message, answer and panel request sent to a hire is noted as it leaves: who got it, through which harness, and whether that harness is a cloud model. It shows in Signals and in Settings under "What the cloud has seen".
+  - **Panels written blind.** A dashboard panel is a query plus a chart spec. A hire writes it from the curated tables' shape alone; it runs on the operator's machine, in a sealed copy without notes, bank or NDIS details, and the hire never sees a row.
 - **Fully customisable privacy, set at setup and changeable any time.** The privacy level runs from one end of a spectrum to the other:
   - **Frontier**: hand everything to the cloud model, if the operator chooses.
   - **Tiered**: the membrane above.
@@ -62,7 +65,7 @@ Frontier intelligence without handing over the business.
 - **Local EI drives by default.** When the operator wants more power, they hand a role to the CLI of their favourite EI.
 - **First launch: choose SOPHIA, the CEO.** She is briefed automatically, the UI opens itself, and she runs a multiple-choice setup interview. See `FIRST-LAUNCH.md`.
 - **SOPHIA can reshape the UI.** Live appearance changes (skin, text size, font, tokens) apply instantly, and code changes show via hot reload. Only the server-side human gates are protected.
-- **SOPHIA builds dashboards on request** and places them anywhere in the UI. A dashboard is a set of recipes: SQL plus declarative chart JSON, and every chart shows its query.
+- **SOPHIA builds dashboards on request** and places them anywhere in the UI. A dashboard is a set of recipes: SQL plus declarative chart JSON, and every chart shows its query. (Built 2026-10-10 in the Dashboards zone: two built-in panels, a writer with live preview, and "Ask SOPHIA", whose reply arrives as a panel to look at and pin.)
 
 - **Market research seat and panel.**
   - A dedicated research agent with its own panel. It builds and appends charts (recipes with their queries) and markdown write-ups on anything it learns.
@@ -174,6 +177,7 @@ Ideas, not started yet. Paperclip's controls are a budget cap, an approval butto
   - Shifts and notes live in the encrypted Money database: a day, a start and an end on the business's own clock (an end before the start runs past midnight). A shift can repeat weekly, and starts from the client's last rate.
   - A note has what happened, goals, follow-ups, and an incident flag with its detail. The trail and the Artifacts shelf only ever say that a note exists.
   - Flow raises the note due after each shift, the incident to report (pointing at the NDIS Commission's current rules, never an invented deadline) and "Bill <client> for N shifts". The draft has a line per shift and one for its travel; a rejected draft or void invoice frees the shifts.
+  - **The calendar sync** works with any CalDAV server (tested against Radicale). Events carry "Shift · C-0412" and the times; names only if the operator switches them on. A move in the calendar moves the shift; a deletion cancels one still ahead. It runs soon after any change and every ten minutes, and a failure lands in Flow.
 
 ## Reach and privacy
 

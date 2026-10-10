@@ -26,6 +26,7 @@ const COMMANDS: Array<{ say: string; hint: string }> = [
   { say: "what's late?", hint: "Late invoices, from your books" },
   { say: "/deep", hint: "Deep work on or off" },
   { say: "make a panel of ", hint: "SOPHIA writes it; it runs here: make a panel of hours by participant" },
+  { say: "what has the cloud seen?", hint: "Everything that left for a hire" },
   { say: "/skin", hint: "Next skin" },
   { say: "/lock", hint: "Lock Ogdoad now" },
   { say: "home", hint: "Back to everything" },
@@ -90,6 +91,7 @@ export function CommandLine() {
     if (lower === "/skin" || lower === "skin") return nextSkin();
     if (/^(new|start an?) invoice/.test(lower)) return navigate("/money/invoices/new");
     if (/^(new|add|roster)( an?)? shift/.test(lower)) return navigate("/work/new");
+    if (/cloud (has )?seen|what.*(left|crossed)|crossings/.test(lower)) return navigate("/settings");
     const panel = /^(?:make|build|show)(?: me)? (?:a |an )?(?:dashboard|panel|chart)(?: of| for| showing| with)?\s+(.+)$/i.exec(said)?.[1];
     if (panel) {
       navigate("/dashboards");

@@ -30,11 +30,21 @@ function upstreamHeaders(req: IncomingMessage, up: Upstream, url: URL): Record<s
   return headers;
 }
 
-export function proxyHttp(up: Upstream, req: IncomingMessage, res: ServerResponse): void {
+/** sent: told the request body and the upstream's answer once it's through (for the crossings log). */
+export function proxyHttp(up: Upstream, req: IncomingMessage, res: ServerResponse, sent?: (status: number, body: Buffer) => void): void {
   const { url, path } = target(up, req.url ?? "/");
+  const chunks: Buffer[] = [];
+  if (sent) req.on("data", (c: Buffer) => chunks.push(c));
   const out = request({ host: url.hostname, port: url.port, method: req.method, path, headers: upstreamHeaders(req, up, url) }, (upRes) => {
     res.writeHead(upRes.statusCode ?? 502, upRes.headers);
     upRes.pipe(res);
+    if (sent) upRes.on("end", () => {
+      try {
+        sent(upRes.statusCode ?? 502, Buffer.concat(chunks));
+      } catch {
+        // The log is best effort; the request itself went through.
+      }
+    });
   });
   out.on("error", () => {
     if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });

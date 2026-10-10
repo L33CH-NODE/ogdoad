@@ -153,3 +153,24 @@ test("the team's questions and tasks land in Flow; a question clears once answer
   assert.ok(!ids().includes("team:ask:q1"), "answered: the question cleared itself");
   assert.equal(flow.task(q.id).closedBy, "cleared");
 });
+
+test("a crossing names who got it, through what, and whether it's a cloud model; never more than a summary", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { recordCrossing, crossings } = await import("../crossings.js");
+  const home = mkdtempSync(join(tmpdir(), "ogdoad-crossing-"));
+  mkdirSync(join(home, "horos"));
+  writeFileSync(join(home, "sophia.json"), JSON.stringify({ taskId: "task-1", hireId: "h1" }));
+  writeFileSync(join(home, "horos", "roster.json"), JSON.stringify([{ id: "h1", harness: "claude" }]));
+  const { m } = setup();
+  recordCrossing(m, "task-1", "message", Buffer.from(JSON.stringify({ body: "Ring the plan manager\nabout the roster" })), home);
+  recordCrossing(m, "task-1", "answer", Buffer.from(JSON.stringify({ answers: [{}, {}] })), home);
+  recordCrossing(m, "task-9", "message", Buffer.from(JSON.stringify({ body: 'Dashboard request from the operator: "hours by week"\n\nschema...' })), home);
+  const [panel, answer, message] = crossings(m);
+  assert.deepEqual([message.who, message.via, message.where, message.what], ["SOPHIA", "Claude Code", "cloud", "Ring the plan manager about the roster"]);
+  assert.equal(answer.what, "answered a question card (2 answers)");
+  assert.deepEqual([panel.who, panel.where], ["the team", "unknown"]);
+  assert.match(panel.what, /asked for a panel \(the tables' shape went too, no rows\): hours by week/);
+  assert.ok(signals(m).some((s) => s.who === "crossing" && s.text.startsWith("to SOPHIA (Claude Code, a cloud model): Ring")));
+});

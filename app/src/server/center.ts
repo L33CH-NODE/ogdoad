@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
+import { crossings } from "./crossings.js";
 import { addDays, type Money } from "./money/service.js";
 import { raisedFromCalendar } from "./work/calendar.js";
 import { raisedFromWork, Work } from "./work/work.js";
@@ -75,6 +76,14 @@ export function signals(money: Money, limit = 40): Signal[] {
         return { ...base, text: `finished a shift note: ${e.detail}`, tone: e.detail.includes("incident") ? ("warn" as const) : ("good" as const) };
       case "incident_reported":
         return { ...base, text: `marked an incident reported: ${e.detail}`, tone: "good" as const };
+      case "crossing": {
+        let d: { who?: string; via?: string; where?: string; what?: string } = {};
+        try {
+          d = JSON.parse(e.detail);
+        } catch {}
+        const where = d.where === "cloud" ? ", a cloud model" : d.where === "local" ? ", on this machine" : "";
+        return { ...base, who: "crossing", text: `to ${d.who ?? "the team"} (${d.via ?? "?"}${where}): ${d.what ?? ""}`, tone: d.where === "cloud" ? ("warn" as const) : ("muted" as const) };
+      }
       case "panel_added":
         return { ...base, text: `added a dashboard panel: ${e.detail}`, tone: "c1" as const };
       case "panel_removed":
@@ -200,5 +209,6 @@ export async function handleCenter(money: Money, req: IncomingMessage, res: Serv
   if (parts[0] === "signals" && method === "GET") return sendJson(res, 200, signals(money, Math.min(200, Number(url.searchParams.get("limit") ?? 40) || 40))), true;
   if (parts[0] === "artifacts" && method === "GET") return sendJson(res, 200, artifacts(money)), true;
   if (parts[0] === "monthly" && method === "GET") return sendJson(res, 200, monthly(money)), true;
+  if (parts[0] === "crossings" && method === "GET") return sendJson(res, 200, crossings(money)), true;
   return false;
 }

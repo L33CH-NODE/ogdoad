@@ -7,6 +7,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { handleCenter, type CenterContext } from "./center.js";
+import { recordCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
 import { readJson } from "./http.js";
@@ -197,7 +198,7 @@ const server = createServer(async (req, res) => {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleWork(money, req, res, url, { practice: PRACTICE });
     }
-    if (/^\/ogdoad\/(flow|signals|artifacts|monthly)(\/|$)/.test(url.pathname)) {
+    if (/^\/ogdoad\/(flow|signals|artifacts|monthly|crossings)(\/|$)/.test(url.pathname)) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       if (await handleCenter(money, req, res, url, center)) return;
     }
@@ -207,7 +208,16 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="practice-statement.csv"', "cache-control": "no-store" });
       return void res.end(practiceStatement(money));
     }
-    if (url.pathname.startsWith("/api/") || url.pathname === "/api") return proxyHttp(paperclip, req, res);
+    if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
+      // A message or an answer leaving for a hire is a crossing: noted once the server has it.
+      const crossing = req.method === "POST" ? /^\/api\/issues\/([^/]+)\/(comments|interactions\/[^/]+\/respond)$/.exec(url.pathname) : null;
+      const books = money;
+      return proxyHttp(paperclip, req, res, crossing && books ? (status, body) => {
+        if (status >= 400) return;
+        recordCrossing(books, crossing[1], crossing[2] === "comments" ? "message" : "answer", body);
+        broadcast("changed", { area: "crossing" });
+      } : undefined);
+    }
     if (url.pathname.startsWith("/horos/")) return proxyHttp(horos, req, res);
     if (req.method !== "GET" && req.method !== "HEAD") throw new HttpError(404, "not_found", "Nothing here.");
     return serveStatic(url.pathname, res);

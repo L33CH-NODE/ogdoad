@@ -21,7 +21,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    - SOPHIA's ranked banner on top (blockers waiting on the operator and anything important, ordered by what gets things moving), with the agent dashboard squares below it.
    - The dashboard runtime and the dashboard-craft skill.
    - SOPHIA's chat bar, Team, the notification centre with a deep-work lock, the graceful-shutdown button, and the skins.
-   - Then Paperclip's old UI is retired.
+   - Then Paperclip's old UI is retired. (2026-10-10: the conversation with SOPHIA, the team's tasks, question cards, approvals and the graceful shutdown are all in the control center now. Left: hiring from a screen, agent settings, budgets, projects.)
 4. **Agents near money, and the membrane.**
    - A local Ledger seat: bank matching, ageing, chasing drafts the operator sends.
    - The membrane: stand-ins, the Tier 1 pane, the crossings log, privacy per data class, the exfil-allowed flag.

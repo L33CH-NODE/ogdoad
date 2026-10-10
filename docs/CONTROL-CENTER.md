@@ -50,7 +50,15 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
   - Raised work is keyed by what it's about (`money:`, `bank:`, `work:`, `team:`), updates in place, and closes itself once it's dealt with. A source that can't be read clears nothing.
   - The team's part is the Ogdoad server's attention feed (a hire's question card, approvals, failed runs, budget and error alerts) plus the tasks assigned to the operator. The app checks it every 20 s while a page is open.
   - **A hire's question card is answered inside Flow** (`/flow/ask/:issue/:interaction`), through the same route the classic UI uses. Everything else from the team opens in the classic view for now.
-  - Some work clears only by doing it: a question, a note, a bill. Its main button goes there, and Done is refused. Done on an incident means "it was reported".
+  - Some work clears only by doing it: a question, an approval, a note, a bill. Its main button goes there, and Done is refused. Done on an incident means "it was reported".
+  - **Approvals are decided in Flow** too (`/flow/approve/:id`): what's asked, its details, a note, Approve or Turn it down.
+
+## Team: the hires, and talking to them
+
+- **SOPHIA's room opens on the conversation:** her task's thread as messages, her question cards in line, and a reply box. Her terminal is a tab away.
+- **The team's tasks** are listed under the constellation: who has each one, and where it stands. Any task opens as the same kind of conversation.
+- **Every hire's room shows its live terminal**, and can answer it. While the hire waits on a decision, typing presses keys.
+- **Left for the classic view:** hiring a new agent from a screen (SOPHIA hires through Horos for now), agent settings, budgets and projects.
 
 ## Artifacts: what got made
 

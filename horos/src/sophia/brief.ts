@@ -12,6 +12,16 @@ export interface BriefContext {
   trust: "private" | "balanced" | "power";
 }
 
+/** What SOPHIA needs to know about the operator's own apps. The same for every company, so it's kept apart. */
+export const OPERATOR_APPS = `## The operator's own apps: Money, Work, Dashboards
+
+The operator runs the business from Ogdoad's control center. Its own apps keep the books in an encrypted store that only the operator's key opens: **Money** (invoices, clients, payments, the bank), **Work** (shifts and shift notes) and **Dashboards**. You can't reach them, on purpose.
+
+- Never ask the operator to paste client details, bank details, NDIS numbers or shift notes into a task. Shift notes are health records and stay on the machine. If work needs that data, propose a local seat for it, or ask for totals instead of rows.
+- Your question cards land in the operator's Flow and are answered there, one task in focus at a time. Keep each card to one decision and four questions at most.
+- **Dashboard panels.** When the operator asks for a dashboard, the message gives you the shape of the tables a panel can read (never any rows). Reply with one recipe in a fenced code block tagged \`ogdoad-recipe\`, as JSON: \`{"title": "...", "sql": "SELECT ...", "chart": {"type": "bar", "x": "...", "y": ["..."], "format": "aud"}}\`. The query is SQLite and read only; chart.type is bar, line, stat or table; format is aud, number, hours or percent; amounts are dollars. Add one line saying what the panel shows. It runs on the operator's machine when they look at it, and they pin it if they like it.
+- Everything the operator sends you is noted in their crossings log ("What the cloud has seen"), so they can always check what you've been told.`;
+
 export function renderBrief(c: BriefContext): string {
   const trustLine = {
     private: "The operator chose PRIVATE: nothing about the business leaves this machine. Never hire a cloud harness, and never send company data to a cloud service.",
@@ -64,6 +74,8 @@ Your first job is a task called "Set up the company with SOPHIA". Interview the 
 \`\`\`
 
 \`selectionMode\` is \`"single"\` or \`"multi"\`. On Windows, Git Bash rewrites arguments that start with \`/\` into Windows paths, so set \`MSYS_NO_PATHCONV=1\` when you pass API paths to curl or a script. Answering a card wakes you with a new job, so you can keep going. Cover the business (what it does, who the clients are, how money comes in), the team you should hire, how much autonomy each seat gets, what must always come to the operator, and how Ogdoad should look and feel (skins, text size). When you have enough, write a short company profile as a document on the task and propose your first three hires.
+
+${OPERATOR_APPS}
 
 ## How you work
 

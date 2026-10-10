@@ -3,6 +3,7 @@
 // in the pool. Size is the amount. A payment landing slides its invoice into the pool. Opened, the
 // river sits above Money's own rooms: invoices, clients and the bank.
 
+import { AccountantPage } from "../pages/Accountant";
 import { BankPage } from "../pages/Bank";
 import { ClientPage, ClientsPage } from "../pages/Clients";
 import { InvoicePage } from "../pages/Invoice";
@@ -94,6 +95,7 @@ const ROOMS = [
   { to: "/money", label: "Invoices" },
   { to: "/money/clients", label: "Clients" },
   { to: "/money/bank", label: "Bank" },
+  { to: "/money/accountant", label: "For your accountant" },
 ];
 
 function MoneyRoom() {
@@ -104,6 +106,7 @@ function MoneyRoom() {
   else if ((params = match("/money/clients/:id", path))) page = <ClientPage key={params.id} id={params.id} />;
   else if (path === "/money/clients") page = <ClientsPage />;
   else if (path === "/money/bank") page = <BankPage />;
+  else if (path === "/money/accountant") page = <AccountantPage />;
   else page = <MoneyPage />;
   const here = (to: string) => (to === "/money" ? path === "/money" || path.startsWith("/money/invoices") : path.startsWith(to));
   return (

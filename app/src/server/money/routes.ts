@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { HttpError, readJson, sendJson } from "../http.js";
 import { confirmLine, ignoreLine, importStatement, reviewLines } from "./bank.js";
 import { doubleBillingFindings, type Finding } from "./checks.js";
+import { fyOf, fyRange, invoicesCsv, paymentsCsv, summary, summaryPdf, years } from "./accountant.js";
 import { importPreviousSystem } from "./import.js";
 import { renderInvoicePdf, saveIssuedPdf } from "./pdf.js";
 import type { Money } from "./service.js";
@@ -111,6 +112,24 @@ export async function handleMoney(money: Money, req: IncomingMessage, res: Serve
   }
 
   if (resource === "events" && method === "GET") return sendJson(res, 200, money.events(url.searchParams.get("subject") ?? undefined));
+
+  if (resource === "accountant" && method === "GET") {
+    if (!id) return sendJson(res, 200, { years: years(money), current: fyOf(money.today()) });
+    try {
+      fyRange(id);
+    } catch (err) {
+      throw new HttpError(400, "bad_year", (err as Error).message);
+    }
+    if (action === "summary") return sendJson(res, 200, summary(money, id));
+    const name = `${money.settings().businessName || "Ogdoad"} FY${id}`.replace(/[^\w .-]/g, "");
+    const file = (type: string, filename: string, body: string | Uint8Array) => {
+      res.writeHead(200, { "content-type": type, "content-disposition": `attachment; filename="${filename}"`, "cache-control": "no-store" });
+      res.end(body);
+    };
+    if (action === "invoices.csv") return file("text/csv; charset=utf-8", `${name} invoices.csv`, invoicesCsv(money, id));
+    if (action === "payments.csv") return file("text/csv; charset=utf-8", `${name} payments.csv`, paymentsCsv(money, id));
+    if (action === "summary.pdf") return file("application/pdf", `${name} summary.pdf`, await summaryPdf(money, id));
+  }
 
   throw new HttpError(404, "not_found", "No such Money route.");
 }

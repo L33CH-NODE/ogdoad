@@ -82,6 +82,6 @@ Personal-account lines that pay no invoice are dropped and never stored. Busines
 
 1. **Core:** schema, settings, payment accounts, clients, draft → issue → void, numbering, PDFs, import of the old system, the GST meter, and the Money screen in the new UI.
 2. **Money in:** bank statement import (the bank's CSV has no header row: date, signed amount, description, balance), matching to invoices, ageing, and the daily check.
-3. **Chasing:** chase drafts the operator sends, always after a fresh bank check.
-4. **Accountant pack and deductions research.**
+3. **Chasing:** chase drafts the operator sends, always after a fresh bank check. (Built 2026-10-10: "Draft a reminder" on a late invoice, and from Flow. The tone goes gentle, firm, then final with how late it is, with the pay-to details and the invoice number as the reference. The draft can be copied or opened in the mail app; Ogdoad never sends it. Once the operator says it's gone, Flow rests that invoice for a week.)
+4. **Accountant pack and deductions research.** (The pack is built 2026-10-10, as "For your accountant" in the Money room: one financial year's invoices and payments as CSV, and a one-page summary PDF. Deductions research comes with the agents, after the doors are locked.)
 5. **Documents:** a PDF viewer and a drawn signature.

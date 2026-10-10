@@ -84,6 +84,8 @@ export function signals(money: Money, limit = 40): Signal[] {
         const where = d.where === "cloud" ? ", a cloud model" : d.where === "local" ? ", on this machine" : "";
         return { ...base, who: "crossing", text: `to ${d.who ?? "the team"} (${d.via ?? "?"}${where}): ${d.what ?? ""}`, tone: d.where === "cloud" ? ("warn" as const) : ("muted" as const) };
       }
+      case "chased":
+        return { ...base, text: `chased ${i?.number ?? "an invoice"} (${i?.name ?? ""}) by ${e.detail === "phone" ? "phone" : e.detail === "email" ? "email" : "another way"}`, tone: "c1" as const };
       case "panel_added":
         return { ...base, text: `added a dashboard panel: ${e.detail}`, tone: "c1" as const };
       case "panel_removed":

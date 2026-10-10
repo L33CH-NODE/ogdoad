@@ -7,6 +7,7 @@ import { HttpError, readJson, sendJson } from "../http.js";
 import { confirmLine, ignoreLine, importStatement, reviewLines } from "./bank.js";
 import { doubleBillingFindings, type Finding } from "./checks.js";
 import { fyOf, fyRange, invoicesCsv, paymentsCsv, summary, summaryPdf, years } from "./accountant.js";
+import { chaseDraft, recordChased } from "./chase.js";
 import { importPreviousSystem } from "./import.js";
 import { renderInvoicePdf, saveIssuedPdf } from "./pdf.js";
 import type { Money } from "./service.js";
@@ -79,6 +80,11 @@ export async function handleMoney(money: Money, req: IncomingMessage, res: Serve
     if (id && action === "payments" && method === "POST") {
       const body = await readJson(req);
       return sendJson(res, 201, money.recordPayment({ invoiceId: id, amountCents: body.amountCents, receivedOn: body.receivedOn, accountId: body.accountId, matchedBy: "manual", evidence: body.evidence }, ACTOR));
+    }
+    if (id && action === "chase" && method === "GET") return sendJson(res, 200, chaseDraft(money, id));
+    if (id && action === "chased" && method === "POST") {
+      const body = await readJson(req);
+      return recordChased(money, id, String(body.how ?? "email")), sendJson(res, 200, { ok: true });
     }
     if (id && action === "pdf" && method === "GET") {
       const bytes = await renderInvoicePdf(money, id);

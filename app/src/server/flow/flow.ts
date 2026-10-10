@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { reviewLines } from "../money/bank.js";
+import { CHASE_REST_DAYS } from "../money/chase.js";
 import { doubleBillingFindings } from "../money/checks.js";
 import { MoneyError, todayIn, type Money } from "../money/service.js";
 import { scoreTask, type RankContext } from "./rank.js";
@@ -91,12 +92,18 @@ export function raisedFromMoney(money: Money): Raised[] {
   for (const inv of invoices.filter((i) => i.status === "draft")) {
     out.push({ key: `money:draft:${inv.id}`, title: `Issue the draft for ${inv.clientName}`, context: `${aud(inv.totalCents)}. Check the lines, then issue it.`, source: "money", ref: `/money/invoices/${inv.id}`, cents: inv.totalCents, urgency: 1, blocking: true });
   }
+  const chased = new Map((money.db.prepare("SELECT subject_id, MAX(at) AS at FROM events WHERE kind = 'chased' GROUP BY subject_id").all() as Array<{ subject_id: string; at: string }>).map((r) => [r.subject_id, r.at]));
   for (const inv of invoices.filter((i) => i.status === "issued" && i.balanceCents > 0 && (i.daysOverdue ?? 0) > 0)) {
     const days = inv.daysOverdue!;
+    const last = chased.get(inv.id);
+    // A reminder went out lately: give it a week before pressing again.
+    const resting = !!last && Date.now() - Date.parse(last) < CHASE_REST_DAYS * 86_400_000;
     out.push({
       key: `money:late:${inv.id}`, title: `Chase ${inv.number} from ${inv.clientName}`,
-      context: `${aud(inv.balanceCents)} is ${days} day${days === 1 ? "" : "s"} late. Check the bank first: it may already be paid.`,
-      source: "money", ref: `/money/invoices/${inv.id}`, cents: inv.balanceCents, dueOn: inv.dueDate, urgency: days > 60 ? 2 : 1,
+      context: resting
+        ? `${aud(inv.balanceCents)}, ${days} day${days === 1 ? "" : "s"} late. You sent a reminder on ${new Date(last!).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}; give it a week, and check the bank.`
+        : `${aud(inv.balanceCents)} is ${days} day${days === 1 ? "" : "s"} late. Check the bank first: it may already be paid.`,
+      source: "money", ref: `/money/invoices/${inv.id}/chase`, cents: inv.balanceCents, dueOn: inv.dueDate, urgency: resting ? 0 : days > 60 ? 2 : 1,
     });
   }
   for (const f of doubleBillingFindings(invoices)) {

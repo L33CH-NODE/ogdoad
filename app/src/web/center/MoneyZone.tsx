@@ -102,7 +102,8 @@ function MoneyRoom() {
   const path = usePath();
   let params: Record<string, string> | null;
   let page;
-  if ((params = match("/money/invoices/:id", path))) page = <InvoicePage key={params.id} id={params.id} />;
+  if ((params = match("/money/invoices/:id/chase", path))) page = <InvoicePage key={params.id} id={params.id} chase />;
+  else if ((params = match("/money/invoices/:id", path))) page = <InvoicePage key={params.id} id={params.id} />;
   else if ((params = match("/money/clients/:id", path))) page = <ClientPage key={params.id} id={params.id} />;
   else if (path === "/money/clients") page = <ClientsPage />;
   else if (path === "/money/bank") page = <BankPage />;

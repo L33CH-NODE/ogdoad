@@ -197,3 +197,31 @@ test("an approval lands in Flow to be decided there, and can't just be marked do
   const t = flow.view().now!;
   assert.throws(() => flow.act(t.id, "done"), /Approve it or turn it down/);
 });
+
+test("a reminder is drafted for the operator to send, its tone follows how late it is, and Flow rests a week after", async () => {
+  const { chaseDraft, recordChased } = await import("../money/chase.js");
+  const { m, harbour, flow, sync, today } = setup();
+  m.updateClient(harbour.id, { contactName: "Pat Example", email: "accounts@example.invalid" }, "operator");
+  const late = (days: number) => m.issue(m.createDraft({ clientId: harbour.id, lines: [{ description: "Support work", unitCents: 41460 }] }, "operator").id, { issueDate: addDays(today, -14 - days) }, "operator");
+  const gentle = chaseDraft(m, late(5).id);
+  assert.equal(gentle.tone, "gentle");
+  assert.equal(gentle.to, "accounts@example.invalid");
+  assert.match(gentle.body, /^Hi Pat Example,/);
+  assert.match(gentle.body, /BSB 111111 {3}Account 87654321\nReference: 00101/);
+  assert.equal(chaseDraft(m, late(30).id).tone, "firm");
+  const old = late(70);
+  const final = chaseDraft(m, old.id);
+  assert.equal(final.tone, "final");
+  assert.match(final.subject, /^Final reminder: invoice 00103 from Sample Co$/);
+
+  sync();
+  const before = [flow.view().now, ...flow.view().next, ...flow.view().later].find((t) => t!.key === `money:late:${old.id}`)!;
+  assert.equal(before.ref, `/money/invoices/${old.id}/chase`);
+  assert.equal(before.urgency, 2);
+  recordChased(m, old.id, "email");
+  sync();
+  const after = flow.task(before.id);
+  assert.equal(after.urgency, 0, "resting for a week");
+  assert.match(after.context, /You sent a reminder on/);
+  assert.equal(chaseDraft(m, old.id).lastChasedAt !== null, true);
+});

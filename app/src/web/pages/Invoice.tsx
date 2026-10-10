@@ -14,13 +14,13 @@ interface LineDraft { description: string; quantity: string; unit: string; servi
 const emptyLine = (): LineDraft => ({ description: "", quantity: "1", unit: "", serviceDate: "" });
 const toDraftLine = (l: InvoiceLine): LineDraft => ({ description: l.description, quantity: String(l.quantity), unit: (l.unitCents / 100).toFixed(2), serviceDate: l.serviceDate ?? "" });
 
-export function InvoicePage({ id }: { id: string }) {
+export function InvoicePage({ id, chase = false }: { id: string; chase?: boolean }) {
   const isNew = id === "new";
   const inv = useLoad<Invoice>(isNew ? null : `/ogdoad/money/invoices/${id}`);
   if (!isNew && inv.error) return <ErrorNote error={inv.error} retry={inv.reload} />;
   if (!isNew && !inv.data) return <Loading what="Loading the invoice" />;
   const data = inv.data;
-  if (data && data.status !== "draft") return <IssuedInvoice inv={data} reload={inv.reload} />;
+  if (data && data.status !== "draft") return <IssuedInvoice inv={data} reload={inv.reload} chase={chase} />;
   return <DraftEditor inv={data} onSaved={(saved) => (isNew ? navigate(`/money/invoices/${saved.id}`) : inv.reload())} />;
 }
 
@@ -152,7 +152,69 @@ function DraftEditor({ inv, onSaved }: { inv: Invoice | null; onSaved: (inv: Inv
   );
 }
 
-function IssuedInvoice({ inv, reload }: { inv: Invoice; reload: () => void }) {
+interface ChaseDraft { to: string; subject: string; body: string; tone: "gentle" | "firm" | "final"; daysLate: number; lastBankAt: string | null; lastChasedAt: string | null }
+
+/**
+ * A reminder for a late invoice, drafted here and sent by the operator: copy it, or open it in the
+ * mail app. Ogdoad never sends it. Check the bank first; once it's sent, say so, and Flow lets the
+ * invoice rest for a week.
+ */
+function Reminder({ inv, onDone }: { inv: Invoice; onDone: () => void }) {
+  const [d, setD] = useState<ChaseDraft | null>(null);
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    api.get<ChaseDraft>(`/ogdoad/money/invoices/${inv.id}/chase`).then((r) => {
+      setD(r);
+      setTo(r.to);
+      setSubject(r.subject);
+      setBody(r.body);
+    }, (err) => setNote((err as Error).message));
+  }, [inv.id]);
+  if (!d) return note ? <ErrorNote error={note} /> : <Loading what="Drafting the reminder" />;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${subject}\n\n${body}`);
+      setNote("Copied. Paste it into your email, then say you've sent it.");
+    } catch {
+      setNote("Couldn't copy here; select the text and copy it instead.");
+    }
+  };
+  const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const sent = async (how: "email" | "phone") => {
+    await api.post(`/ogdoad/money/invoices/${inv.id}/chased`, { how });
+    onDone();
+  };
+  return (
+    <section className="card stack" aria-label="Reminder" style={{ borderColor: "color-mix(in oklch, var(--warn) 45%, var(--edge))" }}>
+      <div className="row"><h3 style={{ margin: 0 }}>A reminder, for you to send</h3><span className="spacer" /><span className="chip">{d.tone} · {d.daysLate} days late</span></div>
+      <div className="notice warn">
+        <Icon name="bank" size={16} />
+        <span>
+          Check the bank first: it may already be paid. {d.lastBankAt ? `The last statement you brought in was ${new Date(d.lastBankAt).toLocaleDateString("en-AU", { day: "numeric", month: "long" })}.` : "No bank statement has been brought in yet."} <a {...linkProps("/money/bank")}>Bring one in</a>
+          {d.lastChasedAt ? ` You last chased this on ${new Date(d.lastChasedAt).toLocaleDateString("en-AU", { day: "numeric", month: "long" })}.` : ""}
+        </span>
+      </div>
+      <label className="field">To<input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="The client's email (add it on the client)" /></label>
+      <label className="field">Subject<input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} /></label>
+      <label className="field">Message<textarea className="input" rows={12} value={body} onChange={(e) => setBody(e.target.value)} /></label>
+      {note ? <p className="muted" role="status" style={{ margin: 0 }}>{note}</p> : null}
+      <div className="row">
+        <button className="btn" onClick={() => void copy()}>Copy it</button>
+        <a className="btn" href={mail}>Open in your mail app</a>
+        <span className="spacer" />
+        <button className="btn" onClick={() => void sent("phone")}>I rang them</button>
+        <button className="btn primary" onClick={() => void sent("email")}>I've sent it</button>
+      </div>
+      <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Ogdoad never sends it. Once you say it's gone, Flow lets this invoice rest for a week.</p>
+    </section>
+  );
+}
+
+function IssuedInvoice({ inv, reload, chase = false }: { inv: Invoice; reload: () => void; chase?: boolean }) {
+  const late = inv.status === "issued" && inv.balanceCents > 0 && (inv.daysOverdue ?? 0) > 0;
   const [amount, setAmount] = useState("");
   // Today on this machine (en-CA formats as YYYY-MM-DD); toISOString would give the UTC date.
   const [received, setReceived] = useState(new Date().toLocaleDateString("en-CA"));
@@ -200,10 +262,12 @@ function IssuedInvoice({ inv, reload }: { inv: Invoice; reload: () => void }) {
         </div>
         <div className="row">
           <a className="btn" href={`/ogdoad/money/invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer"><Icon name="file" size={16} /> Open PDF</a>
+          {late && !chase ? <button className="btn primary" onClick={() => navigate(`/money/invoices/${inv.id}/chase`)}>Draft a reminder</button> : null}
           {inv.status === "issued" && !inv.paidCents ? <button className="btn danger" onClick={() => void voidIt()}>Void</button> : null}
         </div>
       </header>
       {error ? <ErrorNote error={error} /> : null}
+      {late && chase ? <Reminder inv={inv} onDone={() => { reload(); navigate(`/money/invoices/${inv.id}`); }} /> : null}
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
         <section className="card stack">

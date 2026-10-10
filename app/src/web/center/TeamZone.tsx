@@ -9,6 +9,7 @@ import { api, type HireInfo } from "../lib/api";
 import { navigate, usePath } from "../lib/router";
 import { useZoom, Zone } from "./ControlCenter";
 import { Conversation } from "./Conversation";
+import { TaskList, TaskRoom, useTeamTasks } from "./TeamTasks";
 import { shortName, useCenter } from "./data";
 
 interface Person { id: string; name: string; harness: string; state: string; kept: boolean; title?: string }
@@ -159,9 +160,31 @@ function HireRoom({ person }: { person: Person }) {
   );
 }
 
+function TeamRoom({ people, core, seats, selectedId, taskId, chip, systemsRow }: { people: Person[]; core: Person | null; seats: Person[]; selectedId?: string; taskId?: string; chip: React.ReactNode; systemsRow: React.ReactNode }) {
+  const { tasks, nameOf } = useTeamTasks();
+  const task = taskId ? tasks?.find((t) => t.id === taskId) ?? null : null;
+  const selected = taskId ? null : people.find((p) => p.id === selectedId) ?? core ?? people[0] ?? null;
+  return (
+    <Zone id="team" chip={chip}>
+      <div className="room-cols">
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="constellation-wrap big"><Constellation core={core} seats={seats} selected={selected?.id} /></div>
+          {systemsRow}
+          <TaskList tasks={tasks} nameOf={nameOf} picked={taskId} />
+        </div>
+        {task ? <TaskRoom task={task} nameOf={nameOf} />
+          : taskId ? <p className="muted">{tasks === null ? "Opening the task…" : "That task isn't there any more."}</p>
+          : selected ? <HireRoom person={selected} /> : <p className="muted">No hires yet. SOPHIA comes first; the setup in the classic view walks you through it.</p>}
+      </div>
+    </Zone>
+  );
+}
+
 export function TeamZone() {
   const open = useZoom() === "team";
-  const selectedId = usePath().split("/").filter(Boolean)[1];
+  const parts = usePath().split("/").filter(Boolean);
+  const taskId = parts[1] === "task" ? parts[2] : undefined;
+  const selectedId = taskId ? undefined : parts[1];
   const { people, core, seats, systems } = useTeamView();
   const working = people.filter((p) => p.state === "working").length;
   const waiting = people.filter((p) => p.state === "blocked").length;
@@ -180,16 +203,5 @@ export function TeamZone() {
       </Zone>
     );
   }
-  const selected = people.find((p) => p.id === selectedId) ?? core ?? people[0] ?? null;
-  return (
-    <Zone id="team" chip={chip}>
-      <div className="room-cols">
-        <div className="stack" style={{ gap: 10 }}>
-          <div className="constellation-wrap big"><Constellation core={core} seats={seats} selected={selected?.id} /></div>
-          {systemsRow}
-        </div>
-        {selected ? <HireRoom person={selected} /> : <p className="muted">No hires yet. SOPHIA comes first; the setup in the classic view walks you through it.</p>}
-      </div>
-    </Zone>
-  );
+  return <TeamRoom people={people} core={core} seats={seats} selectedId={selectedId} taskId={taskId} chip={chip} systemsRow={systemsRow} />;
 }

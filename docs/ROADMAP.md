@@ -16,7 +16,7 @@ One constraint decides it: while Ogdoad runs in local-trusted mode, every reques
    - **The vault**, the operator's choice over passkeys or USB keys: a local login and password, plus a 24-word recovery phrase. Ogdoad's data is encrypted at rest under a key that only the password or the phrase unlocks. The director key is derived from the phrase and signs irreversible acts, after asking for the password again. It subsumes the invoice gates. See `CONTROL-CENTER.md`.
    - Rewind snapshots every mutating run.
    
-   *Done when a stolen token can't clear, push or spend, and any run can be rolled back.*
+   *Done when a stolen token can't clear, push or spend, and any run can be rolled back.* Where it stands and the choices, in order: `LOCK-THE-DOORS.md`.
 3. **The operator's home.**
    - SOPHIA's ranked banner on top (blockers waiting on the operator and anything important, ordered by what gets things moving), with the agent dashboard squares below it.
    - The dashboard runtime and the dashboard-craft skill.

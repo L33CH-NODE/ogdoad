@@ -25,6 +25,7 @@ const PATHS = {
   skip: "M6 6l8 6-8 6zM18 6v12",
   park: "M8 5v14M16 5v14",
   open: "M7 17L17 7M9 7h8v8",
+  calendar: "M5 5h14v15H5zM5 9.5h14M9 3v4M15 3v4",
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -190,6 +190,7 @@ export function ShiftRoom({ id, onDay }: { id: string; onDay: (day: string) => v
         </div>
         <span className="muted">{s.participantName && s.participantName !== s.clientName ? `${s.clientName} · ` : ""}{dayLabel(s.day, { weekday: "long", day: "numeric", month: "long" })}, {hm(s.start)}–{hm(s.end)} ({Math.round((s.minutes / 60) * 100) / 100} h)</span>
         <span className="muted">{s.support || "Support"} · {aud(s.rateCents)} an hour{s.km ? ` · ${s.km} km at ${aud(s.kmRateCents)}` : ""} · <strong style={{ color: "var(--fg)" }}>{aud(s.cents)}</strong></span>
+        <span className="muted" style={{ fontSize: 12 }}>In the calendar as <span className="mono">{s.standIn}</span></span>
       </div>
       <div className="row" style={{ gap: 8 }}>
         {s.billed ? <button className="btn small" onClick={() => navigate(`/money/invoices/${s.billed!.invoiceId}`)}>Open {s.billed.number ? `invoice ${s.billed.number}` : "the draft"}</button> : null}

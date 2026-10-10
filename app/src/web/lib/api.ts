@@ -92,10 +92,12 @@ export interface Shift {
   id: string; clientId: string; clientName: string; participantName: string; day: string; start: string; end: string; minutes: number;
   support: string; rateCents: number; km: number; kmRateCents: number; cents: number; status: "planned" | "done" | "cancelled";
   phase: "ahead" | "now" | "over"; note: "none" | "draft" | "final"; incident: boolean; incidentReported: boolean;
-  billed: { invoiceId: string; status: string; number: string | null } | null; seriesId: string | null;
+  billed: { invoiceId: string; status: string; number: string | null } | null; seriesId: string | null; standIn: string;
 }
 export interface ShiftNote { body: string; goals: string; followUp: string; incident: boolean; incidentDetail: string; incidentReportedAt: string | null; final: boolean; writtenBy: string; updatedAt: string }
 export interface ShiftDetail extends Shift { noteText: ShiftNote | null }
 export interface Billable { clientId: string; clientName: string; shifts: number; cents: number; from: string; to: string; waitingOnNotes: number }
 export interface Month { month: string; invoicedCents: number; receivedCents: number }
 export interface SophiaInfo { companyId: string; companyName: string; agentId?: string; taskId: string; hireId?: string }
+export interface CalendarSettings { kind: "none" | "caldav"; url: string; username: string; hasPassword: boolean; showNames: boolean; lastSyncAt: string | null; lastError: string | null }
+export interface CalendarReport { created: number; updated: number; deleted: number; moved: number; cancelled: number; errors: string[] }

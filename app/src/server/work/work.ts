@@ -2,7 +2,7 @@
 // lines. Shifts sit in the same encrypted database as Money. Their notes are health and personal
 // records: Tier 0, local only, never sent to a cloud model.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { Raised } from "../flow/flow.js";
 import { addDays, MoneyError, type Invoice, type LineInput, type Money } from "../money/service.js";
@@ -32,6 +32,8 @@ export interface Shift {
   /** The draft or invoice it's on; null when it's free to bill. */
   billed: { invoiceId: string; status: string; number: string | null } | null;
   seriesId: string | null;
+  /** How the calendar names it, unless names are on. */
+  standIn: string;
 }
 
 export interface ShiftNote {
@@ -85,6 +87,12 @@ export function clockIn(timezone: string, now = new Date()): { day: string; minu
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)!.value;
   return { day: `${get("year")}-${get("month")}-${get("day")}`, minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+
+/** A stand-in for who a shift is with, as the calendar shows it: stable, short, meaningless elsewhere. */
+export function standIn(clientId: string, participantName: string): string {
+  const h = createHash("sha256").update(`${clientId}\u0000${participantName.trim().toLowerCase()}`).digest();
+  return `C-${String(1000 + (h.readUInt32BE(0) % 9000))}`;
 }
 
 /** How long a shift runs. An end at or before the start runs past midnight. */
@@ -149,6 +157,7 @@ export class Work {
       incident: !!r.note_incident, incidentReported: !!r.note_incident_reported_at,
       billed: active ? { invoiceId: r.invoice_id, status: r.invoice_status, number: r.invoice_number } : null,
       seriesId: r.series_id,
+      standIn: standIn(r.client_id, r.participant_name || r.client_participant || ""),
     };
   }
 

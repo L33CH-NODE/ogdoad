@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { addDays, type Money } from "./money/service.js";
+import { raisedFromCalendar } from "./work/calendar.js";
 import { raisedFromWork, Work } from "./work/work.js";
 
 const aud = (cents: number) => (cents / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
@@ -164,7 +165,7 @@ export interface CenterContext {
 export async function syncFlow(money: Money, ctx: CenterContext): Promise<Flow> {
   const flow = new Flow(money);
   const team = (await ctx.team?.()) ?? null;
-  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today())];
+  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today()), ...raisedFromCalendar(money)];
   flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "team:"] : ["money:", "bank:", "work:"]);
   return flow;
 }

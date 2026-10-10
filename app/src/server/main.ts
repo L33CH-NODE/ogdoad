@@ -15,6 +15,7 @@ import { OGDOAD_HOME } from "./money/db.js";
 import { practiceStatement, resetPractice } from "./money/practice.js";
 import { handleMoney } from "./money/routes.js";
 import { Vault } from "./vault.js";
+import { CalendarSync } from "./work/calendar.js";
 import { handleWork } from "./work/routes.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
 
@@ -104,6 +105,31 @@ setInterval(async () => {
   teamSeen = sig;
 }, 20_000).unref();
 
+// The calendar keeps in step by itself: a few seconds after a shift changes, and every ten minutes.
+let calendarTimer: NodeJS.Timeout | null = null;
+let calendarBusy = false;
+function syncCalendarSoon(delay = 5000): void {
+  if (calendarTimer) clearTimeout(calendarTimer);
+  calendarTimer = setTimeout(async () => {
+    calendarTimer = null;
+    const money = keeper.money;
+    if (PRACTICE || !money || calendarBusy) return;
+    calendarBusy = true;
+    try {
+      const cal = new CalendarSync(money);
+      if (cal.settings().kind === "none") return;
+      const r = await cal.sync();
+      if (r.moved || r.cancelled || r.errors.length) broadcast("changed", { area: "work" });
+    } catch {
+      // Locked mid-sync, say: the next one picks it up.
+    } finally {
+      calendarBusy = false;
+    }
+  }, delay);
+  calendarTimer.unref();
+}
+setInterval(() => syncCalendarSoon(0), 10 * 60_000).unref();
+
 const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
   broadcast("locked", { why });
   for (const s of streams) s.end();
@@ -118,7 +144,11 @@ const server = createServer(async (req, res) => {
     checkRequest(req, ALLOWED_ORIGINS);
     // A change that went through tells every open page, once it has.
     const area = /^\/ogdoad\/(money|flow|work|practice)\//.exec(`${url.pathname}/`)?.[1];
-    if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => res.statusCode < 400 && broadcast("changed", { area }));
+    if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => {
+      if (res.statusCode >= 400) return;
+      broadcast("changed", { area });
+      if (area === "work" && !url.pathname.startsWith("/ogdoad/work/calendar")) syncCalendarSoon();
+    });
 
     // Open to anyone on this machine: what the app is, and the way in.
     if (url.pathname === "/ogdoad/app" && req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, realAppPort: 3101 });
@@ -160,7 +190,7 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname.startsWith("/ogdoad/work/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
-      return await handleWork(money, req, res, url);
+      return await handleWork(money, req, res, url, { practice: PRACTICE });
     }
     if (/^\/ogdoad\/(flow|signals|artifacts|monthly)(\/|$)/.test(url.pathname)) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");

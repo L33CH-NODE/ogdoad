@@ -11,6 +11,7 @@ import { useLive } from "../lib/live";
 import { match, navigate, usePath } from "../lib/router";
 import { useZoom, Zone } from "./ControlCenter";
 import { useCenter } from "./data";
+import { CalendarLine, CalendarPanel } from "./CalendarPanel";
 import { AddShift, BillPanel, ShiftRoom } from "./ShiftRoom";
 import { dayLabel, hm, localDay, mondayOf, plusDays, shiftState, who } from "./workBits";
 
@@ -140,7 +141,8 @@ export function WorkZone() {
         <div className="stack" style={{ gap: 12, minWidth: 0 }}>
           {adding ? <AddShift today={today} onAdded={(s) => { setWeekOf(s.day); navigate(`/work/shift/${s.id}`); }} />
             : picked ? <ShiftRoom id={picked} onDay={setWeekOf} />
-            : <BillPanel billable={billable.data ?? []} focus={billing} />}
+            : path === "/work/calendar" ? <CalendarPanel />
+            : <><BillPanel billable={billable.data ?? []} focus={billing} /><CalendarLine /></>}
           <p className="muted tier0"><Icon name="shield" size={14} /> {info?.practice
             ? "These shifts and notes are made up. In your real books, notes stay on this machine, encrypted with your key, and are never sent to a cloud model."
             : "Shift notes stay on this machine, in your encrypted books. They're never sent to a cloud model."}</p>

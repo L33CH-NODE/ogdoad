@@ -1,0 +1,14 @@
+# What scripts/check-private.mjs may let through, and why. Keep it short: every line here is a decision.
+#
+#   commit <sha>    everything a commit adds (only for upstream code brought in unchanged)
+#   text <words>    any finding on a line (or commit message) that contains these exact words
+
+# Upstream Paperclip, imported as core/ unchanged: its own public code, with test fixtures that hold fake
+# keys and example paths on purpose. Ogdoad's own changes to core/ come in later commits and are checked.
+commit 9a52b2130be4361e56ffc77acfba0e2eb8e8446f
+commit f905774d5b0849f5ad33e87d876d9ed7ef0134fa
+
+# A test proving the calendar's password never comes back out.
+text not-a-real-secret
+# The gnostic word Horos is named from, in its rename commit (not anyone's name).
+text is the aeon who guards

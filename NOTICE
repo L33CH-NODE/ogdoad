@@ -24,3 +24,11 @@ no Herdr code or data today. If any Herdr code or data (such as its
 agent-detection rule files) is copied in, it will be taken only from a release
 at v0.8.0 or later (Apache-2.0), kept under its original notices, accompanied
 by the Apache-2.0 license text, and marked as modified where changed.
+
+----------------------------------------------------------------------------
+OpenAI Privacy Filter (not redistributed)
+----------------------------------------------------------------------------
+The membrane's local model (models/membrane/) runs OpenAI Privacy Filter
+(https://huggingface.co/openai/privacy-filter), licensed under the Apache
+License 2.0. Its weights are not in this repository: setup.sh downloads them
+from the official repository at a pinned revision.

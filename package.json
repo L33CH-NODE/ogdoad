@@ -1,7 +1,7 @@
 {
   "name": "ogdoad",
   "version": "0.0.2",
-  "description": "0GD0AD: hire any live agent (Claude Code, grok, opencode, Hermes, local models) into a Paperclip company with no logins, plus agent-built live dashboards.",
+  "description": "0GD0AD: a local-first control center for running a business with AI agents. Hire any harness, keep your data local, and make every call that matters.",
   "license": "MIT",
   "author": "L33CH-NODE",
   "repository": {
@@ -9,12 +9,27 @@
     "url": "git+https://github.com/L33CH-NODE/ogdoad.git"
   },
   "homepage": "https://github.com/L33CH-NODE/ogdoad",
-  "keywords": ["ogdoad", "paperclip", "ai-agents", "agent-orchestration", "claude-code", "grok", "local-first"],
+  "keywords": [
+    "ogdoad",
+    "ai-agents",
+    "agent-orchestration",
+    "local-first",
+    "privacy",
+    "claude-code",
+    "control-center"
+  ],
   "bin": {
     "ogdoad": "cli.js"
   },
-  "files": ["cli.js", "README.md", "LICENSE"],
+  "files": [
+    "cli.js",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20"
+  },
+  "scripts": {
+    "check:private": "node scripts/check-private.mjs"
   }
 }

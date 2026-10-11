@@ -11,13 +11,14 @@ import { match, navigate, openRef, usePath } from "../lib/router";
 import { ApproveCard } from "./ApproveCard";
 import { AskCard } from "./AskCard";
 import { CheckCard } from "./CheckCard";
+import { WatchCard } from "./WatchCard";
 import { typing, useZoom, Zone } from "./ControlCenter";
 import { shortName, useCenter } from "./data";
 
 const SOURCE: Record<Task["source"], string> = { you: "yours", money: "Money", bank: "Bank", work: "Work", team: "Team" };
 
 /** Raised work that clears by doing it where it lives: its main button goes there, and D leaves it alone. */
-const DO_IT: Array<[string, string]> = [["membrane:check:", "Check it"], ["team:ask:", "Answer"], ["team:approval:", "Decide"], ["work:note:", "Write it"], ["work:bill:", "Bill it"], ["money:late:", "Draft a reminder"], ["work:calendar", "Fix it"], ["money:setup", "Finish it"], ["money:gst:over", "Open settings"]];
+const DO_IT: Array<[string, string]> = [["watch:ask:", "Answer"], ["membrane:check:", "Check it"], ["team:ask:", "Answer"], ["team:approval:", "Decide"], ["work:note:", "Write it"], ["work:bill:", "Bill it"], ["money:late:", "Draft a reminder"], ["work:calendar", "Fix it"], ["money:setup", "Finish it"], ["money:gst:over", "Open settings"]];
 export const doIt = (t: Task | null): string | null => (t?.key ? DO_IT.find(([prefix]) => t.key!.startsWith(prefix))?.[1] ?? null : null);
 
 export function FlowZone() {
@@ -52,9 +53,10 @@ export function FlowZone() {
   const ask = match("/flow/ask/:issue/:interaction", path);
   const approval = match("/flow/approve/:id", path)?.id;
   const held = match("/flow/check/:id", path)?.id;
+  const watching = match("/flow/watch/:id", path)?.id;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!now || busy || ask || approval || held || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!now || busy || ask || approval || held || watching || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       const action = { d: doing ? null : "done", s: "skip", p: "park" }[e.key.toLowerCase()];
       if (action) {
         e.preventDefault();
@@ -63,7 +65,7 @@ export function FlowZone() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [now?.id, busy, !!ask, !!approval, !!held]);
+  }, [now?.id, busy, !!ask, !!approval, !!held, !!watching]);
 
   const currents = team.filter((h) => h.role !== "server" && h.state === "working");
   const chip = flow ? (
@@ -143,6 +145,7 @@ export function FlowZone() {
           {ask ? <AskCard issueId={ask.issue} interactionId={ask.interaction} />
             : approval ? <ApproveCard id={approval} />
             : held ? <CheckCard key={held} id={held} onDone={() => { reloadFlow(); navigate("/flow"); }} />
+            : watching ? <WatchCard key={watching} id={decodeURIComponent(watching)} />
             : nowCard}
           {flow?.next.length ? <><span className="zlabel">Next</span><div className="stack" style={{ gap: 4 }}>{flow.next.map((t, i) => row(t, i + 2, { park: true }))}</div></> : null}
           {flow?.later.length ? <><span className="zlabel">Later</span><div className="stack" style={{ gap: 4 }}>{flow.later.map((t, i) => row(t, i + 5, { park: true }))}</div></> : null}

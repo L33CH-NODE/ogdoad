@@ -8,6 +8,7 @@ import { Flow, raisedFromMoney, type Raised } from "./flow/flow.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { crossings } from "./crossings.js";
 import { raisedFromMembrane } from "./membrane/outbox.js";
+import { raisedFromWatch } from "./watch/watch.js";
 import { addDays, type Money } from "./money/service.js";
 import { raisedFromCalendar } from "./work/calendar.js";
 import { raisedFromWork, Work } from "./work/work.js";
@@ -101,6 +102,16 @@ export function signals(money: Money, limit = 40): Signal[] {
         } catch {}
         return { ...base, who: "membrane", text: `a client's real detail turned up in ${d.who ?? "a hire"}'s message${d.paused ? "; it's paused" : ""}`, tone: "bad" as const };
       }
+      case "watch_answered": {
+        let d: { hire?: string; answer?: string; by?: string; kinds?: string[] } = {};
+        try {
+          d = JSON.parse(e.detail);
+        } catch {}
+        const what = d.answer === "deny" ? "denied" : d.answer === "always" ? "always allowed" : "allowed";
+        return { ...base, who: d.by === "policy" ? "watch" : "you", text: `${what} ${d.hire ?? "a hire"}'s request (${(d.kinds ?? []).join(", ")})${d.by === "policy" ? ", by your policy" : ""}`, tone: d.answer === "deny" ? ("muted" as const) : ("c1" as const) };
+      }
+      case "watch_auto":
+        return { ...base, text: `turned the watch's answering ${e.detail}`, tone: "muted" as const };
       case "chased":
         return { ...base, text: `chased ${i?.number ?? "an invoice"} (${i?.name ?? ""}) by ${e.detail === "phone" ? "phone" : e.detail === "email" ? "email" : "another way"}`, tone: "c1" as const };
       case "panel_added":
@@ -203,8 +214,8 @@ export interface CenterContext {
 export async function syncFlow(money: Money, ctx: CenterContext): Promise<Flow> {
   const flow = new Flow(money);
   const team = (await ctx.team?.()) ?? null;
-  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today()), ...raisedFromCalendar(money), ...raisedFromMembrane(money)];
-  flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "membrane:", "team:"] : ["money:", "bank:", "work:", "membrane:"]);
+  const local = [...raisedFromMoney(money), ...raisedFromWork(new Work(money), money.today()), ...raisedFromCalendar(money), ...raisedFromMembrane(money), ...raisedFromWatch(money)];
+  flow.sync([...local, ...(team ?? [])], team ? ["money:", "bank:", "work:", "membrane:", "watch:", "team:"] : ["money:", "bank:", "work:", "membrane:", "watch:"]);
   return flow;
 }
 

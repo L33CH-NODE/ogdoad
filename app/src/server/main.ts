@@ -24,6 +24,8 @@ import { handleWork } from "./work/routes.js";
 import { BACKSTOP_URL } from "./membrane/backstop.js";
 import { Membrane } from "./membrane/membrane.js";
 import { handleMembrane, handleRooms, Rooms, type RoomsContext } from "./rooms.js";
+import { handleWatch } from "./watch/routes.js";
+import { Watch } from "./watch/watch.js";
 import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
 
 const PORT = Number(process.env.OGDOAD_APP_PORT ?? 3101);
@@ -170,6 +172,45 @@ setInterval(async () => {
   teamSeen = sig;
 }, 20_000).unref();
 
+// The watch: every few seconds, what the hires are waiting on (a permission prompt) is read, sorted by
+// risk and put in front of the operator. It runs while the books are open, and only in the real app:
+// the practice copy's books are made up, but its team is real.
+let watchBusy = false;
+setInterval(async () => {
+  const money = keeper.money;
+  if (PRACTICE || !TEAM_FLOW || !money || watchBusy) return;
+  watchBusy = true;
+  try {
+    if (await new Watch(money, { base: HOROS_URL, headers: horos.headers! }).tick()) broadcast("changed", { area: "watch" });
+  } catch {
+    // Locked mid-look, or Horos away: the next look picks it up.
+  } finally {
+    watchBusy = false;
+  }
+}, 8000).unref();
+
+// The watch reads the rooms too: a room with new messages is read (which checks every hire's message
+// on the way back, and raises the alarm on a client's real detail), whether or not anyone opens it.
+const roomsSeen = new Map<string, string>();
+let roomsBusy = false;
+setInterval(async () => {
+  const money = keeper.money;
+  if (PRACTICE || !money || !readSophia() || roomsBusy) return;
+  roomsBusy = true;
+  try {
+    const rooms = new Rooms(money, teamContext());
+    for (const r of await rooms.list()) {
+      if (roomsSeen.get(r.id) === r.lastAt) continue;
+      await rooms.get(r.id);
+      roomsSeen.set(r.id, r.lastAt);
+    }
+  } catch {
+    // The engine away, or locked: the next round picks it up.
+  } finally {
+    roomsBusy = false;
+  }
+}, 60_000).unref();
+
 // The calendar keeps in step by itself: a few seconds after a shift changes, and every ten minutes.
 let calendarTimer: NodeJS.Timeout | null = null;
 let calendarBusy = false;
@@ -223,7 +264,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/healthz") return sendJson(res, 200, { ok: true, app: "ogdoad", unlocked: keeper.status().unlocked });
     checkRequest(req, ALLOWED_ORIGINS);
     // A change that went through tells every open page, once it has.
-    const area = /^\/ogdoad\/(money|flow|work|dashboards|practice|rooms|membrane)\//.exec(`${url.pathname}/`)?.[1];
+    const area = /^\/ogdoad\/(money|flow|work|dashboards|practice|rooms|membrane|watch)\//.exec(`${url.pathname}/`)?.[1];
     if (area && req.method !== "GET" && req.method !== "HEAD") res.on("finish", () => {
       if (res.statusCode >= 400) return;
       broadcast("changed", { area });
@@ -279,6 +320,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/ogdoad/rooms" || url.pathname.startsWith("/ogdoad/rooms/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleRooms(money, req, res, url, readSophia() ? teamContext() : null);
+    }
+    if (url.pathname === "/ogdoad/watch" || url.pathname.startsWith("/ogdoad/watch/")) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      return await handleWatch(money, req, res, url, { horos: { base: HOROS_URL, headers: horos.headers! }, practice: PRACTICE });
     }
     if (url.pathname.startsWith("/ogdoad/membrane/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");

@@ -55,6 +55,7 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
   - **A hire's question card is answered inside Flow** (`/flow/ask/:issue/:interaction`), through the same route the classic UI uses. Everything else from the team opens in the classic view for now.
   - Some work clears only by doing it: a question, an approval, a note, a bill. Its main button goes there, and Done is refused. Done on an incident means "it was reported".
   - **Approvals are decided in Flow** too (`/flow/approve/:id`): what's asked, its details, a note, Approve or Turn it down.
+  - **A hire's permission prompt is answered in Flow** (`/flow/watch/:id`, the watch). It shows what the hire wants to do as its screen says it, sorted by risk, with what the operator's policy would do: **Allow once** or **Deny**. Deleting, sending out, spending, investing, secrets and starting agents always wait for the operator, and a "yes" to them takes a second yes.
 
 ## Team: the hires, and talking to them
 

@@ -1,6 +1,6 @@
 # Rooms, the dispatcher, the membrane and the watch
 
-The operator's idea (2026-10-10). Status: steps 1 and 2, the rooms and the membrane, are built (2026-10-10; see "The membrane as built" below and `CONTROL-CENTER.md`). The rest is still a spec.
+The operator's idea (2026-10-10). Status: steps 1 to 3 are built: the rooms, the membrane and the watch's gate (2026-10-10 to 2026-10-12; see "as built" below and `CONTROL-CENTER.md`). The dispatcher is still a spec.
 
 A job moves from the operator to the best mix of hires and back again. The hires talk to each other and to the operator in a live room, so the business gets done in the open. No real identity ever reaches a cloud model, and anything risky waits for the operator.
 
@@ -131,11 +131,29 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
   - A 9B model at Q4 needs about 6.6 GB.
   - The membrane's model backstop runs on the CPU.
 
+### The watch as built (step 3)
+
+- **Every 8 seconds**, in the real app while the books are open, it looks at each hire Horos sees waiting on a decision.
+  - It reads the prompt off the screen (`app/src/server/watch/prompt.ts`): a boxed dialog with numbered choices, a one-line prompt with its choices inline, or a line ending in (y/n). It reads the shape, not one harness's exact words.
+  - It sorts what the hire wants by risk (`risk.ts`, rules only for now): deletes, sends out, spends, invests, secrets, starts agents, installs, web, writes, runs, reads.
+  - It puts it in front of the operator as a Flow card (Pulse leads with it): **Allow once**, **Deny**, **Always allow** (only for low risk), **Open its terminal**.
+- **The operator decides.** The card shows what their policy (`policy.ts`, `decide()`) would do.
+  - Answering by the policy is off until they turn it on in Settings › The watch.
+  - Even then it presses only "yes, once", only for what the policy allows, and never a kind on the floor (`ALWAYS_ASK`: deleting, sending out, spending, investing, secrets, starting agents).
+  - A "yes" to a floor kind takes a second yes.
+- **An answer is pressed only into the very same prompt** (its fingerprint, read again just before pressing). If the hire moved on or was answered in its terminal, nothing is pressed and the card goes.
+- **Each answer is noted** (`watch_answered`: the kinds, what the policy said, what the operator chose, who answered), as labelled examples for a local decider (Laya) later. Settings shows the recent ones, and where the policy and the operator disagreed.
+- **It reads the rooms too.** Once a minute, any room with new messages is read, which checks every hire's message and raises the alarm on a client's real detail, whether or not anyone opens the room.
+- **Not yet:**
+  - A local model's second opinion on a prompt the rules can't place (it would share the GPU with other local work, so it's off until there's a turn-taking plan).
+  - Coordinating hires on the same files.
+  - Per-project summaries for Pulse.
+
 ## Build order
 
 1. **Rooms.** A live room per project over the issue threads, with Horos presence. No models. *Built 2026-10-10.*
 2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator. *Built 2026-10-10.*
-3. **The watch's gate** on permission prompts, with the policy file.
+3. **The watch's gate** on permission prompts, with the policy file. *Built 2026-10-12.*
 4. **The dispatcher's lineups.**
 5. **The model backstop** for the membrane (*built 2026-10-11*), and the Laya fine-tune.
 

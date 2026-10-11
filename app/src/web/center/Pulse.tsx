@@ -28,10 +28,12 @@ export function Pulse() {
   };
 
   const items: Item[] = [];
-  for (const h of team.filter((x) => x.state === "blocked" && x.role !== "server")) {
+  const open = flow ? [flow.now, ...flow.next, ...flow.later].filter((t): t is Task => !!t) : [];
+  // A hire whose prompt the watch has read is its card (allow or deny); one it couldn't read is "needs you".
+  const watched = new Set(open.filter((t) => t.key?.startsWith("watch:ask:")).map((t) => t.key!.slice("watch:ask:".length).split(":")[0]));
+  for (const h of team.filter((x) => x.state === "blocked" && x.role !== "server" && !watched.has(x.id))) {
     items.push({ key: h.id, title: `${shortName(h.label)} needs you`, why: "It's waiting on a decision. Read its screen and answer it.", tone: "warn", action: "Open", act: () => navigate(`/team/${h.id}`), score: 5_000 });
   }
-  const open = flow ? [flow.now, ...flow.next, ...flow.later].filter((t): t is Task => !!t) : [];
   for (const t of open.filter((x) => x.blocking || x.urgency >= 2)) {
     items.push({ key: t.id, title: t.title, why: t.context, tone: t.urgency >= 3 ? "bad" : t.urgency === 2 ? "warn" : "info", action: doIt(t) ?? (t.ref ? "Do it" : "Focus"), act: () => focus(t), score: t.score ?? 0 });
   }

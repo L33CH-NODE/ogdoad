@@ -448,6 +448,12 @@ button.vault-chip:hover { color: var(--fg); }
 .msg-warnings li strong { font-weight: 600; margin-right: 4px; }
 .msg-warnings li.w-real strong { color: var(--bad); }
 .msg-warnings li.w-mangled strong, .msg-warnings li.w-unknown strong, .msg-warnings li.w-echo strong { color: var(--warn); }
+.watch-card { gap: 10px; }
+.watch-card.high::before { background: linear-gradient(var(--bad), color-mix(in oklch, var(--bad) 10%, transparent)); }
+.watch-action { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid var(--edge); }
+.chip.risk-high { color: var(--bad); border-color: color-mix(in oklch, var(--bad) 45%, transparent); background: color-mix(in oklch, var(--bad) 10%, transparent); }
+.watch-verdict { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.watch-verdict svg { flex: 0 0 auto; margin-top: 2px; }
 .member.paused { border-color: color-mix(in oklch, var(--warn) 50%, transparent); }
 .where.w-paused { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 40%, transparent); }
 

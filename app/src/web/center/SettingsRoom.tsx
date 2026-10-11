@@ -13,6 +13,7 @@ import { useLive } from "../lib/live";
 import { navigate } from "../lib/router";
 import { SettingsPage } from "../pages/Settings";
 import { useCenter } from "./data";
+import { WatchSettingsCard } from "./WatchCard";
 
 function KeyCard() {
   const { vault, info } = useCenter();
@@ -185,6 +186,7 @@ export function SettingsRoom() {
       <div className="zbody room-page">
         <KeyCard />
         <CrossingsCard />
+        <WatchSettingsCard />
         <SettingsPage />
         <ShutdownCard />
       </div>

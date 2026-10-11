@@ -66,6 +66,7 @@ const CLEARED_BY_DOING: Array<[string, string]> = [
   ["team:approval:", "Approve it or turn it down: it clears itself once it's decided."],
   ["work:note:", "Write the note: it clears itself once it's finished."],
   ["membrane:check:", "Send it, change it, or keep it here: it clears itself once you've decided."],
+  ["watch:ask:", "Allow it or deny it: it clears itself once it's answered."],
   ["work:bill:", "Make the draft in Work: it clears itself once the shifts are on it."],
   // Standing conditions: Done would hide them for good, while the thing is still wrong.
   ["work:calendar", "Fix the calendar settings (or turn the sync off): it clears itself once the sync works."],

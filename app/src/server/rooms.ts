@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { tokenRe } from "../shared/standins.js";
+import { tokenRe, type Kind } from "../shared/standins.js";
 import { harnessInfo, hireOfAgent, recipientOfAgent, recipientOfHire, recipientsOfComment, recordCrossing, recordDirectCrossing, type Recipient, type Where } from "./crossings.js";
 import { hire as startHire, type HireInput } from "./hire.js";
 import { HttpError, readJson, sendJson } from "./http.js";
@@ -34,6 +34,10 @@ export interface RoomsContext {
   horos?: { base: string; headers: () => Record<string, string> };
   /** A client's real detail turned up in a hire's message (and the hire was paused). */
   onAlarm?: (title: string, body: string) => void;
+  /** Where the membrane's local model listens (null or absent: that pass is off). */
+  backstop?: string | null;
+  /** Wake the local model when it's resting, and wait until it answers. */
+  wakeBackstop?: () => Promise<void>;
 }
 
 interface EngineProject { id: string; name: string; description?: string | null; status: string; leadAgentId?: string | null; color?: string | null; createdAt: string; updatedAt: string; archivedAt?: string | null }
@@ -316,7 +320,7 @@ export class Rooms {
   /** Through the membrane: sent at once when there's nothing to check, or held for the operator. */
   private async through<T>(kind: OutKind, projectId: string | null, payload: any, deliver: (texts: string[]) => Promise<T>): Promise<T | { held: Check }> {
     const protect = await this.protect();
-    const outs = readsOf(kind, payload).map((r) => this.membrane.out(r.real, { protect }));
+    const outs = await Promise.all(readsOf(kind, payload).map((r) => this.membrane.check(r.real, { protect, backstop: this.ctx.backstop, wake: this.ctx.wakeBackstop })));
     // The practice copy's books are made up, so it can't know the real clients' names: everything it
     // sends to the real team waits for a look.
     if (!this.ctx.practice && !outs.some((o) => o.hold)) return deliver(outs.map((o) => o.text));
@@ -327,16 +331,17 @@ export class Rooms {
   /** What a held item would send now, piece by piece, and where it goes. */
   private async checkOf(h: Held): Promise<Check> {
     const protect = await this.protect();
-    const pieces = readsOf(h.kind, h.payload).map((r) => {
-      const o = this.membrane.out(r.real, { protect });
-      return { label: r.label, real: o.real, text: o.text, changes: o.changes, flags: o.flags, hold: o.hold, warn: o.warn };
-    });
+    const pieces = await Promise.all(readsOf(h.kind, h.payload).map(async (r) => {
+      const o = await this.membrane.check(r.real, { protect, backstop: this.ctx.backstop, wake: this.ctx.wakeBackstop });
+      return { label: r.label, real: o.real, text: o.text, changes: o.changes, flags: o.flags, hold: o.hold, warn: o.warn, model: o.model };
+    }));
     const notes: string[] = [];
     if (this.ctx.practice) notes.push("The practice copy's books are made up, so it doesn't know your real clients and can't stand in their names. Check there are none in this.");
+    if (pieces.some((p) => p.model === "down")) notes.push("The local model didn't answer, so only your books and the patterns checked this. Look for names they wouldn't know.");
     const { where, reaches } = await this.describe(h, pieces[0]?.text ?? "").catch(() => ({ where: "the team", reaches: [] as Recipient[] }));
     return {
       id: h.id, kind: h.kind, state: h.state, createdAt: h.createdAt, projectId: h.projectId, where, reaches,
-      pieces: pieces.map(({ hold: _h, warn: _w, ...p }) => p),
+      pieces: pieces.map(({ hold: _h, warn: _w, model: _m, ...p }) => p),
       warn: pieces.some((p) => p.warn),
       hold: this.ctx.practice || pieces.some((p) => p.hold),
       digest: digestOf(pieces),
@@ -426,6 +431,19 @@ export class Rooms {
     this.money.db.prepare("INSERT INTO room_notes (id, project_id, part_id, body, created_at) VALUES (?, ?, ?, ?, ?)").run(randomUUID(), h.payload.projectId, h.payload.partId ?? null, h.payload.body, new Date().toISOString());
     this.outbox.close(id, "kept");
     return { kept: true };
+  }
+
+  /** A detail the local model found: the operator says it's private, so it's stood in from now on. */
+  async standInHeld(id: string, input: { text?: unknown; kind?: unknown }): Promise<Check> {
+    const h = this.outbox.get(id);
+    if (!h || h.state !== "held") throw new HttpError(409, "not_held", "That was already dealt with.");
+    const text = String(input.text ?? "").trim();
+    const kind = String(input.kind ?? "") as Kind;
+    if (!text || text.length > 200) throw new HttpError(400, "text", "Say what to stand in.");
+    if (!["who", "address", "email", "phone", "bank", "dob"].includes(kind)) throw new HttpError(400, "kind", "That can't be stood in.");
+    if (!readsOf(h.kind, h.payload).some((r) => r.real.includes(text))) throw new HttpError(400, "text", "That isn't in what's held.");
+    this.membrane.standIn(kind, text);
+    return this.checkOf(h);
   }
 
   dropHeld(id: string): { dropped: true } {
@@ -587,7 +605,9 @@ export async function handleMembrane(money: Money, req: IncomingMessage, res: Se
   if (what === "check" && method === "POST") {
     // A quick look while typing: what would be stood in (nothing is kept, nothing is sent).
     const body = await readJson(req);
-    const o = new Membrane(money).out(String(body.text ?? "").slice(0, LIMIT.text), { protect: Array.isArray(body.protect) ? body.protect.map(String) : [], dry: true });
+    const o = await new Membrane(money).check(String(body.text ?? "").slice(0, LIMIT.text), { protect: Array.isArray(body.protect) ? body.protect.map(String) : [], dry: true, backstop: ctx?.backstop });
+    // Typing is the moment to wake the model, so it's ready by the time this is sent (no waiting here).
+    if (o.model === "down") void ctx?.wakeBackstop?.();
     return sendJson(res, 200, { hold: o.hold, warn: o.warn, changes: o.changes.map((c) => ({ kind: c.kind, original: c.original })), flags: o.flags.map((f) => ({ kind: f.kind, text: f.text })) });
   }
   if (what === "links" && method === "POST") {
@@ -611,6 +631,7 @@ export async function handleMembrane(money: Money, req: IncomingMessage, res: Se
     if (action === "edit") return sendJson(res, 200, await rooms.editHeld(id, body.pieces));
     if (action === "keep") return sendJson(res, 200, rooms.keepHeld(id));
     if (action === "drop") return sendJson(res, 200, rooms.dropHeld(id));
+    if (action === "standin") return sendJson(res, 200, await rooms.standInHeld(id, body));
   }
   throw new HttpError(404, "not_found", "Nothing here.");
 }

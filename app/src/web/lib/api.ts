@@ -131,7 +131,7 @@ export type Links = Record<string, { real: string; kind: string }>;
 export type OutKind = "say" | "open" | "part" | "prompt" | "hire";
 export interface MembraneWarning { kind: "unknown" | "mangled" | "real" | "echo"; text: string; token?: string; why: string }
 export interface MembraneChange { start: number; end: number; original: string; token: string; kind: string; source: "books" | "pattern"; why: string }
-export interface MembraneFlag { start: number; end: number; text: string; kind: "age" | "condition" | "place" | "maybe-name" | "ambiguous"; why: string }
+export interface MembraneFlag { start: number; end: number; text: string; kind: "age" | "condition" | "place" | "maybe-name" | "ambiguous" | "model"; why: string; standIn?: string }
 export interface CheckPiece { label: string; real: string; text: string; changes: MembraneChange[]; flags: MembraneFlag[] }
 export interface Recipient { who: string; via: string; where: "cloud" | "local" | "either" | "unknown" }
 export interface Check {

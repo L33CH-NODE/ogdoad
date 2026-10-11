@@ -12,6 +12,7 @@ import { createHash, randomInt } from "node:crypto";
 
 import { FAMILY, tokenRe, type Kind } from "../../shared/standins.js";
 import type { Money } from "../money/service.js";
+import { MODEL_LABEL, scan } from "./backstop.js";
 import { knownInBooks, matchBooks, type Known } from "./books.js";
 import { findPatterns, normalise } from "./patterns.js";
 import { findQuasi, quasiWarning, type Flag, type QuasiKind } from "./quasi.js";
@@ -29,6 +30,8 @@ export interface Outgoing {
   warn: boolean;
   /** Something here wants the operator's look before it leaves. */
   hold: boolean;
+  /** The local model's pass: looked (ok), turned off, or couldn't be reached. */
+  model?: "ok" | "off" | "down";
 }
 
 export interface Warning {
@@ -65,7 +68,7 @@ export class Membrane {
   }
 
   /** The stand-in for a detail: the one it already has, or a new one (the preferred one, if it's free). */
-  tokenFor(kind: Kind, real: string, source: "books" | "pattern", ref: string | null = null, prefer?: string): string {
+  tokenFor(kind: Kind, real: string, source: "books" | "pattern" | "operator", ref: string | null = null, prefer?: string): string {
     const norm = normalise(kind, real);
     const row = this.db.prepare("SELECT token FROM standins WHERE kind = ? AND norm = ?").get(kind, norm) as { token: string } | undefined;
     if (row) return row.token;
@@ -81,9 +84,47 @@ export class Membrane {
   }
 
   private cache: Known[] | null = null;
-  /** What the books know, read once per Membrane (one request's worth). */
+  /**
+   * What the books know, read once per Membrane (one request's worth), and what the operator chose to
+   * stand in themselves (a name the model found, say), matched the same way from then on.
+   */
   private known(): Known[] {
-    return (this.cache ??= knownInBooks(this.money));
+    if (this.cache) return this.cache;
+    const theirs = (this.db.prepare("SELECT kind, real, ref FROM standins WHERE source = 'operator'").all() as Array<{ kind: Kind; real: string; ref: string | null }>)
+      .map((r) => ({ kind: r.kind, real: r.real, ref: r.ref, person: r.kind === "who" }));
+    return (this.cache = [...knownInBooks(this.money), ...theirs]);
+  }
+
+  /** The operator says a detail the model found is private: it gets its stand-in, now and from now on. */
+  standIn(kind: Kind, real: string): string {
+    const token = this.tokenFor(kind, real.trim(), "operator");
+    this.cache = null;
+    return token;
+  }
+
+  /**
+   * The way out, with the local model's pass too: out(), then whatever the model thinks may be private
+   * that nothing else caught, as flags for the operator. backstop: where the model listens (null: off).
+   */
+  async check(real: string, opts: { protect?: string[]; dry?: boolean; backstop?: string | null; wake?: () => Promise<void> } = {}): Promise<Outgoing> {
+    const o = this.out(real, opts);
+    if (!opts.backstop) return { ...o, model: "off" };
+    let spans = await scan(real, opts.protect ?? [], opts.backstop);
+    // Resting (it sleeps when unused): wake it and ask again, once.
+    if (!spans && opts.wake) {
+      await opts.wake();
+      spans = await scan(real, opts.protect ?? [], opts.backstop);
+    }
+    if (!spans) return { ...o, model: "down" };
+    const taken = [...o.changes.map((c): [number, number] => [c.start, c.end]), ...o.flags.map((f): [number, number] => [f.start, f.end]), ...spansOf(real, MENTION), ...spansOf(real, tokenRe())];
+    const found: Flag[] = spans
+      .filter((s) => !taken.some(([a, b]) => s.start < b && s.end > a))
+      .map((s) => {
+        const label = MODEL_LABEL[s.label] ?? { word: "something that may be private" };
+        return { start: s.start, end: s.end, text: real.slice(s.start, s.end), kind: "model" as const, why: `the local model: ${label.word}`, ...(label.kind ? { standIn: label.kind } : {}) };
+      });
+    if (!found.length) return { ...o, model: "ok" };
+    return { ...o, flags: [...o.flags, ...found].sort((a, b) => a.start - b.start), hold: true, model: "ok" };
   }
 
   /**

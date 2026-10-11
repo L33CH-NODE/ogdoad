@@ -76,6 +76,18 @@ export function CheckCard({ id, initial, onDone }: { id: string; initial?: Check
       setBusy(false);
     }
   };
+  // A detail only the local model caught: the operator says it's private, so it's stood in, now and next time.
+  const standIn = async (text: string, kind: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setCheck(await api.post<Check>(`/ogdoad/membrane/held/${check.id}/standin`, { text, kind }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const recheck = async () => {
     setBusy(true);
     setError(null);
@@ -133,7 +145,12 @@ export function CheckCard({ id, initial, onDone }: { id: string; initial?: Check
           ) : null}
           {hints.length ? (
             <ul className="check-list hints" aria-label="Worth a look">
-              {hints.map((f, i) => <li key={i}><span className="real">{f.text}</span> <span className="muted">· {f.kind === "maybe-name" || f.kind === "ambiguous" ? f.why : FLAG[f.kind] ?? f.why}</span></li>)}
+              {hints.map((f, i) => (
+                <li key={i}>
+                  <span className="real">{f.text}</span> <span className="muted">· {FLAG[f.kind] ?? f.why}</span>
+                  {f.kind === "model" && f.standIn ? <button type="button" className="btn small link" disabled={busy} onClick={() => void standIn(f.text, f.standIn!)} title="Give it a stand-in, here and from now on">Stand it in</button> : null}
+                </li>
+              ))}
             </ul>
           ) : null}
           {check.warn ? <div className="notice warn" style={{ fontSize: 13 }}><span>Together, these hints could point to one person. Change the words if they don't need to be there.</span></div> : null}

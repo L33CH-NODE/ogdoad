@@ -4,6 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 import { findPatterns, luhnOk, medicareOk, tfnOk } from "../membrane/patterns.js";
 import { Membrane, digestOf } from "../membrane/membrane.js";
@@ -138,4 +140,42 @@ test("the digest changes with what's sent and what's flagged", () => {
   assert.equal(a, digestOf([{ text: "Hi C-1234", flags: [] }]));
   assert.notEqual(a, digestOf([{ text: "Hi C-1235", flags: [] }]));
   assert.notEqual(a, digestOf([{ text: "Hi C-1234", flags: [{ start: 0, end: 2, text: "Hi", kind: "maybe-name", why: "" }] }]));
+});
+
+test("the model's pass: what it finds is flagged, never replaced, and a name the operator stands in is known from then on", async () => {
+  const { m, money } = books();
+  // A stand-in for the local model: it "finds" every capitalised two-word name, and one hire's name.
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d)).on("end", () => {
+      const { text, protect } = JSON.parse(raw) as { text: string; protect: string[] };
+      const spans = [...text.matchAll(/\b[A-Z][a-z]+ [A-Z][a-z]+\b|\bLedger\b/g)]
+        .filter((x) => !protect.includes(x[0]))
+        .map((x) => ({ label: "private_person", start: x.index!, end: x.index! + x[0].length, text: x[0], score: 0.99 }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ spans }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    // Juniper Ashgrove is in the books (replaced by them, so the model's find is no extra flag); Priya
+    // Okonkwo isn't, so the model flags her; Ledger is a hire, protected.
+    const out = await m.check("Juniper Ashgrove and Priya Okonkwo met Ledger.", { protect: ["Ledger"], backstop: url });
+    assert.equal(out.model, "ok");
+    assert.match(out.text, /^C-\d{4} and Priya Okonkwo met Ledger\.$/, "the model's find isn't replaced");
+    assert.deepEqual(out.flags.map((f) => [f.kind, f.text, f.standIn]), [["model", "Priya Okonkwo", "who"]]);
+    assert.ok(out.hold);
+
+    // Off, or not answering: the books and patterns still stand, and the caller can say so.
+    assert.equal((await m.check("Hello there.", { backstop: null })).model, "off");
+    assert.equal((await m.check("Hello there.", { backstop: "http://127.0.0.1:9" })).model, "down");
+
+    // The operator stands her in: she's matched like anyone in the books from then on, first name too.
+    const token = m.standIn("who", "Priya Okonkwo");
+    const again = new Membrane(money).out("Ask Priya Okonkwo, or just Priya.");
+    assert.equal(again.text, `Ask ${token}, or just ${token}.`);
+  } finally {
+    server.close();
+  }
 });

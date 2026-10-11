@@ -8,9 +8,14 @@ export interface Flag {
   start: number;
   end: number;
   text: string;
-  /** maybe-name: a word that may be someone's name; ambiguous: a first name more than one person has. */
-  kind: QuasiKind | "maybe-name" | "ambiguous";
+  /**
+   * maybe-name: a word that may be someone's name; ambiguous: a first name more than one person has;
+   * model: what the local model thinks may be private.
+   */
+  kind: QuasiKind | "maybe-name" | "ambiguous" | "model";
   why: string;
+  /** For the model's finds: the stand-in it can become, once the operator says so. */
+  standIn?: import("../../shared/standins.js").Kind;
 }
 
 /**

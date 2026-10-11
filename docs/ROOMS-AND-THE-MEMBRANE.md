@@ -78,6 +78,11 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
      - The hires' own names and the engine's mentions are never touched.
   3. Patterns with check digits: phones, ABN (mod 89), TFN (mod 11, with "TFN" before it or written 3-3-3), Medicare (check digit), cards (Luhn), BSB and account, NDIS numbers, street and postal addresses, dates of birth.
   4. Hints, flagged and never replaced: an age, a health condition, a place. `quasiWarning()` in `app/src/server/membrane/quasi.ts` is the operator's rule for when they add up (default: two kinds together).
+  5. **The local model** (built 2026-10-11): OpenAI's Privacy Filter on the CPU in WSL (`models/membrane/`). It runs on whatever the passes above didn't take.
+     - What it finds (a name the books don't have, an address, a secret) is flagged as possibly sensitive, never replaced by itself.
+     - **Stand it in** on the check card gives the find a stand-in, and from then on it's matched like a name in the books.
+     - It's an on-demand server on Horos's roster. The app wakes it while the operator types, or when a message is sent, and it rests after ten unused minutes.
+     - If it doesn't answer, the check card says so, and the books and the patterns still apply.
 - **Stand-ins** are a family word and four digits: `C-` (a client, participant or contact; the calendar's own stand-in where it's free), `ME-`, `EMAIL-`, `PHONE-`, `ADDR-`, `ABN-`, `NDIS-`, `BANK-`, `TFN-`, `MEDICARE-`, `CARD-`, `DOB-`. They're kept in `standins` in the encrypted books, one per detail, so a person reads the same in every message.
 - **The check.** Anything changed or flagged is held in `outbox` (encrypted, with the operator's own words) and shown as it would leave, stand-ins marked, with **Send as shown**, **Change it**, **Keep it here** (a room message becomes a note only the operator sees) and **Don't send**.
   - What's sent is exactly what was shown (a digest of it); if the books changed in between, the card shows the new version instead.
@@ -86,7 +91,7 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
 - **Back.** A room's stand-ins read as the real names on the operator's screen, dotted, with "As the team sees it" one click away. SOPHIA's conversation, her replies in the command line and "What the cloud has seen" read them back too.
   - Every hire's message is checked: a stand-in nobody has, one written wrong (`C 4821`, `C-482`, "Client 4821"), and a detail Ogdoad stood in before, written out.
   - **A client's real detail in a cloud hire's message is an alarm**: noted once, the hire paused through the engine, a desktop alert, and an urgent Flow card. Resuming is the operator's button in the room. The business's own details aren't alarms (the team works for it).
-- **Not yet:** the model backstop (pass 3), a watch that reads new messages without the room being open (step 3), and the hires' documents on the Artifacts shelf read back with real names.
+- **Not yet:** a watch that reads new messages without the room being open (step 3), and the hires' documents on the Artifacts shelf read back with real names.
 
 ## The watch (local heartbeat)
 
@@ -127,7 +132,7 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
 2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator. *Built 2026-10-10.*
 3. **The watch's gate** on permission prompts, with the policy file.
 4. **The dispatcher's lineups.**
-5. **The model backstop** for the membrane, and the Laya fine-tune.
+5. **The model backstop** for the membrane (*built 2026-10-11*), and the Laya fine-tune.
 
 ## Decisions for the operator
 

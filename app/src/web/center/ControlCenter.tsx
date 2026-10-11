@@ -12,6 +12,7 @@ import { CommandLine } from "./CommandLine";
 import { CenterProvider } from "./data";
 import { DashboardsZone } from "./DashboardsZone";
 import { FlowZone } from "./FlowZone";
+import { KeyChords } from "./Keys";
 import { MoneyZone } from "./MoneyZone";
 import { Pulse } from "./Pulse";
 import { SettingsRoom } from "./SettingsRoom";
@@ -95,6 +96,7 @@ export function ControlCenter() {
         <DashboardsZone />
         {zoom === "settings" ? <SettingsRoom /> : null}
         <CommandLine />
+        <KeyChords />
       </div>
     </CenterProvider>
   );

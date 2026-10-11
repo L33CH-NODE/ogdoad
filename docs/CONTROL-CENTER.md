@@ -16,6 +16,9 @@ Ogdoad isn't a notes app with a sidebar or a project board. It's a living contro
 - **Type to do anything.**
   - The command line at the bottom is SOPHIA and the command palette at once (Ctrl+K from anywhere).
   - "new invoice for Harbour", "go money", "what's late?", "/lock".
+  - **Sub shortcut keys** (built 2026-10-11): a leader, then one key. **G** goes somewhere (G F Flow, G T Team, G M Money, G W Work, G A Artifacts, G S Signals, G D Dashboards, G , Settings, G H home) and **N** makes something new (N I invoice, N S shift, N T task, N R room, N H hire).
+    - A moment after the leader, a small map shows what the next key does; **?** shows every key, and **/** opens the command line on its slash commands.
+    - The palette shows each command's keys. A chord's second key is taken before the zones' own keys, so G S never also skips in Flow.
 - **Flow, not management.**
   - It's built for one brain doing deep work. The operator sees the one thing that moves the business next, not a wall of everything.
   - Context switching is a cost the UI works to avoid.

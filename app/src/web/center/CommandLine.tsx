@@ -11,6 +11,7 @@ import { useLinks } from "../lib/links";
 import { aud } from "../lib/format";
 import { navigate } from "../lib/router";
 import { useCenter } from "./data";
+import { chordOf } from "./Keys";
 import { hm, localDay, who } from "./workBits";
 
 const SKINS = [
@@ -23,6 +24,8 @@ const COMMANDS: Array<{ say: string; hint: string }> = [
   ...PLACES.map((p) => ({ say: `go ${p}`, hint: `Open ${p[0].toUpperCase()}${p.slice(1)}` })),
   { say: "new invoice", hint: "Start a draft" },
   { say: "new shift", hint: "Roster a shift" },
+  { say: "new room", hint: "Open a project room" },
+  { say: "hire someone", hint: "Hire a harness onto the team" },
   { say: "what's on today?", hint: "Today's shifts, from Work" },
   { say: "add ", hint: "Add a task: add ring Harbour about the roster" },
   { say: "what's late?", hint: "Late invoices, from your books" },
@@ -93,6 +96,8 @@ export function CommandLine() {
     if (lower === "/skin" || lower === "skin") return nextSkin();
     if (/^(new|start an?) invoice/.test(lower)) return navigate("/money/invoices/new");
     if (/^(new|add|roster)( an?)? shift/.test(lower)) return navigate("/work/new");
+    if (/^(new|open)( an?)? (project )?room/.test(lower)) return navigate("/team/room/new");
+    if (/^hire( someone| a hire)?$/.test(lower)) return navigate("/team/hire");
     if (/cloud (has )?seen|what.*(left|crossed)|crossings/.test(lower)) return navigate("/settings");
     if (/^\/?(shut ?down|shutdown|turn (it )?off)$/.test(lower)) return navigate("/settings");
     const panel = /^(?:make|build|show)(?: me)? (?:a |an )?(?:dashboard|panel|chart)(?: of| for| showing| with)?\s+(.+)$/i.exec(said)?.[1];
@@ -175,7 +180,8 @@ export function CommandLine() {
         <ul className="palette enter" role="listbox" aria-label="Commands">
           {matches.map((c, i) => (
             <li key={c.say} role="option" aria-selected={i === lit} onMouseDown={(e) => { e.preventDefault(); if (c.say.endsWith(" ")) { setDraft(c.say); input.current?.focus(); } else void run(c.say); }}>
-              <span className="mono">{c.say.trim()}</span><span className="muted">{c.hint}</span>
+              <span className="mono">{c.say.trim()}</span>
+              <span className="pal-right"><span className="muted">{c.hint}</span>{chordOf(c.say) ? <span className="pal-keys" aria-label={`Keys: ${chordOf(c.say)}`}>{chordOf(c.say)!.split(" ").map((k, j) => <kbd key={j}>{k === "," ? "," : k.toUpperCase()}</kbd>)}</span> : null}</span>
             </li>
           ))}
         </ul>

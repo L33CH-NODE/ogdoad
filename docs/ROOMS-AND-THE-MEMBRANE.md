@@ -84,7 +84,12 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
      - It's an on-demand server on Horos's roster. The app wakes it while the operator types, or when a message is sent, and it rests after ten unused minutes.
      - If it doesn't answer, the check card says so, and the books and the patterns still apply.
 - **Stand-ins** are a family word and four digits: `C-` (a client, participant or contact; the calendar's own stand-in where it's free), `ME-`, `EMAIL-`, `PHONE-`, `ADDR-`, `ABN-`, `NDIS-`, `BANK-`, `TFN-`, `MEDICARE-`, `CARD-`, `DOB-`. They're kept in `standins` in the encrypted books, one per detail, so a person reads the same in every message.
-- **The check.** Anything changed or flagged is held in `outbox` (encrypted, with the operator's own words) and shown as it would leave, stand-ins marked, with **Send as shown**, **Change it**, **Keep it here** (a room message becomes a note only the operator sees) and **Don't send**.
+- **The check: the operator decides, not the model** (the operator, 2026-10-11: "the model isn't responsible, the human at the end of the chain is"). Anything changed or flagged is held in `outbox` (encrypted, with the operator's own words) and shown as it would leave.
+  - Every marked piece can be clicked and decided on its own. A stand-in: keep it, use the real words, or write something else. A flag: stand it in, leave it, or write something else.
+  - **Edit what goes** rewrites the outgoing text outright; **Change your words** edits the original and has the membrane read it again.
+  - **Approve** sends exactly what's shown; **Deny** sends nothing; **Keep it here** makes a room message a note only the operator sees.
+  - A real detail the operator writes back into what goes is allowed, knowingly. The card names each one, with the stand-in it would have used, and Approve takes a second yes. The server enforces that too.
+  - Each decision (approved or denied, edited or not, real details sent knowingly) is noted as a labelled example for a local decider later.
   - What's sent is exactly what was shown (a digest of it); if the books changed in between, the card shows the new version instead.
   - It shows where it was sent from (the room, under the box) and as a Flow card that clears only by deciding.
   - The practice copy's books are made up, so everything it sends to the real team waits for a check.

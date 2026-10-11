@@ -427,9 +427,14 @@ button.vault-chip:hover { color: var(--fg); }
 .check-where { font-size: 13px; color: var(--muted); }
 .check-where strong { color: var(--fg); }
 .check-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid var(--edge); overflow-wrap: anywhere; }
-.check-text mark { color: inherit; border-radius: 5px; padding: 0 3px; }
-.check-text mark.sub { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: .92em; background: color-mix(in oklch, var(--c1) 16%, transparent); color: var(--c1); }
-.check-text mark.hint-mark { background: color-mix(in oklch, var(--warn) 16%, transparent); }
+/* Each marked piece of what goes is a button: click it to decide it. */
+.check-text .seg { font: inherit; color: inherit; border: 1px solid transparent; border-radius: 5px; padding: 0 3px; margin: 0 1px; cursor: pointer; line-height: inherit; }
+.check-text .seg:hover, .check-text .seg.on { border-color: currentColor; }
+.check-text .seg-token { font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: .92em; background: color-mix(in oklch, var(--c1) 16%, transparent); color: var(--c1); }
+.check-text .seg-flag { background: color-mix(in oklch, var(--warn) 16%, transparent); }
+.check-text .seg-exposed { background: color-mix(in oklch, var(--bad) 18%, transparent); text-decoration: underline wavy color-mix(in oklch, var(--bad) 70%, transparent); text-underline-offset: 3px; }
+.seg-choice { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--edge); font-size: 13px; }
+.seg-choice code { font-size: 12px; color: var(--c1); }
 .check-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
 .check-list code { font-size: 12px; color: var(--c1); }
 .check-list .real { font-weight: 600; }

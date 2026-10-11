@@ -48,10 +48,15 @@ export class Outbox {
     this.db.prepare("UPDATE outbox SET payload = ?, updated_at = ? WHERE id = ? AND state = 'held'").run(JSON.stringify(payload), iso(), id);
   }
 
-  close(id: string, state: Exclude<OutState, "held">, resultId: string | null = null): void {
+  /**
+   * Decided: sent (approved), kept here, or dropped (denied). The decision is noted with what it was
+   * about (edited by the operator, real details sent knowingly): each one is a labelled example for a
+   * local decider to learn from later.
+   */
+  close(id: string, state: Exclude<OutState, "held">, resultId: string | null = null, decision: Record<string, unknown> = {}): void {
     const now = iso();
     this.db.prepare("UPDATE outbox SET state = ?, result_id = ?, updated_at = ? WHERE id = ?").run(state, resultId, now, id);
-    this.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'operator', ?, ?, '')").run(now, `held_${state}`, id);
+    this.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'operator', ?, ?, ?)").run(now, `held_${state}`, id, JSON.stringify(decision));
   }
 }
 

@@ -317,3 +317,41 @@ test("the gate covers every way out: a room's brief, a task's thread, a hire's t
     e.close();
   }
 });
+
+test("the operator has the last word: what goes is theirs to edit, and a real detail goes only on a second yes", async () => {
+  const e = await fakeEngine();
+  const { home, money } = setup();
+  try {
+    const juniper = money.createClient({ name: "Juniper Ashgrove", participantName: "Juniper Ashgrove" }, "test");
+    const j = standIn(juniper.id, "Juniper Ashgrove");
+    const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: false, home });
+    const opened = sent(await rooms.open({ name: "Reminders", brief: "", leadAgentId: "a-sophia" }));
+
+    // They rewrite what goes, keeping the stand-in: sent exactly as they wrote it.
+    const a = held(await rooms.say(opened.id, { body: "Remind Juniper Ashgrove about invoice 106." }));
+    const mine = await rooms.setOutgoing(a.id, [`Please draft a kind reminder to ${j} (invoice 106).`]);
+    assert.ok(mine.pieces[0].edited);
+    assert.deepEqual(mine.pieces[0].exposed, []);
+    assert.deepEqual(mine.links[j], { real: "Juniper Ashgrove", kind: "who" });
+    await rooms.sendHeld(a.id, mine.digest);
+    assert.equal(e.comments.at(-1)!.body, `Please draft a kind reminder to ${j} (invoice 106).`);
+
+    // They put the real name back: the card points it out, with its stand-in, and approving takes a second yes.
+    const b = held(await rooms.say(opened.id, { body: "Juniper Ashgrove asked for a copy." }));
+    const back = await rooms.setOutgoing(b.id, ["Juniper Ashgrove asked for a copy."]);
+    assert.deepEqual(back.pieces[0].exposed!.map((x) => [x.original, x.token]), [["Juniper Ashgrove", j]]);
+    await assert.rejects(() => rooms.sendHeld(b.id, back.digest), /Approve again/);
+    await rooms.sendHeld(b.id, back.digest, true);
+    assert.equal(e.comments.at(-1)!.body, "Juniper Ashgrove asked for a copy.", "their call, sent as written");
+
+    // Handing it back to the membrane, and denying: each decision is noted, for a local decider to learn from.
+    const c = held(await rooms.say(opened.id, { body: "Juniper Ashgrove again." }));
+    await rooms.setOutgoing(c.id, ["Something else entirely."]);
+    assert.equal((await rooms.setOutgoing(c.id, null)).pieces[0].text, `${j} again.`);
+    rooms.dropHeld(c.id);
+    const decisions = (money.db.prepare("SELECT kind, detail FROM events WHERE kind LIKE 'held_%' AND kind <> 'held' ORDER BY id").all() as Array<{ kind: string; detail: string }>).map((r) => [r.kind, JSON.parse(r.detail).decision, JSON.parse(r.detail).edited, JSON.parse(r.detail).exposed ?? 0]);
+    assert.deepEqual(decisions, [["held_sent", "approved", true, 0], ["held_sent", "approved", true, 1], ["held_dropped", "denied", false, 0]]);
+  } finally {
+    e.close();
+  }
+});

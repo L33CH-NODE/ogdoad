@@ -72,7 +72,13 @@ export interface Room extends RoomSummary {
 }
 
 /** One piece of what's going out (a message is one; a brief is its title and its body). */
-export interface Piece { label: string; real: string; text: string; changes: Change[]; flags: Flag[] }
+export interface Piece {
+  label: string; real: string; text: string; changes: Change[]; flags: Flag[];
+  /** The operator wrote what goes themselves: text is theirs, sent exactly as written. */
+  edited?: boolean;
+  /** In an edited piece: real details the membrane would have stood in (positions in text), each with its stand-in. */
+  exposed?: Change[];
+}
 export interface Check {
   id: string; kind: OutKind; state: Held["state"]; createdAt: string; projectId: string | null;
   /** Where it goes, in words. */
@@ -85,6 +91,8 @@ export interface Check {
   /** A message in a room can be kept local instead: a note only the operator sees. */
   canKeep: boolean;
   notes: string[];
+  /** What each stand-in in it stands for (on the operator's screen only). */
+  links: Record<string, { real: string; kind: string }>;
 }
 
 interface SayPayload { body: string; projectId?: string | null; partId?: string | null; issueId?: string | null; clientRequestId?: string }
@@ -331,11 +339,19 @@ export class Rooms {
   /** What a held item would send now, piece by piece, and where it goes. */
   private async checkOf(h: Held): Promise<Check> {
     const protect = await this.protect();
-    const pieces = await Promise.all(readsOf(h.kind, h.payload).map(async (r) => {
+    const override: string[] | undefined = Array.isArray(h.payload.override) ? h.payload.override : undefined;
+    const pieces = await Promise.all(readsOf(h.kind, h.payload).map(async (r, i) => {
+      // The operator wrote what goes: it's theirs, sent as written. The membrane only points out any real
+      // detail in it (with the stand-in it would have used), so putting one back is a choice made knowingly.
+      if (override && typeof override[i] === "string") {
+        const exposed = this.membrane.out(override[i], { protect }).changes;
+        return { label: r.label, real: r.real, text: override[i], changes: [], flags: [], edited: true, exposed, hold: true, warn: false, model: undefined };
+      }
       const o = await this.membrane.check(r.real, { protect, backstop: this.ctx.backstop, wake: this.ctx.wakeBackstop });
       return { label: r.label, real: o.real, text: o.text, changes: o.changes, flags: o.flags, hold: o.hold, warn: o.warn, model: o.model };
     }));
     const notes: string[] = [];
+    if (override) notes.push("You wrote what goes. What you approve is sent exactly as it reads here.");
     if (this.ctx.practice) notes.push("The practice copy's books are made up, so it doesn't know your real clients and can't stand in their names. Check there are none in this.");
     if (pieces.some((p) => p.model === "down")) notes.push("The local model didn't answer, so only your books and the patterns checked this. Look for names they wouldn't know.");
     const { where, reaches } = await this.describe(h, pieces[0]?.text ?? "").catch(() => ({ where: "the team", reaches: [] as Recipient[] }));
@@ -347,6 +363,7 @@ export class Rooms {
       digest: digestOf(pieces),
       canKeep: h.kind === "say" && !!h.payload.projectId,
       notes,
+      links: this.membrane.lookup(pieces.flatMap((p) => [...p.text.matchAll(tokenRe("gi")), ...(p.exposed ?? []).map((e) => [e.token])].map((m) => m[0]))),
     };
   }
 
@@ -399,15 +416,39 @@ export class Rooms {
     return this.checkOf(h);
   }
 
-  /** Send a held item, exactly as the operator saw it. If anything changed since, they see it again. */
-  async sendHeld(id: string, digest: string): Promise<{ sent: unknown } | { changed: Check }> {
+  /**
+   * Approved: send a held item, exactly as the operator saw it. If anything changed since, they see it
+   * again. Real details the operator put back go only with a second yes (confirm): the person approving
+   * is the one deciding, not the membrane or its model.
+   */
+  async sendHeld(id: string, digest: string, confirm = false): Promise<{ sent: unknown } | { changed: Check }> {
     const h = this.outbox.get(id);
     if (!h || h.state !== "held") throw new HttpError(409, "not_held", "That was already dealt with.");
     const c = await this.checkOf(h);
     if (c.digest !== digest) return { changed: c };
+    const exposed = c.pieces.reduce((n, p) => n + (p.exposed?.length ?? 0), 0);
+    if (exposed && !confirm) throw new HttpError(409, "confirm", `This sends ${exposed} real detail${exposed === 1 ? "" : "s"} as written. Approve again to send ${exposed === 1 ? "it" : "them"}.`);
     const { resultId, result } = await this.deliver(h, c.pieces.map((p) => p.text));
-    this.outbox.close(id, "sent", resultId);
+    this.outbox.close(id, "sent", resultId, { decision: "approved", edited: c.pieces.some((p) => p.edited), exposed, stoodIn: c.pieces.reduce((n, p) => n + p.changes.length, 0), flags: c.pieces.reduce((n, p) => n + p.flags.length, 0) });
     return { sent: result };
+  }
+
+  /** The operator writes what goes themselves (pieces), or hands it back to the membrane (null). */
+  async setOutgoing(id: string, pieces: unknown): Promise<Check> {
+    const h = this.outbox.get(id);
+    if (!h || h.state !== "held") throw new HttpError(409, "not_held", "That was already dealt with.");
+    const { override: _o, ...rest } = h.payload;
+    if (pieces === null) {
+      this.outbox.change(id, rest);
+    } else {
+      const now = readsOf(h.kind, h.payload);
+      if (!Array.isArray(pieces) || pieces.length !== now.length) throw new HttpError(400, "pieces", "Send every piece back, changed or not.");
+      const next = pieces.map((t) => String(t ?? "").trim());
+      if (!next[0]) throw new HttpError(400, "empty", "There's nothing left to send. Deny it instead.");
+      if (next.some((t) => t.length > LIMIT.text)) throw new HttpError(400, "too_long", "That's too long for one message.");
+      this.outbox.change(id, { ...rest, override: next });
+    }
+    return this.checkOf(this.outbox.get(id)!);
   }
 
   /** The operator changed their words: check again. */
@@ -419,7 +460,9 @@ export class Rooms {
     const next = reals.map((r) => String(r ?? "").trim());
     if (!next[0]) throw new HttpError(400, "empty", "There's nothing left to send. Use \"Don't send\" instead.");
     if (next.some((t) => t.length > LIMIT.text)) throw new HttpError(400, "too_long", "That's too long for one message.");
-    this.outbox.change(id, withReads(h.kind, h.payload, next));
+    // New words: the membrane reads them afresh, so any version the operator wrote of the old ones goes.
+    const { override: _o, ...rest } = h.payload;
+    this.outbox.change(id, withReads(h.kind, rest, next));
     return this.checkOf(this.outbox.get(id)!);
   }
 
@@ -429,7 +472,7 @@ export class Rooms {
     if (!h || h.state !== "held") throw new HttpError(409, "not_held", "That was already dealt with.");
     if (h.kind !== "say" || !h.payload.projectId) throw new HttpError(400, "cant_keep", "Only a message in a room can be kept as a note.");
     this.money.db.prepare("INSERT INTO room_notes (id, project_id, part_id, body, created_at) VALUES (?, ?, ?, ?, ?)").run(randomUUID(), h.payload.projectId, h.payload.partId ?? null, h.payload.body, new Date().toISOString());
-    this.outbox.close(id, "kept");
+    this.outbox.close(id, "kept", null, { decision: "kept" });
     return { kept: true };
   }
 
@@ -449,7 +492,7 @@ export class Rooms {
   dropHeld(id: string): { dropped: true } {
     const h = this.outbox.get(id);
     if (!h || h.state !== "held") throw new HttpError(409, "not_held", "That was already dealt with.");
-    this.outbox.close(id, "dropped");
+    this.outbox.close(id, "dropped", null, { decision: "denied", edited: Array.isArray(h.payload.override) });
     return { dropped: true };
   }
 
@@ -624,7 +667,7 @@ export async function handleMembrane(money: Money, req: IncomingMessage, res: Se
   if (id && method === "POST") {
     const body = await readJson(req);
     if (action === "send") {
-      const r = await rooms.sendHeld(id, String(body.digest ?? ""));
+      const r = await rooms.sendHeld(id, String(body.digest ?? ""), body.confirm === true);
       // Changed since the operator looked: they get the new check to look at (not an error).
       return sendJson(res, "changed" in r ? 200 : 201, r);
     }
@@ -632,6 +675,7 @@ export async function handleMembrane(money: Money, req: IncomingMessage, res: Se
     if (action === "keep") return sendJson(res, 200, rooms.keepHeld(id));
     if (action === "drop") return sendJson(res, 200, rooms.dropHeld(id));
     if (action === "standin") return sendJson(res, 200, await rooms.standInHeld(id, body));
+    if (action === "outgoing") return sendJson(res, 200, await rooms.setOutgoing(id, body.pieces ?? null));
   }
   throw new HttpError(404, "not_found", "Nothing here.");
 }

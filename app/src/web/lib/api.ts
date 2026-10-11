@@ -132,11 +132,11 @@ export type OutKind = "say" | "open" | "part" | "prompt" | "hire";
 export interface MembraneWarning { kind: "unknown" | "mangled" | "real" | "echo"; text: string; token?: string; why: string }
 export interface MembraneChange { start: number; end: number; original: string; token: string; kind: string; source: "books" | "pattern"; why: string }
 export interface MembraneFlag { start: number; end: number; text: string; kind: "age" | "condition" | "place" | "maybe-name" | "ambiguous" | "model"; why: string; standIn?: string }
-export interface CheckPiece { label: string; real: string; text: string; changes: MembraneChange[]; flags: MembraneFlag[] }
+export interface CheckPiece { label: string; real: string; text: string; changes: MembraneChange[]; flags: MembraneFlag[]; edited?: boolean; exposed?: MembraneChange[] }
 export interface Recipient { who: string; via: string; where: "cloud" | "local" | "either" | "unknown" }
 export interface Check {
   id: string; kind: OutKind; state: "held" | "sent" | "kept" | "dropped"; createdAt: string; projectId: string | null; where: string; reaches: Recipient[];
-  pieces: CheckPiece[]; warn: boolean; hold: boolean; digest: string; canKeep: boolean; notes: string[];
+  pieces: CheckPiece[]; warn: boolean; hold: boolean; digest: string; canKeep: boolean; notes: string[]; links: Links;
 }
 /** What a send can come back as: done, or held for the operator's check. */
 export type MaybeHeld<T> = T | { held: Check };

@@ -86,7 +86,9 @@ export function raisedFromMembrane(money: Money): Raised[] {
     } catch {}
     out.push({
       key: `membrane:alarm:${a.subject_id}`, title: `A real detail is in ${d.who ?? "a hire"}'s message`, source: "team", ref: d.projectId ? `/team/room/${d.projectId}` : null, urgency: 3,
-      context: `${d.who ?? "A hire"} wrote ${d.what ?? "a real detail"} it was never sent${d.paused ? ", so it's paused" : ""}. Look at the message, and find out how it got it. Resume it from its room once you're sure.`,
+      context: d.local
+        ? `${d.who ?? "A local hire"} works locally, but it put a client's real detail in a room that cloud hires read, so they can read it now. Look at the message, and ask it to use stand-ins.`
+        : `${d.who ?? "A hire"} wrote ${d.what ?? "a real detail"} it was never sent${d.paused ? ", so it's paused" : ""}. Look at the message, and find out how it got it. Resume it from its room once you're sure.`,
     });
   }
   return out;

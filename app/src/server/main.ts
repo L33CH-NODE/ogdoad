@@ -21,6 +21,7 @@ import { Vault } from "./vault.js";
 import { handleDashboards } from "./dash/routes.js";
 import { CalendarSync } from "./work/calendar.js";
 import { handleWork } from "./work/routes.js";
+import { DISPATCH_URL } from "./dispatch/dispatch.js";
 import { BACKSTOP_URL } from "./membrane/backstop.js";
 import { Membrane } from "./membrane/membrane.js";
 import { handleMembrane, handleRooms, Rooms, type RoomsContext } from "./rooms.js";
@@ -84,6 +85,7 @@ function teamContext(): RoomsContext {
   const s = readSophia();
   return {
     serverUrl: SERVER_URL, companyId: s?.companyId ?? "", practice: PRACTICE, horos: { base: HOROS_URL, headers: horos.headers! }, backstop: BACKSTOP_URL === "off" ? null : BACKSTOP_URL, wakeBackstop,
+    dispatch: { url: DISPATCH_URL === "off" ? null : DISPATCH_URL, wake: wakeDispatch },
     onAlarm: (title, body) => {
       notify(title, body);
       broadcast("changed", { area: "membrane" });
@@ -92,31 +94,35 @@ function teamContext(): RoomsContext {
 }
 
 /**
- * The membrane's local model rests when unused (it's an on-demand server on Horos's roster, like
- * Ollama). Wake it through Horos and wait until it answers. One wake at a time, and after one that
- * didn't work, none for a while: a broken WSL mustn't make every message wait.
+ * The local models rest when unused (on-demand servers on Horos's roster: the membrane's model, the
+ * dispatcher's). Wake one through Horos and wait until it answers. One wake at a time, and after one
+ * that didn't work, none for a while: a broken WSL mustn't make everything wait.
  */
-let backstopWaking: Promise<void> | null = null;
-let backstopTriedAt = 0;
-function wakeBackstop(): Promise<void> {
-  if (backstopWaking) return backstopWaking;
-  if (BACKSTOP_URL === "off" || Date.now() - backstopTriedAt < 60_000) return Promise.resolve();
-  backstopTriedAt = Date.now();
-  const healthy = () => fetch(`${BACKSTOP_URL}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.ok, () => false);
-  backstopWaking = (async () => {
-    const roster = (await fetch(`${HOROS_URL}/v1/roster`, { headers: horos.headers!(), signal: AbortSignal.timeout(2500) }).then((r) => r.json()).catch(() => [])) as Array<{ id: string; provides?: string }>;
-    const entry = Array.isArray(roster) ? roster.find((e) => e.provides === "membrane") : undefined;
-    if (!entry) return;
-    await fetch(`${HOROS_URL}/v1/roster/${encodeURIComponent(entry.id)}/wake`, { method: "POST", headers: { "content-type": "application/json", ...horos.headers!() }, body: "{}", signal: AbortSignal.timeout(10_000) }).catch(() => {});
-    for (let i = 0; i < 40; i++) {
-      if (await healthy()) return void (backstopTriedAt = 0);
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  })().finally(() => {
-    backstopWaking = null;
-  });
-  return backstopWaking;
+function wakerFor(provides: string, url: string): () => Promise<void> {
+  let waking: Promise<void> | null = null;
+  let triedAt = 0;
+  return () => {
+    if (waking) return waking;
+    if (url === "off" || Date.now() - triedAt < 60_000) return Promise.resolve();
+    triedAt = Date.now();
+    const healthy = () => fetch(`${url}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.ok, () => false);
+    waking = (async () => {
+      const roster = (await fetch(`${HOROS_URL}/v1/roster`, { headers: horos.headers!(), signal: AbortSignal.timeout(2500) }).then((r) => r.json()).catch(() => [])) as Array<{ id: string; provides?: string }>;
+      const entry = Array.isArray(roster) ? roster.find((e) => e.provides === provides) : undefined;
+      if (!entry) return;
+      await fetch(`${HOROS_URL}/v1/roster/${encodeURIComponent(entry.id)}/wake`, { method: "POST", headers: { "content-type": "application/json", ...horos.headers!() }, body: "{}", signal: AbortSignal.timeout(10_000) }).catch(() => {});
+      for (let i = 0; i < 60; i++) {
+        if (await healthy()) return void (triedAt = 0);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    })().finally(() => {
+      waking = null;
+    });
+    return waking;
+  };
 }
+const wakeBackstop = wakerFor("membrane", BACKSTOP_URL);
+const wakeDispatch = wakerFor("dispatch", DISPATCH_URL);
 
 /** Send JSON on to the engine and hand its answer back as it came. */
 async function forwardJson(res: ServerResponse, path: string, body: unknown): Promise<{ status: number; text: string }> {

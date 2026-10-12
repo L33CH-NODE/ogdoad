@@ -70,6 +70,7 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
   - A part's brief tells its hire who else is on the job, ready to mention, so hires bring each other in too.
   - Every message is noted in the crossings log once for each hire it reaches.
   - The practice copy shows the real team's rooms but can't start work in them.
+  - **Ask the dispatcher** (a local model) for a lineup: who takes which part, and why. Change it, then approve or deny it. Parts that need the real records go only to local hires.
   - See `ROOMS-AND-THE-MEMBRANE.md`.
 - **The membrane** (built 2026-10-10). Whatever the operator writes for the team, anywhere, goes through it first.
   - Real names and details from the books, and anything with the shape of one, become stand-ins like `C-4821`. The engine and the cloud only ever get the stand-ins.

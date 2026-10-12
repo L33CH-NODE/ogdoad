@@ -17,6 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { tokenRe, type Kind } from "../shared/standins.js";
 import { harnessInfo, hireOfAgent, recipientOfAgent, recipientOfHire, recipientsOfComment, recordCrossing, recordDirectCrossing, type Recipient, type Where } from "./crossings.js";
+import { propose, refuseBroken, type Lineup, type ProposedPart, type TeamMember } from "./dispatch/dispatch.js";
 import { hire as startHire, type HireInput } from "./hire.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { Membrane, digestOf, type Change, type Warning } from "./membrane/membrane.js";
@@ -38,6 +39,8 @@ export interface RoomsContext {
   backstop?: string | null;
   /** Wake the local model when it's resting, and wait until it answers. */
   wakeBackstop?: () => Promise<void>;
+  /** The dispatcher's model: where it listens (null: off), and how to wake it. */
+  dispatch?: { url: string | null; wake?: () => Promise<void> };
 }
 
 interface EngineProject { id: string; name: string; description?: string | null; status: string; leadAgentId?: string | null; color?: string | null; createdAt: string; updatedAt: string; archivedAt?: string | null }
@@ -46,7 +49,7 @@ interface EngineIssue {
   assigneeAgentId?: string | null; assigneeUserId?: string | null; createdByAgentId?: string | null; createdByUserId?: string | null; createdAt: string; updatedAt: string;
 }
 interface EngineComment { id: string; body: string; createdAt: string; authorAgentId?: string | null; authorUserId?: string | null; authorType?: string }
-interface EngineAgent { id: string; name: string; status?: string }
+interface EngineAgent { id: string; name: string; status?: string; role?: string | null; title?: string | null; capabilities?: string | null }
 interface EngineRun { id: string; agentId: string; issueId?: string | null; status: string; startedAt?: string | null }
 
 export interface Member { agentId: string; name: string; hireId: string | null; harness: string | null; where: Where; paused: boolean }
@@ -247,7 +250,10 @@ export class Rooms {
     for (const n of notes) messages.push({ id: `note-${n.id}`, at: n.created_at, partId: n.part_id ?? threadId ?? "", kind: "note", body: n.body });
     messages.sort((a, b) => a.at.localeCompare(b.at));
 
-    for (const a of alarms) await this.alarm(a.c, a.issueId, projectId, a.c.authorAgentId ? this.member(byId.get(a.c.authorAgentId) ?? { id: a.c.authorAgentId, name: "A hire" }) : null);
+    // Who else reads this room: a local hire may hold real records, but not where cloud hires can read them.
+    const readers = [p.leadAgentId, ...issues.map((i) => i.assigneeAgentId)].filter((x): x is string => !!x).map((id) => this.member(byId.get(id) ?? { id, name: "An agent" }));
+    const cloudReads = readers.some((m) => m.where !== "local");
+    for (const a of alarms) await this.alarm(a.c, a.issueId, projectId, a.c.authorAgentId ? this.member(byId.get(a.c.authorAgentId) ?? { id: a.c.authorAgentId, name: "A hire" }) : null, cloudReads);
 
     const involved = new Set<string>([p.leadAgentId, ...issues.map((i) => i.assigneeAgentId), ...messages.map((m) => ("agentId" in m ? m.agentId : null))].filter((x): x is string => !!x));
     const issueIds = new Set(issues.map((i) => i.id));
@@ -277,14 +283,21 @@ export class Rooms {
   }
 
   /**
-   * A client's real detail in a hire's message: it was never sent one, so something is wrong (it read
-   * it somewhere, or someone typed it to it). Noted once, the hire paused (a cloud or unplaced one; a
-   * local model may hold Tier 0 by design), and the operator told. Resuming is the operator's call.
+   * A client's real detail in a hire's message. From a cloud (or unplaced) hire: it was never sent one,
+   * so something is wrong (it read it somewhere, or someone typed it to it); it's paused, and resuming is
+   * the operator's call. From a local hire: it may hold real records by design, but not where cloud hires
+   * read them; that's an alarm too (the cloud can read it now), without a pause. Each noted once.
    */
-  private async alarm(c: EngineComment, issueId: string, projectId: string, who: Member | null): Promise<void> {
+  private async alarm(c: EngineComment, issueId: string, projectId: string, who: Member | null, cloudReads: boolean): Promise<void> {
     if (this.ctx.practice) return;
     if (this.money.db.prepare("SELECT 1 FROM events WHERE kind = 'membrane_alarm' AND subject_id = ?").get(c.id)) return;
-    if (who?.where === "local") return;
+    if (who?.where === "local") {
+      if (!cloudReads) return;
+      this.money.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'ogdoad', 'membrane_alarm', ?, ?)")
+        .run(new Date().toISOString(), c.id, JSON.stringify({ projectId, issueId, agentId: who.agentId, who: who.name, what: "a client's real detail where cloud hires can read it", paused: false, local: true }));
+      this.ctx.onAlarm?.(`${who.name} put a real detail where the cloud can read it`, `${who.name} works locally, but its message in a room with cloud hires holds a client's real detail. Look at it in its room.`);
+      return;
+    }
     let paused = false;
     if (who?.agentId) paused = await this.engine(`/api/agents/${encodeURIComponent(who.agentId)}/pause`, { method: "POST", body: {} }).then(() => true, () => false);
     const name = who?.name ?? "A hire";
@@ -558,6 +571,65 @@ export class Rooms {
     return { id: made.id, identifier: made.identifier ?? null, title: this.membrane.relink(made.title), status: made.status, agentId: p.agentId, yours: false, thread: false, createdAt: made.createdAt, updatedAt: made.updatedAt };
   }
 
+  // --- The dispatcher ----------------------------------------------------------------------------
+
+  /** The team as the dispatcher sees it: who each hire is, what it's for, and whether it runs locally. */
+  private async teamForDispatch(): Promise<TeamMember[]> {
+    return (await this.agents()).filter((a) => a.status !== "terminated").map((a) => {
+      const h = hireOfAgent(a.id, this.home);
+      return { agentId: a.id, name: shortName(a.name), via: h?.via ?? "the Ogdoad server", where: h?.where ?? "unknown", role: a.role ?? "general", title: a.title ?? null, capabilities: a.capabilities ?? null };
+    });
+  }
+
+  /**
+   * A lineup for a room, from the local dispatcher. It reads the room as the engine holds it (its name
+   * and brief went through the membrane, so stand-ins only) and the parts it already has.
+   */
+  async proposeLineup(projectId: string): Promise<Lineup & { team: TeamMember[] }> {
+    const [p, issues, team] = await Promise.all([this.project(projectId), this.issuesOf(projectId), this.teamForDispatch()]);
+    const threadId = this.threadIn(projectId, issues);
+    const job = { name: p.name, brief: (p.description ?? "").split(/\n\s*---\s*\n/)[0], existing: issues.filter((i) => i.id !== threadId).map((i) => i.title) };
+    const lineup = await propose(job, team, { url: this.ctx.dispatch?.url ?? null, wake: this.ctx.dispatch?.wake });
+    // On the operator's screen, the stand-ins read as who they are.
+    return { ...lineup, parts: lineup.parts.map((x) => ({ ...x, title: this.membrane.relink(x.title), brief: this.membrane.relink(x.brief) })), team };
+  }
+
+  /**
+   * The operator approves a lineup (as proposed or changed): each part is added, through the membrane
+   * like any other. The rule holds here too. The decision is noted as a labelled example.
+   */
+  async approveLineup(projectId: string, input: { parts?: unknown; proposed?: unknown }): Promise<{ added: number; held: number; results: Array<Part | { held: Check }> }> {
+    this.refuseInPractice("Add parts");
+    const parts = (Array.isArray(input.parts) ? input.parts : []).map((p: any): ProposedPart => ({
+      title: String(p?.title ?? ""), brief: String(p?.brief ?? ""), agentId: p?.agentId ? String(p.agentId) : null, why: String(p?.why ?? ""), needsRealData: p?.needsRealData === true,
+    }));
+    if (!parts.length) throw new HttpError(400, "empty", "There are no parts to add. Deny the lineup instead.");
+    refuseBroken(parts, await this.teamForDispatch());
+    const results: Array<Part | { held: Check }> = [];
+    for (const p of parts) {
+      const brief = [
+        p.brief.trim(),
+        p.needsRealData ? "This part needs the business's real records, so it stays with a local hire. Whatever you hand back to the room, use stand-ins (like C-4821) or totals, never real names or details: cloud hires read the room too." : "",
+      ].filter(Boolean).join("\n\n");
+      results.push(await this.addPart(projectId, { title: p.title, brief, agentId: p.agentId }));
+    }
+    const proposed = Array.isArray(input.proposed) ? input.proposed : [];
+    const same = (a: any, b: ProposedPart) => a && String(a.title ?? "") === b.title && (a.agentId ?? null) === b.agentId && String(a.brief ?? "") === b.brief;
+    const changed = parts.filter((p, i) => !same(proposed[i], p)).length + Math.max(0, proposed.length - parts.length);
+    this.noteLineup(projectId, { decision: "approved", proposed: proposed.length, approved: parts.length, changed, realData: parts.filter((p) => p.needsRealData).length });
+    const held = results.filter((r) => "held" in r).length;
+    return { added: results.length - held, held, results };
+  }
+
+  denyLineup(projectId: string, input: { proposed?: unknown }): { denied: true } {
+    this.noteLineup(projectId, { decision: "denied", proposed: Array.isArray(input.proposed) ? input.proposed.length : 0 });
+    return { denied: true };
+  }
+
+  private noteLineup(projectId: string, detail: Record<string, unknown>): void {
+    this.money.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'operator', 'lineup_decided', ?, ?)").run(new Date().toISOString(), projectId, JSON.stringify(detail));
+  }
+
   /** Say something in the room: on its thread, or on one part. */
   async say(projectId: string, input: { body?: unknown; partId?: unknown }): Promise<{ ok: true; issueId: string } | { held: Check }> {
     const body = String(input.body ?? "").trim();
@@ -638,6 +710,12 @@ export async function handleRooms(money: Money, req: IncomingMessage, res: Serve
   if (id && !action && method === "GET") return sendJson(res, 200, await rooms.get(id));
   if (id && action === "parts" && method === "POST") return answer(await rooms.addPart(id, await readJson(req)));
   if (id && action === "say" && method === "POST") return answer(await rooms.say(id, await readJson(req)));
+  if (id && action === "lineup" && method === "POST") {
+    const decision = url.pathname.split("/").filter(Boolean)[4]; // /ogdoad/rooms/:id/lineup[/approve|/deny]
+    if (!decision) return sendJson(res, 200, await rooms.proposeLineup(id));
+    if (decision === "approve") return sendJson(res, 201, await rooms.approveLineup(id, await readJson(req)));
+    if (decision === "deny") return sendJson(res, 200, rooms.denyLineup(id, await readJson(req)));
+  }
   throw new HttpError(404, "not_found", "Nothing here.");
 }
 

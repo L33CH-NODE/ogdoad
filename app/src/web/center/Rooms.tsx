@@ -13,6 +13,7 @@ import { ago } from "../lib/format";
 import { useLive } from "../lib/live";
 import { navigate } from "../lib/router";
 import { CheckCard } from "./CheckCard";
+import { Lineup } from "./Lineup";
 import { shortName, useCenter } from "./data";
 import { COLOR, WORD, presenceOf } from "./presence";
 import { STATUS } from "./TeamTasks";
@@ -316,6 +317,7 @@ export function RoomView({ id }: { id: string }) {
               state={p.agentId ? presenceOf(people.get(p.agentId)?.hireId, team, roster) : "unknown"}
               working={room.running.some((r) => r.issueId === p.id)} />
           ))}
+          {practice ? null : <Lineup room={room} everyone={room.everyone} onAdded={(note) => { say("Ogdoad", note, "c1"); reload(); }} />}
           {practice ? <span className="muted" style={{ fontSize: 12 }}>Add parts from your real Ogdoad.</span> : <AddPart room={room} everyone={room.everyone} onAdded={reload} onHeld={(c) => { setFresh((f) => [...f, c]); reload(); }} />}
         </aside>
       </div>

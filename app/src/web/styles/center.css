@@ -448,6 +448,11 @@ button.vault-chip:hover { color: var(--fg); }
 .msg-warnings li strong { font-weight: 600; margin-right: 4px; }
 .msg-warnings li.w-real strong { color: var(--bad); }
 .msg-warnings li.w-mangled strong, .msg-warnings li.w-unknown strong, .msg-warnings li.w-echo strong { color: var(--warn); }
+.lineup-card { gap: 10px; padding: 12px; }
+.lineup-part { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; border: 1px solid var(--edge); background: var(--faint); }
+.lineup-part.bad { border-color: color-mix(in oklch, var(--bad) 50%, var(--edge)); }
+.lineup-part .input.small { width: 100%; }
+.lineup-note { font-size: 11.5px; color: var(--warn); }
 .watch-card { gap: 10px; }
 .watch-card.high::before { background: linear-gradient(var(--bad), color-mix(in oklch, var(--bad) 10%, transparent)); }
 .watch-action { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: "Geist Mono Variable", ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--faint); border: 1px solid var(--edge); }

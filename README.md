@@ -12,6 +12,7 @@
   - Horos (`horos/`) starts any CLI harness in a terminal of its own, keeps it alive, reads its screen and answers it.
   - SOPHIA, the CEO seat, runs in the harness you pick.
   - Project rooms show the hires talking to each other and to you, live.
+  - A local dispatcher proposes who takes which part of a job; you approve or deny the lineup. Parts that need your real records go only to local hires.
 - **Money and Work, local and encrypted.**
   - Invoices, payments, bank statements, GST and a pack for your accountant.
   - Shifts, shift notes and a two-way CalDAV calendar.
@@ -44,6 +45,7 @@
 | `core/` | Paperclip v2026.1005.0, vendored as the engine (tasks, agents, runs); Ogdoad's changes are in `core/OGDOAD_CHANGES.md` |
 | `runtime/` | The pinned engine build Ogdoad runs, with its patches |
 | `models/membrane/` | The membrane's local model service (setup and serving) |
+| `models/dispatch/` | The dispatcher's local model service (llama.cpp, from Ollama's store) |
 | `docs/` | How it's meant to work: start with `CONTROL-CENTER.md` and `ROOMS-AND-THE-MEMBRANE.md` |
 
 ## From source

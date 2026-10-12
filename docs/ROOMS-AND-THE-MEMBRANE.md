@@ -1,6 +1,6 @@
 # Rooms, the dispatcher, the membrane and the watch
 
-The operator's idea (2026-10-10). Status: steps 1 to 3 are built: the rooms, the membrane and the watch's gate (2026-10-10 to 2026-10-12; see "as built" below and `CONTROL-CENTER.md`). The dispatcher is still a spec.
+The operator's idea (2026-10-10). Status: steps 1 to 4 are built: the rooms, the membrane, the watch's gate and the dispatcher (2026-10-10 to 2026-10-12; see "as built" below and `CONTROL-CENTER.md`). The Laya fine-tune is still ahead.
 
 A job moves from the operator to the best mix of hires and back again. The hires talk to each other and to the operator in a live room, so the business gets done in the open. No real identity ever reaches a cloud model, and anything risky waits for the operator.
 
@@ -96,6 +96,7 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
 - **Back.** A room's stand-ins read as the real names on the operator's screen, dotted, with "As the team sees it" one click away. SOPHIA's conversation, her replies in the command line and "What the cloud has seen" read them back too.
   - Every hire's message is checked: a stand-in nobody has, one written wrong (`C 4821`, `C-482`, "Client 4821"), and a detail Ogdoad stood in before, written out.
   - **A client's real detail in a cloud hire's message is an alarm**: noted once, the hire paused through the engine, a desktop alert, and an urgent Flow card. Resuming is the operator's button in the room. The business's own details aren't alarms (the team works for it).
+  - **A local hire may hold real records, but not where cloud hires read them.** Its message with a client's real detail, in a room that has a cloud hire, is an alarm too (without a pause): the cloud can read it now.
 - **Not yet:** a watch that reads new messages without the room being open (step 3), and the hires' documents on the Artifacts shelf read back with real names.
 
 ## The watch (local heartbeat)
@@ -149,12 +150,26 @@ Quasi-identifiers, such as suburb plus age plus a condition, are flagged for the
   - Coordinating hires on the same files.
   - Per-project summaries for Pulse.
 
+### The dispatcher as built (step 4)
+
+- **In a room,** "Ask the dispatcher" has a local model (`models/dispatch/`: a small Qwen 3.5 via llama.cpp, on the CPU, on call through Horos) read the room as the engine holds it.
+  - That's its name and brief (through the membrane: stand-ins only), the team (names, harness, cloud or local, role) and the parts it already has.
+  - It proposes 1 to 5 parts, each with a hire (or nobody), why, and whether it needs the real records. Its output is constrained by a schema, so it's always a lineup.
+- **The rule is code, not the model's opinion.** A part that needs the real records goes only to a local hire.
+  - The app moves it there if the model forgets (`checkLineup`). If there's no local hire, it says so.
+  - The card won't let the operator break it, and the server refuses an approval that does (`refuseBroken`).
+- **The operator decides.** Any part can be changed (its words, who takes it, whether it needs real records), dropped or added, then the lineup is **approved** or **denied**.
+  - Approved parts are added one by one, through the membrane like anything else.
+  - A real-data part's brief tells its local hire to hand back only stand-ins or totals, because cloud hires read the room.
+  - Each decision (approved or denied, how much was changed) is noted as a labelled example.
+- **First real run** (a made-up newsletter job, 28 s on the CPU): the model kept the real-records steps (invoice totals, names in the draft) with local hires on its own. One finding was a cloud "finalize" step after a step that wrote real names. Hence the hand-back rule in the prompt and the briefs, and the local-hire alarm in the membrane.
+
 ## Build order
 
 1. **Rooms.** A live room per project over the issue threads, with Horos presence. No models. *Built 2026-10-10.*
 2. **The membrane, out and back.** Passes 1 and 2, the check card, putting real details back, and the validator. *Built 2026-10-10.*
 3. **The watch's gate** on permission prompts, with the policy file. *Built 2026-10-12.*
-4. **The dispatcher's lineups.**
+4. **The dispatcher's lineups.** *Built 2026-10-12.*
 5. **The model backstop** for the membrane (*built 2026-10-11*), and the Laya fine-tune.
 
 ## Decisions for the operator

@@ -14,7 +14,7 @@ const DAY = 86_400_000;
 const SKIP_HOLD_MS = 4 * 3_600_000;
 
 /**
- * Higher is sooner. The operator's TODO: this is a working default; tune it to how you actually work.
+ * Higher is sooner. The operator chose this weighting (2026-10-13): urgency first, money next.
  *
  * Things to weigh:
  * - Urgency (0 calm to 3 alarm) and blocking (other work waits on this) say how much it matters.

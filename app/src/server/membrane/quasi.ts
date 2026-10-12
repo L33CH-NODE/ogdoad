@@ -29,7 +29,7 @@ export interface Flag {
  * kinds: which of age, condition and place appear in the message (each counts once).
  */
 export function quasiWarning(kinds: ReadonlySet<QuasiKind>): boolean {
-  // TODO(operator): your rule. The default: any two kinds together.
+  // The operator's rule (2026-10-13): any two kinds together.
   return kinds.size >= 2;
 }
 

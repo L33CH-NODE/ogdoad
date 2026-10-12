@@ -45,9 +45,11 @@ export function inside(path: string, cwd: string | null): boolean {
  * reading a file means sending it to the cloud.)
  */
 export function decide(ask: Ask, risk: Risk, hire: HireFacts): Verdict {
-  // TODO(operator): your rule. The default lets through only reading, inside the hire's own folder.
+  // The operator's rule (2026-10-13): only a local hire, only reading, only inside its own folder.
+  // A hire that might be cloud (cloud, either, unknown) always asks: its reading is sending.
+  if (hire.where !== "local") return { allow: false, why: "it may run in the cloud, where reading a file sends it out" };
   if (risk.kinds.every((k) => k === "reads") && ask.paths.every((p) => inside(p, hire.cwd))) {
-    return { allow: true, why: "it only reads, inside its own folder" };
+    return { allow: true, why: "a local hire only reading inside its own folder" };
   }
   return { allow: false, why: "it does more than read inside its own folder" };
 }

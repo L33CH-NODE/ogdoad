@@ -13,16 +13,11 @@ export interface Finding {
 }
 
 /**
- * TODO(operator): this is yours to shape. You know how the old double payments and duplicate invoices
- * actually happened, so you know what the check should catch, and what would just be noise
- * (regular fortnightly support for one client is *meant* to repeat the same amount).
- *
- * The default below flags two things:
+ * The operator's rule (2026-10-13). It flags two things:
  *  1. overpaid: money received is more than the invoice total (one invoice paid twice);
- *  2. possible double bill: two issued invoices to the same client, same total, same supply date.
- *
- * Things to weigh: should "same supply date" be "overlapping service periods"? Should a different
- * NDIS participant on the same client clear it? How close do two dates need to be?
+ *  2. possible double bill: two issued invoices to the same client and participant, for the same
+ *     total, whose service periods overlap. That's the shape a re-sent invoice takes. Regular
+ *     fortnightly support repeats the amount over periods that follow on, and never overlaps.
  */
 export function doubleBillingFindings(invoices: InvoiceSummary[]): Finding[] {
   const findings: Finding[] = [];
@@ -34,15 +29,29 @@ export function doubleBillingFindings(invoices: InvoiceSummary[]): Finding[] {
     }
   }
 
-  const seen = new Map<string, InvoiceSummary>();
+  // The period an invoice covers: its service dates, else the one it has, else its issue date.
+  const period = (i: InvoiceSummary) => {
+    const from = i.serviceFrom ?? i.serviceTo ?? i.issueDate ?? "";
+    const to = i.serviceTo ?? i.serviceFrom ?? i.issueDate ?? "";
+    return from <= to ? [from, to] : [to, from];
+  };
+  const groups = new Map<string, InvoiceSummary[]>();
   for (const inv of issued) {
-    const supply = inv.serviceTo ?? inv.serviceFrom ?? inv.issueDate;
-    const key = `${inv.clientId}|${inv.totalCents}|${supply}`;
-    const twin = seen.get(key);
-    if (twin) {
-      findings.push({ kind: "possible_double_bill", invoiceIds: [twin.id, inv.id], message: `Invoices ${twin.number} and ${inv.number} are for the same client, amount and date. One may be a duplicate.` });
-    } else {
-      seen.set(key, inv);
+    const key = `${inv.clientId}|${inv.participant.trim().toLowerCase()}|${inv.totalCents}`;
+    groups.set(key, [...(groups.get(key) ?? []), inv]);
+  }
+  for (const group of groups.values()) {
+    const flagged = new Set<string>();
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const [a, b] = [group[i], group[j]];
+        if (flagged.has(b.id)) continue;
+        const [aFrom, aTo] = period(a);
+        const [bFrom, bTo] = period(b);
+        if (!aFrom || !bFrom || aFrom > bTo || bFrom > aTo) continue;
+        flagged.add(b.id);
+        findings.push({ kind: "possible_double_bill", invoiceIds: [a.id, b.id], message: `Invoices ${a.number} and ${b.number} are for the same client and amount, over service periods that overlap. One may be a duplicate.` });
+      }
     }
   }
   return findings;

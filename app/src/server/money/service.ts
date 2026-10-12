@@ -98,6 +98,8 @@ export interface InvoiceSummary {
   daysOverdue: number | null;
   bucket: Bucket;
   source: "manual" | "agent" | "import";
+  /** The NDIS participant it's for: the invoice's own, else the client's; empty when neither has one. */
+  participant: string;
 }
 
 export interface Invoice extends InvoiceSummary {
@@ -343,7 +345,7 @@ export class Money {
 
   private summaries(where = "", params: Array<string | number> = [], today = this.today()): InvoiceSummary[] {
     const rows = this.db.prepare(`
-      SELECT i.*, c.name AS client_name, COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_cents
+      SELECT i.*, c.name AS client_name, c.participant_name AS client_participant, COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.invoice_id = i.id), 0) AS paid_cents
       FROM invoices i JOIN clients c ON c.id = i.client_id ${where}
       ORDER BY COALESCE(i.issue_date, i.created_at) DESC, i.number DESC`).all(...params) as any[];
     return rows.map((r) => {
@@ -353,6 +355,7 @@ export class Money {
         id: r.id, number: r.number, status: r.status, clientId: r.client_id, clientName: r.client_name, issueDate: r.issue_date, dueDate: r.due_date,
         serviceFrom: r.service_from, serviceTo: r.service_to, totalCents: r.total_cents, paidCents: r.paid_cents, balanceCents: balance,
         daysOverdue, bucket: bucketFor(r.status, balance, daysOverdue), source: r.source,
+        participant: r.participant_name || r.client_participant || "",
       };
     });
   }

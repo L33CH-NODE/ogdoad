@@ -66,20 +66,34 @@ test("risk is sorted plainly, and the floor is the floor", () => {
   assert.deepEqual(classify({ title: "Edit file", action: "src/app.ts", question: "Do you want to make this edit to app.ts?" }).kinds, ["writes"]);
 });
 
-test("the default policy lets through only reading inside the hire's own folder", () => {
-  const hire = { label: "Scout", harness: "claude", where: "cloud", cwd: process.platform === "win32" ? "C:\\seats\\scout" : "/seats/scout" };
+test("the policy lets through only a local hire reading inside its own folder; a cloud hire always asks", () => {
+  const cwd = process.platform === "win32" ? "C:\\seats\\scout" : "/seats/scout";
+  const local = { label: "Scout", harness: "ollama", where: "local", cwd };
   const read = parsePrompt(BOXED("ls notes", "List the notes"))!;
-  assert.equal(decide(read, classify(read), hire).allow, true);
+  assert.equal(decide(read, classify(read), local).allow, true);
   const outside = parsePrompt(BOXED(process.platform === "win32" ? "cat C:\\other\\notes.md" : "cat /other/notes.md", "Read someone else's notes"))!;
-  assert.equal(decide(outside, classify(outside), hire).allow, false);
+  assert.equal(decide(outside, classify(outside), local).allow, false);
   const rm = parsePrompt(BOXED("rm notes.md", "Tidy up"))!;
-  assert.equal(decide(rm, classify(rm), hire).allow, false);
+  assert.equal(decide(rm, classify(rm), local).allow, false);
+  // For a cloud hire, reading a file sends it to the cloud: that's yours to say yes to.
+  for (const where of ["cloud", "either", "unknown"]) {
+    const verdict = decide(read, classify(read), { ...local, harness: "claude", where });
+    assert.equal(verdict.allow, false, where);
+    assert.match(verdict.why, /cloud|local/);
+  }
 });
 
-/** A stand-in Horos: hires, their screens, and the keys pressed (a pressed choice clears the prompt). */
+/**
+ * A stand-in Horos: hires, their screens, and the keys pressed (a pressed choice clears the prompt).
+ * The scout is a local hire (the only kind the policy may answer for); everyone else is Claude Code.
+ */
 async function fakeHoros(screens: Record<string, string[]>) {
   const pressed: Array<{ id: string; keys: string[] }> = [];
-  const hires = Object.keys(screens).map((id) => ({ id, label: `${id} - Claude Code`, harness: "claude", state: "blocked", cwd: "/seats/x", role: "hire" }));
+  const hires = Object.keys(screens).map((id) =>
+    id === "scout"
+      ? { id, label: `${id} - Ollama`, harness: "ollama", state: "blocked", cwd: "/seats/x", role: "hire" }
+      : { id, label: `${id} - Claude Code`, harness: "claude", state: "blocked", cwd: "/seats/x", role: "hire" },
+  );
   const server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d)).on("end", () => {
@@ -145,7 +159,7 @@ test("the watch holds what a hire asks, answers only into the same prompt, and a
 });
 
 test("with answering on, the policy answers what it allows, and never a kind on the floor", async () => {
-  const h = await fakeHoros({ reader: BOXED("ls notes", "List the notes"), pusher: BOXED("git push origin main", "Ship it") });
+  const h = await fakeHoros({ scout: BOXED("ls notes", "List the notes"), pusher: BOXED("git push origin main", "Ship it") });
   try {
     const money = new Money(openMoneyDb(":memory:"));
     const watch = new Watch(money, h.link);
@@ -153,10 +167,10 @@ test("with answering on, the policy answers what it allows, and never a kind on 
     h.hires.forEach((x) => (x.cwd = process.cwd()));
     watch.setAuto(true);
     await watch.tick();
-    const reader = watch.list().find((a) => a.hireId === "reader")!;
+    const reader = watch.list().find((a) => a.hireId === "scout")!;
     assert.equal(reader.state, "answered");
     assert.equal(reader.answeredBy, "policy");
-    assert.deepEqual(h.pressed, [{ id: "reader", keys: ["1"] }]);
+    assert.deepEqual(h.pressed, [{ id: "scout", keys: ["1"] }]);
     assert.equal(watch.list().find((a) => a.hireId === "pusher")!.state, "open", "pushing always waits for the operator");
   } finally {
     h.close();

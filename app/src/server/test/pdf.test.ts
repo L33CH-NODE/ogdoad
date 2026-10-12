@@ -34,6 +34,14 @@ test("a draft renders (long invoices run onto more pages) but isn't saved", asyn
   await assert.rejects(() => saveIssuedPdf(m, draft.id, mkdtempSync(join(tmpdir(), "money-pdf-"))), /Only issued/);
 });
 
+test("line breaks anywhere (a two-line address, a pasted name) render instead of failing the PDF", async () => {
+  const { m, draft } = setup();
+  m.updateSettings({ address: "Unit 2, 1 Sample St\r\nExampleton QLD 4000", contactEmail: "accounts@example.com" }, "operator");
+  const client = m.createClient({ name: "Sample\nPlan Managers", contactName: "Accounts\r\nTeam", address: "PO Box 1\nExampleton" }, "operator");
+  const other = m.createDraft({ clientId: client.id, lines: [{ description: "Support session\nwith a note", quantity: 1, unitCents: 6547 }] }, "operator");
+  for (const id of [draft.id, other.id]) assert.ok((await PDFDocument.load(await renderInvoicePdf(m, id))).getPageCount() >= 1);
+});
+
 test("an issued invoice is saved once, under its number", async () => {
   const { m, draft } = setup();
   m.issue(draft.id, { issueDate: "2026-10-01" }, "operator");

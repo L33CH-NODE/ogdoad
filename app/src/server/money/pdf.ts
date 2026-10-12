@@ -20,6 +20,7 @@ const ACCENT = rgb(0.3, 0.22, 0.62);
 /** The standard PDF fonts only carry WinAnsi; swap what they can't draw for plain equivalents. */
 function safe(text: string): string {
   return text
+    .replace(/\r\n?/g, "\n")
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
@@ -84,15 +85,18 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
   const M = 48;
   let y = page.getHeight() - M;
 
-  const text = (t: string, x: number, size = 10, font = regular, color = INK) => page.drawText(safe(t), { x, y, size, font, color });
-  const right = (t: string, xRight: number, size = 10, font = regular, color = INK) => page.drawText(safe(t), { x: xRight - font.widthOfTextAtSize(safe(t), size), y, size, font, color });
+  // One line of text: a line break inside a field (a pasted name, say) reads as a comma. The font
+  // can't measure or draw a newline, so one reaching it would fail the whole PDF.
+  const oneLine = (t: string) => safe(t).replace(/[ \t]*\n+[ \t]*/g, ", ");
+  const text = (t: string, x: number, size = 10, font = regular, color = INK) => page.drawText(oneLine(t), { x, y, size, font, color });
+  const right = (t: string, xRight: number, size = 10, font = regular, color = INK) => page.drawText(oneLine(t), { x: xRight - font.widthOfTextAtSize(oneLine(t), size), y, size, font, color });
 
-  // Header: the business, and the word Invoice.
+  // Header: the business, and the word Invoice. A two-line address prints as two lines.
   text("Invoice", M, 26, bold, ACCENT);
   right(s.businessName, W - M, 13, bold);
   y -= 16;
   right(`ABN ${s.abn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, "$1 $2 $3 $4")}`, W - M, 9, regular, MUTED);
-  for (const line of [s.address, s.contactEmail, s.contactPhone].filter(Boolean)) {
+  for (const line of [...safe(s.address ?? "").split("\n"), s.contactEmail, s.contactPhone].map((l) => l?.trim()).filter(Boolean)) {
     y -= 12;
     right(line, W - M, 9, regular, MUTED);
   }
@@ -129,7 +133,7 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
   for (const [label, value] of facts) {
     if (!value) continue;
     right(label, W - M - 170, 9, bold, MUTED);
-    page.drawText(safe(value), { x: W - M - 160, y, size: 10, font: regular, color: INK });
+    page.drawText(oneLine(value), { x: W - M - 160, y, size: 10, font: regular, color: INK });
     y -= 14;
   }
   y = Math.min(left, y) - 28;

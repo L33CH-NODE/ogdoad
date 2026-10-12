@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { sha3_256 } from "@noble/hashes/sha3.js";
 
-import { frame, generateKeyPair, open, openBackup, padme, sealBackup, sealWith } from "../sealed.js";
+import { frame, generateKeyPair, open, openBackup, padme, sealBackup, sealWith, unwrap } from "../sealed.js";
 import { SealedBackups } from "../sealedBackups.js";
 
 const PUBLIC = JSON.parse(readFileSync(fileURLToPath(new URL("../../../src/server/test/vectors/seal-v1-vectors.json", import.meta.url)), "utf8"));
@@ -29,7 +29,26 @@ test("seal v1: PADMÉ and the framing match the independent vectors", () => {
   }
 });
 
-test("seal v1: seal and wrap match the independent vectors byte for byte (when kept on this machine)", { skip: !existsSync(FULL_FILE) && "no local vector file" }, () => {
+test("seal v1: seal and wrap match the independent vectors byte for byte, with Ogdoad's own prefixes", () => {
+  for (const v of PUBLIC.seal) {
+    const aad = new TextEncoder().encode(v.aad_utf8);
+    const wire = sealWith(Buffer.from(v.key_hex, "hex"), plaintext(v.plaintext_len), aad, Buffer.from(v.nonce_hex, "hex"));
+    assert.equal(wire.length, v.wire_len);
+    if (v.wire_hex) assert.equal(hex(wire), v.wire_hex, `seal(${v.plaintext_len})`);
+    if (v.wire_sha3_256) assert.equal(hex(sha3_256(wire)), v.wire_sha3_256, `seal(${v.plaintext_len})`);
+    assert.equal(hex(open(Buffer.from(v.key_hex, "hex"), wire, aad)), hex(plaintext(v.plaintext_len)));
+  }
+  for (const w of PUBLIC.wrap) {
+    const kek = Buffer.from(w.kek_hex, "hex");
+    const wire = sealWith(kek, Buffer.from(w.key_hex, "hex"), new TextEncoder().encode(w.aad_utf8), Buffer.from(w.nonce_hex, "hex"));
+    assert.equal(hex(wire), w.wire_hex);
+    // Ogdoad's own unwrap reads it: the same prefix, the same construction.
+    assert.equal(hex(unwrap(kek, wire, w.context_utf8)), w.key_hex);
+    assert.throws(() => unwrap(kek, wire, "backup:another"));
+  }
+});
+
+test("seal v1: an earlier vector set kept on this machine matches too", { skip: !existsSync(FULL_FILE) && "no local vector file" }, () => {
   const V = JSON.parse(readFileSync(FULL_FILE, "utf8"));
   const key = bytes(32, (i) => i);
   const nonce = bytes(24, (i) => 0x40 + i);

@@ -1,42 +1,10 @@
-{
- "license": "CC0-1.0",
- "format": "seal v1 framing",
- "source": "produced by an independent implementation of the same construction",
- "notes": "plaintext byte i = (7*i + 3) mod 256. Framed = u64_le(len) || data || zeros up to padme(8+len).",
- "padme": [
-  {
-   "len": 0,
-   "framed_len": 8,
-   "padded_len": 8,
-   "padded_hex": "0000000000000000"
-  },
-  {
-   "len": 1,
-   "framed_len": 9,
-   "padded_len": 10,
-   "padded_hex": "01000000000000000300"
-  },
-  {
-   "len": 7,
-   "framed_len": 15,
-   "padded_len": 16,
-   "padded_hex": "0700000000000000030a11181f262d00"
-  },
-  {
-   "len": 8,
-   "framed_len": 16,
-   "padded_len": 16,
-   "padded_hex": "0800000000000000030a11181f262d34"
-  },
-  {
-   "len": 1000,
-   "framed_len": 1008,
-   "padded_len": 1024
-  },
-  {
-   "len": 65536,
-   "framed_len": 65544,
-   "padded_len": 67584
-  }
- ]
-}
+{"license":"CC0-1.0","format":"seal v1","source":"produced by an independent implementation of the same construction, each entry opened again by it before being written out","construction":"wire = nonce(24) || XChaCha20-Poly1305(key, nonce, aad, frame) where frame = u64_le(len) || data || zeros up to padme(8 + len). wrap = seal(kek, key32, aad = prefix || context); an unwrap must open to exactly 32 bytes.","notes":"plaintext byte i = (7*i + 3) mod 256. key byte i = i. nonce byte i = 0x40 + i. kek byte i = 0xa0 ^ i. wrapped key byte i = 0x10 + i. Large outputs are given as SHA3-256 of the wire bytes.",
+"padme":[{"len":0,"framed_len":8,"padded_len":8,"padded_hex":"0000000000000000"},{"len":1,"framed_len":9,"padded_len":10,"padded_hex":"01000000000000000300"},{"len":7,"framed_len":15,"padded_len":16,"padded_hex":"0700000000000000030a11181f262d00"},{"len":8,"framed_len":16,"padded_len":16,"padded_hex":"0800000000000000030a11181f262d34"},{"len":1000,"framed_len":1008,"padded_len":1024},{"len":65536,"framed_len":65544,"padded_len":67584}],
+"seal":[
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":0,"wire_len":48,"wire_hex":"404142434445464748494a4b4c4d4e4f5051525354555657d4390570d0e07916b0c735b5c34563a6172243f9d8df6fa0"},
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":1,"wire_len":50,"wire_hex":"404142434445464748494a4b4c4d4e4f5051525354555657d5390570d0e079168cf4b965639329f819f16d97dec29d110390"},
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":7,"wire_len":56,"wire_hex":"404142434445464748494a4b4c4d4e4f5051525354555657d3390570d0e079168cfe96a6b0ba489295c13b65f241b9065ebc6610c7450977"},
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":8,"wire_len":56,"wire_hex":"404142434445464748494a4b4c4d4e4f5051525354555657dc390570d0e079168cfe96a6b0ba48a63e78311d917ee2c39b0b5dc1973b950c"},
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":1000,"wire_len":1064,"wire_hex":"404142434445464748494a4b4c4d4e4f50515253545556573c3a0570d0e079168cfe96a6b0ba48a6a9f8e494440736f6194b7ccd8692be34bd4bbbae925c51cc1c5805b4f5dcd7e5804954d858bbf1d0e5a6699c7cc431d0d1b961d2b31df07446c96127039f711b0dc50f3b3f23415b639946dc8a336e414d07ce493f6bfe2a7e0bd322f8d1045f4411fa2ede3486ec1fa5763a0df146db94031e6eb6b0a3cc232a63a8f60173e455e5a12fe2f2b9f1bed0a0b132cd179512ce3dfc390cb5223297bfbb1451b16a1a4863513b5f31423a18e667f563d79da1efad83b45911c63879783592bb6804b3c2e2d44567048610348d3f23ebe349f4f791e31d07665ef3dc1b5834651c2276d5b48ff3aac81cc6ef6736ebba77726fbde699edec2ae7be3fd19ad592840b4253c3e9f7c95feb03dbe09f508f536aa2e6af4d76f2e9df44b1745a04b42ca0fc317fed7d93e45b84a2d3626e9f49b4f4274aaeae48ed8aba29ac894a31bfbef6a590f946379530f43c3eedc249296dedf58b7568a1e0c07dc314d3a7cbf413b6bec64c04ceaaa31c1e634c08b010a6bb538eceb0b3fc2d68c2728591da1c0774582024e0608be8993e4f63edc3385485ea713addcaa6bbf745d57d211da73374214f0aaee57c5bd797f9c4213b50b7d2c83d02243b0c64839c996e03a8bb28b8ecf1315e6de0f69b3dcf1f8b1b44ecf433efef011dbcd3ca5d23bdd5a9394074a77b154bb31a0968fd1dea7087f8f3dda5b81b6b5d667e430d353005d5d4d0dec641c6a9e9b9624814be2e030376b918509696fe9a913183bf631cff092ed6f3f0f838cf249ecb930e31190d1ed4fcde7ff50fbd943f8906986812d4e517eb16e7e1741a7049511459f2ea63156ad5f54fac4d937867503af252213c07da59c1ff31fa9462cb7e3e3e590bea5b850de22d277bcbae41ed6d1eee72c5c957b5345d0259fe7e21a31316a417834a1c70a290e51bd4ddc2b5cf21f6b569f6fe98d20a967bf24a6a54a3d04f91377bb1ae7364196a856fa94bcd721f846f5907a4f74d09211a87890c4bdaca5f2e3f32aeea95538ad3fd07b1fb6bd49cef1b1e8e8333cd625d4f60b9669d8f85de16086ef6c367e247a87a813baa22eed1631dff84c720ab23a347d7d9b0e7588594096d86d5ff846cd8ec688b5f96db1f3863cbaf589c1dae09dd82cc9fa1922451180918cd347ad2a81b6055a227959b220464d3d47a3c61f829d5dadb432a1b5f660a25e0f363ca885e3f50fd995a703ab469151c6b220213bd51b406b7716002dbfa583465b1bb5c8f2ea66619e182859c159067c051525d9caf308f491623c0ba545d316f99484e8a36356f562762ab97fd7a195a62dc3ab6269852d6685252141fa03efb4d420da3f16a99b53e176959de8479d9abcb488c019b1e562fc9fb4bd8f474f34651d5f892b84314a91dae5b3148780f8162803971dd5d992e12ac8cf3b47d21dee0e9a2fa0cd88476094e6b9a"},
+{"key_hex":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","aad_utf8":"ogdoad/v1/backup/test-vector","plaintext_len":65536,"wire_len":67624,"wire_sha3_256":"2b808b0bd6c466d3369ca1524c9e06735eb74bdc75d1a5b74eb1998e73f39ba5"}],
+"wrap":[{"kek_hex":"a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf","key_hex":"101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f","prefix_utf8":"ogdoad/v1/wrap","context_utf8":"backup:test-vector","aad_utf8":"ogdoad/v1/wrapbackup:test-vector","nonce_hex":"404142434445464748494a4b4c4d4e4f5051525354555657","wire_len":80,"wire_hex":"404142434445464748494a4b4c4d4e4f5051525354555657d9ba7f518503b6ef10aff99b2cb9a948df3761997d56cb8829b7f5343d7fca44078a969fbf8df666214a9cc752a947cbba91a59fdc052e3e"}]}

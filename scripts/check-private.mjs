@@ -19,7 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const WORDS_FILE = process.env.OGDOAD_PRIVATE_WORDS ?? join(homedir(), ".ogdoad", "private-words.txt");
 
@@ -108,8 +108,13 @@ const check = (where, text) => {
 const r = ranges();
 /** What npm would put in the package (scripts off: this runs as postpack, and the build has just run). */
 function packageFiles() {
-  const npm = process.env.npm_execpath && /npm-cli\.js$/.test(process.env.npm_execpath) ? [process.execPath, [process.env.npm_execpath]] : ["npm", []];
-  const out = execFileSync(npm[0], [...npm[1], "pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8", shell: npm[0] === "npm" && process.platform === "win32" });
+  // npm's own script, run by this Node: a .cmd shim can't be spawned without a shell on Windows.
+  const nodeDir = dirname(process.execPath);
+  const cli = [process.env.npm_execpath, join(nodeDir, "node_modules", "npm", "bin", "npm-cli.js"), join(nodeDir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")].find(
+    (p) => p && /npm-cli\.js$/.test(p) && existsSync(p),
+  );
+  if (!cli) throw new Error("Couldn't find npm to list the package's files.");
+  const out = execFileSync(process.execPath, [cli, "pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8" });
   return JSON.parse(out)[0].files.map((f) => f.path);
 }
 

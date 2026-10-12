@@ -71,7 +71,7 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
   if (!inv) throw new MoneyError("no_invoice", "No such invoice.");
   const s = m.settings();
   const client = m.client(inv.clientId)!;
-  const account = inv.payToAccountId ? m.account(inv.payToAccountId) : null;
+  const account = m.payToAccount(inv);
   const isDraft = inv.status !== "issued";
 
   const doc = await PDFDocument.create();
@@ -127,6 +127,7 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
   const facts: Array<[string, string]> = [
     ["Invoice number", inv.number ?? "Draft"],
     ["Issued", longDate(inv.issueDate)],
+    ["Terms", inv.termsDays === 0 ? "Due on receipt" : `${inv.termsDays} day${inv.termsDays === 1 ? "" : "s"}`],
     ["Due", longDate(inv.dueDate)],
   ];
   if (inv.serviceFrom || inv.serviceTo) facts.push(["Service", servicePeriod(inv.serviceFrom, inv.serviceTo)]);
@@ -175,8 +176,28 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
     right("No GST has been charged.", W - M, 8, regular, MUTED);
   }
 
+  // What follows the total starts a new page rather than run off the bottom of this one.
+  const room = (height: number) => {
+    if (y - height >= M) return;
+    page = doc.addPage([595.28, 841.89]);
+    y = page.getHeight() - M;
+  };
+
+  // Notes on the invoice, as written (line by line).
+  if (inv.notes?.trim()) {
+    const notes = wrap(inv.notes.trim(), regular, 10, W - 2 * M);
+    y -= 34;
+    room(Math.min(notes.length, 4) * 13);
+    for (const line of notes) {
+      room(13);
+      text(line, M, 10);
+      y -= 13;
+    }
+  }
+
   // How to pay.
   y -= 40;
+  room(60);
   if (account) {
     text("How to pay", M, 9, bold, MUTED);
     y -= 15;
@@ -185,10 +206,14 @@ export async function renderInvoicePdf(m: Money, invoiceId: string): Promise<Uin
     text(`BSB ${account.bsb.replace(/(\d{3})(\d{3})/, "$1-$2")}   Account ${account.accountNumber}`, M, 10, bold);
     y -= 13;
     text(`Reference: ${inv.number ?? "your invoice number"}`, M, 10);
+  } else if (isDraft) {
+    // Only a draft can get here: issuing needs an account.
+    text("No account to pay into yet: choose one on the client, or a default in Money settings.", M, 10, bold, ACCENT);
   }
   if (s.footerNote) {
     y -= 30;
     for (const line of wrap(s.footerNote, regular, 9, W - 2 * M)) {
+      room(12);
       text(line, M, 9, regular, MUTED);
       y -= 12;
     }

@@ -439,6 +439,16 @@ export class Money {
    * Issue a draft: it gets the next number, its dates and the account it's paid into, and from then
    * on it never changes. Requires a valid ABN (payers withhold 47% from invoices without one).
    */
+  /**
+   * The account an invoice is paid into: its own, else its client's, else the default in settings.
+   * Issuing fixes it on the invoice; a draft's PDF shows the same one, so the preview is what goes out.
+   */
+  payToAccount(inv: Invoice): Account | null {
+    const id = inv.payToAccountId ?? this.client(inv.clientId)?.payToAccountId ?? this.settings().defaultAccountId;
+    const account = id ? this.account(id) : null;
+    return account && !account.archived ? account : null;
+  }
+
   issue(id: string, opts: { issueDate?: string }, actor: string): Invoice {
     const s = this.settings();
     if (!isValidAbn(s.abn)) throw new MoneyError("no_abn", "Add a valid ABN in Money settings before issuing. Without one, payers withhold 47%.");
@@ -447,10 +457,8 @@ export class Money {
     if (!cur) throw new MoneyError("no_invoice", "No such invoice.");
     if (cur.status !== "draft") throw new MoneyError("not_draft", "Only a draft can be issued.");
     if (cur.totalCents <= 0) throw new MoneyError("zero_total", "An invoice for nothing can't be issued.");
-    const client = this.client(cur.clientId)!;
-    const accountId = cur.payToAccountId ?? client.payToAccountId ?? s.defaultAccountId;
-    const account = accountId ? this.account(accountId) : null;
-    if (!account || account.archived) throw new MoneyError("no_account", "Choose the account this invoice is paid into (on the client, or a default in settings).");
+    const account = this.payToAccount(cur);
+    if (!account) throw new MoneyError("no_account", "Choose the account this invoice is paid into (on the client, or a default in settings).");
     const issueDate = requireDate(opts.issueDate, "Issue date") ?? todayIn(s.timezone);
     return this.tx(() => {
       const fresh = this.settings();

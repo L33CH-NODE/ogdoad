@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { inflateSync } from "node:zlib";
+
+import { PDFArray, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 
 import { openMoneyDb } from "../money/db.js";
 import { money as fmt, renderInvoicePdf, saveIssuedPdf } from "../money/pdf.js";
@@ -40,6 +42,47 @@ test("line breaks anywhere (a two-line address, a pasted name) render instead of
   const client = m.createClient({ name: "Sample\nPlan Managers", contactName: "Accounts\r\nTeam", address: "PO Box 1\nExampleton" }, "operator");
   const other = m.createDraft({ clientId: client.id, lines: [{ description: "Support session\nwith a note", quantity: 1, unitCents: 6547 }] }, "operator");
   for (const id of [draft.id, other.id]) assert.ok((await PDFDocument.load(await renderInvoicePdf(m, id))).getPageCount() >= 1);
+});
+
+/** The words drawn on a PDF's pages: the standard fonts write each run as a hex string before Tj. */
+function drawnText(doc: PDFDocument): string {
+  const runs: string[] = [];
+  for (const page of doc.getPages()) {
+    const contents = page.node.Contents();
+    const streams = contents instanceof PDFArray ? contents.asArray().map((r) => doc.context.lookup(r)) : [contents];
+    for (const s of streams) {
+      if (!(s instanceof PDFRawStream)) continue;
+      const flate = String(s.dict.get(PDFName.of("Filter")) ?? "").includes("FlateDecode");
+      const body = Buffer.from(flate ? inflateSync(s.contents) : s.contents).toString("latin1");
+      for (const m of body.matchAll(/<([0-9A-Fa-f]*)>\s*Tj/g)) runs.push(Buffer.from(m[1], "hex").toString("latin1"));
+    }
+  }
+  return runs.join("\n");
+}
+
+test("a draft's PDF shows what the issued one will: the account it's paid into, the terms, and the notes", async () => {
+  const { m, draft } = setup();
+  m.updateDraft(draft.id, { notes: "Support work for September:\nshopping and appointments." }, "operator");
+  const text = drawnText(await PDFDocument.load(await renderInvoicePdf(m, draft.id)));
+  assert.match(text, /BSB 111-111\s+Account 87654321/, "the client's account, before issuing");
+  assert.match(text, /Terms\n14 days/);
+  assert.match(text, /Support work for September:\nshopping and appointments\./, "notes, line by line");
+  assert.doesNotMatch(text, /\nDue\n/, "no due date until it's issued");
+
+  m.issue(draft.id, { issueDate: "2026-10-01" }, "operator");
+  const issued = drawnText(await PDFDocument.load(await renderInvoicePdf(m, draft.id)));
+  assert.match(issued, /Due\n15 October 2026/);
+  assert.match(issued, /BSB 111-111\s+Account 87654321/);
+});
+
+test("with no account anywhere, a draft's PDF says where to set one instead of leaving it out", async () => {
+  const m = new Money(openMoneyDb(":memory:"));
+  m.updateSettings({ businessName: "Sample Co", abn: "51824753556" }, "operator");
+  const client = m.createClient({ name: "Sample Client", termsDays: 0 }, "operator");
+  const draft = m.createDraft({ clientId: client.id, lines: [{ description: "Support session", quantity: 1, unitCents: 6547 }] }, "operator");
+  const text = drawnText(await PDFDocument.load(await renderInvoicePdf(m, draft.id)));
+  assert.match(text, /Terms\nDue on receipt/);
+  assert.match(text, /No account to pay into yet/);
 });
 
 test("an issued invoice is saved once, under its number", async () => {

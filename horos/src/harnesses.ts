@@ -2,7 +2,7 @@
 // Cloud CLIs run under the operator's own logins; local models never leave the machine.
 
 import { existsSync } from "node:fs";
-import { delimiter, extname, join } from "node:path";
+import { delimiter, extname, isAbsolute, join } from "node:path";
 
 export type Privacy = "local" | "cloud" | "either";
 
@@ -46,9 +46,10 @@ export function resolveCommand(command: string, env: NodeJS.ProcessEnv = process
   const isWindows = process.platform === "win32";
   const exts = isWindows ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.PS1").toLowerCase().split(";").filter(Boolean) : [""];
   if (isWindows && !exts.includes(".ps1")) exts.push(".ps1");
-  for (const dir of dirs) {
+  // A full path (the installer passes the exact Node it ran with) is taken as it is, if it's there.
+  for (const dir of isAbsolute(command) ? [""] : dirs) {
     for (const ext of extname(command) ? [""] : exts) {
-      const candidate = join(dir, command + ext);
+      const candidate = dir ? join(dir, command + ext) : command + ext;
       if (!existsSync(candidate)) continue;
       const e = extname(candidate).toLowerCase();
       if (e === ".cmd" || e === ".bat") return { file: env.ComSpec ?? "cmd.exe", prefix: ["/d", "/s", "/c", candidate], path: candidate };

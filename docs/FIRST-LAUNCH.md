@@ -4,7 +4,7 @@ Ogdoad needs no provider logins. The company's CEO, **SOPHIA**, is a seat that t
 
 ## The flow
 
-1. **Start.** `npx ogdoad` (or `OGDOAD-START.bat`) starts the Ogdoad server and the **Horos** backend (Ogdoad's agent-session manager, see `HOROS.md`).
+1. **Start.** `npx ogdoad` sets things up the first time, then starts **Horos** (Ogdoad's agent-session manager, see `HOROS.md`), which brings up the engine and the app.
 2. **Detect.** Horos finds what is installed:
    - cloud CLIs: Claude Code, Codex, grok, opencode, Gemini CLI, Hermes
    - local models: Ollama (`127.0.0.1:11434`), llama-server and LM Studio endpoints

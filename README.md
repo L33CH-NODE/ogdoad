@@ -29,11 +29,39 @@
 - **What the cloud has seen.** Every message, answer and request that leaves for a hire is logged: who got it, through which harness, and whether that's a cloud model.
 - **Dashboards written blind.** A panel is a SQL query plus a chart spec. A hire writes it from the tables' shape alone, and it runs here, sealed, on a curated copy of the data. The hire never sees a row.
 
+## Install
+
+You'll need Node 22.5 or later. Then:
+
+```sh
+npx ogdoad
+```
+
+The first run sets everything up and opens Ogdoad in your browser:
+
+- It downloads the engine (Paperclip, pinned to the version Ogdoad is built on) and applies Ogdoad's patches to it.
+- It starts Horos in the background, and Horos brings up the engine and the app.
+- It walks you through choosing SOPHIA, if you have a harness she can run in (Claude Code, Codex, grok, opencode, or Ollama for a local model).
+
+The app is at `http://127.0.0.1:3101`. It listens on that loopback address only. Its first launch walks you through making your key.
+
+After that, `npx ogdoad` starts it and opens it again. From an admin terminal on Windows, it starts everything without admin rights, because the engine's database refuses an admin token and every hire would inherit one.
+
+| Command | What it does |
+|---|---|
+| `ogdoad start` / `ogdoad stop` | Up and down (stop lets work in flight finish; `--now` doesn't wait) |
+| `ogdoad status` | Shows what's running, and where |
+| `ogdoad sophia` | Choose SOPHIA, the CEO |
+| `ogdoad horos …` | Drive Horos directly (`ogdoad horos help`) |
+
+Everything lives under `~/.ogdoad`. The engine keeps its own data under `~/.paperclip`, so an existing Paperclip install there is used as it is.
+
+On Linux, `node-pty` builds from source, so you'll need Python, make and a C++ compiler.
+
 ## Status
 
 **Pre-alpha, and personal-scale.** It's built for one operator, and it's developed and used on Windows 11, with WSL2 for the local models. Expect rough edges, and moving APIs.
 
-- There's no installer yet: `npx ogdoad` is a placeholder. Running from source is below.
 - The engine underneath (`core/`, a snapshot of [Paperclip](https://github.com/paperclipai/paperclip)) keeps tasks and comments in its own Postgres, which isn't encrypted by Ogdoad. `docs/LOCK-THE-DOORS.md` says what to do about it (full-disk encryption first).
 
 ## Layout
@@ -50,7 +78,7 @@
 
 ## From source
 
-You'll need Node 22.5 or later, and Windows (WSL2 for the local models).
+You'll need Node 22.5 or later. On Windows, turn on long paths first (`git config --global core.longpaths true`): some of `core/` is nested deeper than Windows allows by default.
 
 ```sh
 cd runtime && npm install                          # the pinned engine, patched
@@ -58,7 +86,9 @@ cd ../horos && npm install && npm run build        # the session manager
 cd ../app && npm install && npm run build && npm test
 ```
 
-Horos then runs the engine and the app as servers (`horos spawn generic --server …`, see `docs/HOROS.md`). The app listens on `127.0.0.1:3101` and never on any other interface. Its first launch walks you through making your key and choosing SOPHIA.
+Horos then runs the engine and the app as servers (`horos spawn generic --server …`, see `docs/HOROS.md`).
+
+To build the package that `npx ogdoad` runs, use `npm pack` at the root. It builds `app/` and `horos/` fresh, then checks every file going into the package for anything private.
 
 ## Privacy, briefly
 

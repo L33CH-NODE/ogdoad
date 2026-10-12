@@ -11,7 +11,8 @@
 //   node scripts/check-private.mjs A..B            a range
 //   node scripts/check-private.mjs --all           the whole history
 //   node scripts/check-private.mjs --tree          the files as they are now
-//   (as a git pre-push hook it reads the refs being pushed from stdin)
+//   node scripts/check-private.mjs --package       the files npm would publish, built ones included
+//   (as a git pre-push hook it reads the refs being pushed from stdin; as postpack, --package)
 //
 // Exit 1 when anything is found. Matches are shown masked: this prints where, never the secret itself.
 
@@ -60,7 +61,7 @@ const mask = (s) => (s.length <= 6 ? `${s[0]}…` : `${s.slice(0, 3)}…${s.slic
 function ranges() {
   const arg = process.argv[2];
   if (arg === "--all") return [["--all"]];
-  if (arg === "--tree") return null;
+  if (arg === "--tree" || arg === "--package") return null;
   if (arg && arg.includes("..")) return [[arg]];
   // As a pre-push hook: "<local ref> <local sha> <remote ref> <remote sha>" per line.
   if (!process.stdin.isTTY && !arg) {
@@ -105,9 +106,17 @@ const check = (where, text) => {
 };
 
 const r = ranges();
+/** What npm would put in the package (scripts off: this runs as postpack, and the build has just run). */
+function packageFiles() {
+  const npm = process.env.npm_execpath && /npm-cli\.js$/.test(process.env.npm_execpath) ? [process.execPath, [process.env.npm_execpath]] : ["npm", []];
+  const out = execFileSync(npm[0], [...npm[1], "pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8", shell: npm[0] === "npm" && process.platform === "win32" });
+  return JSON.parse(out)[0].files.map((f) => f.path);
+}
+
 if (!r) {
-  // The files as they are now.
-  for (const file of git("ls-files").split("\n").filter(Boolean)) {
+  // The files as they are now: tracked ones, or the package's.
+  const files = process.argv[2] === "--package" ? packageFiles() : git("ls-files").split("\n").filter(Boolean);
+  for (const file of files) {
     let text;
     try {
       text = readFileSync(file, "utf8");

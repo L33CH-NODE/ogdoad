@@ -1,6 +1,6 @@
 {
   "name": "ogdoad",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "0GD0AD: a local-first control center for running a business with AI agents. Hire any harness, keep your data local, and make every call that matters.",
   "license": "MIT",
   "author": "L33CH-NODE",
@@ -19,17 +19,44 @@
     "control-center"
   ],
   "bin": {
-    "ogdoad": "cli.js"
+    "ogdoad": "installer/cli.mjs"
   },
   "files": [
-    "cli.js",
+    "installer/",
+    "app/package.json",
+    "app/dist/",
+    "horos/package.json",
+    "horos/dist/",
+    "horos/hooks/",
+    "runtime/package.json",
+    "runtime/patches/",
+    "models/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE",
+    "!app/dist/server/test/",
+    "!horos/dist/test/",
+    "!**/*.map"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "scripts": {
-    "check:private": "node scripts/check-private.mjs"
+    "check:private": "node scripts/check-private.mjs",
+    "build": "node -e \"for (const d of ['app/dist', 'horos/dist']) require('fs').rmSync(d, { recursive: true, force: true })\" && npm --prefix app run build && npm --prefix horos run build",
+    "prepack": "npm run build",
+    "postpack": "node scripts/check-private.mjs --package"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@noble/post-quantum": "^0.7.1",
+    "@scure/bip39": "^2.4.0",
+    "@xterm/headless": "6.0.0",
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
+    "node-pty": "1.1.0",
+    "paperclip-adapter-live-agent": "^0.1.0",
+    "pdf-lib": "^1.17.1"
   }
 }

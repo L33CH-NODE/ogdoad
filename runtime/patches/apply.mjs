@@ -1,12 +1,13 @@
 // Ogdoad's patches to the pinned runtime's dependencies. Runs after `npm install` (postinstall) and
 // is safe to run again: each patch checks for its marker first. A patch whose target text has moved
 // (a dependency changed) is reported loudly but doesn't fail the install.
+//   node patches/apply.mjs [engineDir]   (the folder holding node_modules; this runtime/ by default)
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = process.argv[2] ? resolve(process.argv[2]) : join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const PATCHES = [
   {

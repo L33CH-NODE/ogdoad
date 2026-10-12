@@ -16,6 +16,8 @@ const te = new TextEncoder();
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const iso = () => new Date().toISOString();
 const EXT = ".sealed";
+/** Per round (every two minutes): a backlog clears over a few rounds instead of freezing the app once. */
+const PER_ROUND = 12;
 
 export interface BackupPlaces {
   /** Where the engine writes its plain dumps. */
@@ -119,14 +121,20 @@ export class SealedBackups {
         if (pending.has(original) || existsSync(target)) continue;
         // A dump still being written isn't sealed yet.
         if (Date.now() - statSync(original).mtimeMs < 60_000) continue;
+        if (sealed.length >= PER_ROUND) break;
         this.sealTo(target, f, readFileSync(original), original, false);
         sealed.push(f);
       }
     }
     const queue = this.read<Array<{ path: string }>>(this.queueFile, []);
     const left: Array<{ path: string }> = [];
+    let folders = 0;
     for (const q of queue) {
       if (pending.has(q.path) || !existsSync(q.path)) continue;
+      if (folders++ >= 1) {
+        left.push(q);
+        continue;
+      }
       try {
         const name = `${basename(q.path)}.tar`;
         const tar = join(tmpdir(), `ogdoad-${randomUUID().slice(0, 8)}.tar`);
@@ -160,6 +168,10 @@ export class SealedBackups {
     let verified = 0;
     const failed: string[] = [];
     for (const p of pending) {
+      if (verified + failed.length >= PER_ROUND) {
+        keep.push(p);
+        continue;
+      }
       try {
         const back = openBackup(kp, p.name, readFileSync(p.sealed));
         if (sha256(back) !== p.sha256) throw new Error("different");

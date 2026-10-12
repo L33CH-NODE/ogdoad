@@ -1,0 +1,42 @@
+{
+ "license": "CC0-1.0",
+ "format": "seal v1 framing",
+ "source": "produced by an independent implementation of the same construction",
+ "notes": "plaintext byte i = (7*i + 3) mod 256. Framed = u64_le(len) || data || zeros up to padme(8+len).",
+ "padme": [
+  {
+   "len": 0,
+   "framed_len": 8,
+   "padded_len": 8,
+   "padded_hex": "0000000000000000"
+  },
+  {
+   "len": 1,
+   "framed_len": 9,
+   "padded_len": 10,
+   "padded_hex": "01000000000000000300"
+  },
+  {
+   "len": 7,
+   "framed_len": 15,
+   "padded_len": 16,
+   "padded_hex": "0700000000000000030a11181f262d00"
+  },
+  {
+   "len": 8,
+   "framed_len": 16,
+   "padded_len": 16,
+   "padded_hex": "0800000000000000030a11181f262d34"
+  },
+  {
+   "len": 1000,
+   "framed_len": 1008,
+   "padded_len": 1024
+  },
+  {
+   "len": 65536,
+   "framed_len": 65544,
+   "padded_len": 67584
+  }
+ ]
+}

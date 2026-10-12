@@ -6,9 +6,13 @@ Roadmap phase 2: where things stand, and the choices, in the order they pay off.
 
 - **Nothing is reachable from outside.** Every Ogdoad port listens on 127.0.0.1 only: the server (:3100), the app (:3101), the practice copy (:3102), Horos (:3198), the mailbox (:3199) and the engine's Postgres (:54329). Not the network, not the tailnet.
 - **Ogdoad's own data is encrypted with the operator's key:** Money, Work (shifts and their notes), Flow, dashboards, the calendar's login and the sealed PDFs. Its backups are encrypted the same way.
+- **The engine's backups are sealed (2026-10-12).** The engine dumps its database every hour in the clear. Ogdoad seals each dump within minutes, locked or not:
+  - to a public key whose private half only the vault opens (ML-KEM-768 + X25519, then XChaCha20-Poly1305 with PADMÉ padding; see `app/src/server/sealed.ts`);
+  - the plain dump is cleared only once its sealed copy has opened again, identical;
+  - old backup folders can be queued (`~/.ogdoad/backups/to-seal.json`) and become one sealed archive each.
 - **Not encrypted:**
-  - The engine's Postgres (`~/.paperclip/instances/default/db`): the hires' tasks and comments, SOPHIA's interview answers, run logs.
-  - The drive itself: C: has no BitLocker.
+  - The engine's live Postgres (`~/.paperclip/instances/default/db`): the hires' tasks and comments, SOPHIA's interview answers, run logs.
+  - The drive itself, unless full-disk encryption is on.
 - **Local-trusted mode.** Anything running on this machine as the operator can call the server as the board. That includes the hires, which run with the operator's own Windows rights.
 
 ## The choices

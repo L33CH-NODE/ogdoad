@@ -7,6 +7,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
+import { defaultPlaces, SealedBackups } from "./sealedBackups.js";
 import { handleCenter, type CenterContext } from "./center.js";
 import { recipientFor, recipientOfAgent, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
 import { raisedFromTeam } from "./flow/team.js";
@@ -257,6 +258,31 @@ function backupIfDue(): void {
 }
 setInterval(backupIfDue, 10 * 60_000).unref();
 
+// The engine's own hourly dumps are plain; each is sealed (to Ogdoad's backup public key, so locked or
+// not), and the plain dump is cleared only once its sealed copy has opened again identical (which
+// needs the vault open). The real app only: the practice copy shares the engine but has no vault.
+const sealedBackups = new SealedBackups(defaultPlaces(OGDOAD_HOME));
+let sealingBusy = false;
+function sealRound(): void {
+  if (PRACTICE || sealingBusy) return;
+  sealingBusy = true;
+  try {
+    const vault = keeper.vault;
+    if (vault?.unlocked) sealedBackups.ensureKeys(vault);
+    const { sealed } = sealedBackups.sealRound();
+    const { verified, failed } = vault?.unlocked ? sealedBackups.verifyRound(vault) : { verified: 0, failed: [] as string[] };
+    sealedBackups.prune(30);
+    if (failed.length) notify("A sealed backup didn't check out", `${failed.join(", ")}: the plain copy is kept. Look at Settings › Backups.`);
+    if (sealed.length || verified) broadcast("changed", { area: "backups" });
+  } catch (err) {
+    notify("Sealing the engine's backups failed", (err as Error).message);
+  } finally {
+    sealingBusy = false;
+  }
+}
+setInterval(sealRound, 2 * 60_000).unref();
+setTimeout(sealRound, 15_000).unref();
+
 const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
   broadcast("locked", { why });
   for (const s of streams) s.end();
@@ -340,7 +366,7 @@ const server = createServer(async (req, res) => {
       if (await handleCenter(money, req, res, url, center)) return;
     }
     if (url.pathname === "/ogdoad/backups" && money) {
-      if (req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, dir: BACKUP_DIR, list: PRACTICE ? [] : listBackups() });
+      if (req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, dir: BACKUP_DIR, list: PRACTICE ? [] : listBackups(), sealed: PRACTICE ? null : sealedBackups.list() });
       if (req.method === "POST") {
         if (PRACTICE) throw new HttpError(400, "practice", "The practice copy's books are made up, so they aren't backed up.");
         return sendJson(res, 201, backupNow(money));
@@ -352,6 +378,18 @@ const server = createServer(async (req, res) => {
       const made = await new Rooms(money, teamContext()).hire(await readJson(req));
       broadcast("changed", { area: "crossing" });
       return sendJson(res, made && typeof made === "object" && "held" in made ? 202 : 201, made);
+    }
+    // An engine backup, opened again for a restore (the vault must be open; the file goes to the browser).
+    const sealedOne = /^\/ogdoad\/backups\/sealed\/([\w.-]+)$/.exec(url.pathname);
+    if (sealedOne && req.method === "GET" && money && !PRACTICE) {
+      let data: Buffer;
+      try {
+        data = sealedBackups.unseal(keeper.vault!, sealedOne[1]);
+      } catch (err) {
+        throw new HttpError(404, "no_backup", (err as Error).message);
+      }
+      res.writeHead(200, { "content-type": "application/gzip", "content-disposition": `attachment; filename="${sealedOne[1]}"`, "cache-control": "no-store" });
+      return void res.end(data);
     }
     if (url.pathname === "/ogdoad/sophia" && req.method === "GET") return sendJson(res, 200, readSophia());
     if (PRACTICE && money && url.pathname === "/ogdoad/practice/reset" && req.method === "POST") return resetPractice(money), sendJson(res, 200, { ok: true });

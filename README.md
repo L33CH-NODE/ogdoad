@@ -63,6 +63,7 @@ Horos then runs the engine and the app as servers (`horos spawn generic --server
 ## Privacy, briefly
 
 - Your books, notes and clients' details are Tier 0: local, encrypted and never sent anywhere.
+- The engine's hourly backups are sealed to a key only your vault opens (ML-KEM-768 + X25519, then XChaCha20-Poly1305, checked against an independent implementation's test vectors). That works even while Ogdoad is locked.
 - What you write for a cloud hire goes through the membrane, and anything that names someone waits for your yes.
 - The local models run on your own machine, and the membrane's model never logs what it reads.
 - Nothing is published, pushed, sent or spent by an agent without passing a gate you hold.

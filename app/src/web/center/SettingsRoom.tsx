@@ -52,7 +52,11 @@ function KeyCard() {
   );
 }
 
-interface BackupList { practice: boolean; dir: string; list: Array<{ stamp: string; at: string; bytes: number; withKeys: boolean }> }
+interface Sealed { name: string; size: number; at: string }
+interface BackupList {
+  practice: boolean; dir: string; list: Array<{ stamp: string; at: string; bytes: number; withKeys: boolean }>;
+  sealed: { ready: boolean; engine: Sealed[]; elsewhere: Sealed[]; pending: number } | null;
+}
 
 /** The books' backups: encrypted copies with the vault's keys beside them. */
 function Backups() {
@@ -85,6 +89,32 @@ function Backups() {
         Every hour while Ogdoad is open, a copy of your books goes to <span className="mono">{data.dir}</span>, still encrypted with your key, with the vault's wrapped keys beside it. The last day's copies are kept, then one a day for a month. Keep a copy off this machine too (a USB stick, or your home box): a copy on the same disk doesn't survive the disk.
       </p>
       {error ? <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p> : null}
+      {data.sealed ? (
+        <>
+          <div className="row" style={{ marginTop: 6 }}>
+            <strong style={{ fontSize: 14 }}>The engine's backups, sealed</strong>
+            <span className="muted" style={{ fontSize: 13 }}>
+              {!data.sealed.ready ? "sealing starts once you've unlocked" : data.sealed.engine[0] ? `last ${ago(data.sealed.engine[0].at)}, ${data.sealed.engine.length} kept` : "none yet"}
+              {data.sealed.pending ? ` · ${data.sealed.pending} waiting to be checked` : ""}
+            </span>
+          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+            The engine (tasks, comments, runs) dumps its database every hour in the clear. Each dump is sealed within minutes, even while Ogdoad is locked, to a key only your vault opens (ML-KEM-768 + X25519, then XChaCha20-Poly1305). The plain dump is cleared only once its sealed copy has opened again, identical. Kept for 30 days.
+          </p>
+          {data.sealed.engine.length ? (
+            <ul className="crossings">
+              {data.sealed.engine.slice(0, 3).map((e) => (
+                <li key={e.name}>
+                  <span className="mono muted">{ago(e.at)}</span>
+                  <span className="crossing-what">{e.name} <span className="muted">({(e.size / 1048576).toFixed(1)} MB sealed)</span></span>
+                  <a className="link-btn" href={`/ogdoad/backups/sealed/${encodeURIComponent(e.name)}`} title="Open it again for a restore">Download unsealed</a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {data.sealed.elsewhere.length ? <span className="muted" style={{ fontSize: 12.5 }}>Also sealed: {data.sealed.elsewhere.map((e) => e.name).join(", ")} (older backup folders, sealed where they were).</span> : null}
+        </>
+      ) : null}
     </div>
   );
 }

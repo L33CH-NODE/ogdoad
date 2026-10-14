@@ -9,7 +9,7 @@ export interface TeamSource {
   serverUrl: string;
   companyId: string;
   /** Where the classic UI lives, for items Ogdoad can't settle in place yet. */
-  classicUrl?: string;
+  classicUrl?: string | null;
 }
 
 const URGENCY = { critical: 3, high: 2, medium: 1, low: 0 } as const;
@@ -41,8 +41,11 @@ const OPENING: Record<string, string> = {
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-/** The attention feed and the operator's assigned tasks, as Flow work. */
-export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIssue[], classicUrl: string): Raised[] {
+/**
+ * The attention feed and the operator's assigned tasks, as Flow work. classicUrl: the old engine's own
+ * view, where links pointed; null on Nous, where a task opens in Ogdoad's own task room.
+ */
+export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIssue[], classicUrl: string | null): Raised[] {
   const out: Raised[] = [];
   const now = Date.now();
   for (const i of items) {
@@ -79,7 +82,7 @@ export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIs
       title: i.subject.title ? `${opening}: ${clip(i.subject.title, 120)}` : opening,
       context: i.whyNow,
       source: "team",
-      ref: i.subject.href ? `${classicUrl}${i.subject.href}` : null,
+      ref: classicUrl === null ? (i.relatedIssue?.id ? `/team/task/${i.relatedIssue.id}` : null) : i.subject.href ? `${classicUrl}${i.subject.href}` : null,
       urgency: urgency as Raised["urgency"],
       blocking: i.sourceKind === "approval" || i.sourceKind === "decision" || i.sourceKind === "recovery_action",
     });
@@ -91,7 +94,7 @@ export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIs
       title: clip(t.title, 160),
       context: `${t.identifier ?? "A task"} is assigned to you${t.status === "blocked" ? ", and it's blocked" : ""}.`,
       source: "team",
-      ref: prefix && t.identifier ? `${classicUrl}/${prefix}/issues/${t.identifier}` : null,
+      ref: classicUrl === null ? `/team/task/${t.id}` : prefix && t.identifier ? `${classicUrl}/${prefix}/issues/${t.identifier}` : null,
       urgency: (URGENCY[(t.priority ?? "medium") as Severity] ?? 1) as Raised["urgency"],
       blocking: t.status === "blocked",
     });
@@ -112,7 +115,7 @@ export async function raisedFromTeam(src: TeamSource): Promise<Raised[] | null> 
       get<{ items: AttentionItem[] }>(`/api/companies/${company}/attention?all=true`),
       get<AssignedIssue[] | { items: AssignedIssue[] }>(`/api/companies/${company}/issues?assigneeUserId=me&limit=100`),
     ]);
-    return raisedFromAttention(feed.items ?? [], Array.isArray(assigned) ? assigned : assigned.items ?? [], src.classicUrl ?? src.serverUrl);
+    return raisedFromAttention(feed.items ?? [], Array.isArray(assigned) ? assigned : assigned.items ?? [], src.classicUrl === undefined ? src.serverUrl : src.classicUrl);
   } catch {
     return null;
   }

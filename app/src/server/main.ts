@@ -158,7 +158,8 @@ setInterval(() => {
 
 /** The team in Flow: on in the real app; the practice copy keeps to its made-up books unless asked. */
 const TEAM_FLOW = (process.env.OGDOAD_TEAM_FLOW ?? (PRACTICE ? "0" : "1")) === "1";
-const CLASSIC_URL = process.env.OGDOAD_CLASSIC_URL ?? SERVER_URL;
+/** The old engine's own view, where Flow's links pointed; Nous has none. */
+const CLASSIC_URL = ENGINE === "nous" ? null : (process.env.OGDOAD_CLASSIC_URL ?? SERVER_URL);
 const center: CenterContext = {
   team: async () => {
     const s = TEAM_FLOW ? readSophia() : null;

@@ -140,6 +140,13 @@ test("the team's questions and tasks land in Flow; a question clears once answer
   assert.equal(raised[1].ref, "http://127.0.0.1:3100/OGD/issues/OGD-1#interaction-run-9", "the rest opens where it lives");
   assert.equal(raised[2].ref, "http://127.0.0.1:3100/OGD/issues/OGD-2");
 
+  // On Nous there's no classic view: a task of yours opens in Ogdoad's own task room, and nothing links out.
+  const onNous = raisedFromAttention([ask, failed], assigned, null);
+  assert.equal(onNous[0].ref, "/flow/ask/issue-1/q1");
+  assert.equal(onNous[1].ref, null, "a run tied to no task has nowhere to open");
+  assert.equal(raisedFromAttention([{ ...failed, relatedIssue: ask.relatedIssue }], [], null)[0].ref, "/team/task/issue-1", "what's tied to a task opens that task");
+  assert.equal(onNous[2].ref, "/team/task/i-2");
+
   const sync = (team: Raised[] | null) => syncFlow(m, { team: async () => team });
   await sync(raised);
   const ids = () => [flow.view().now, ...flow.view().next].filter(Boolean).map((t) => t!.key);

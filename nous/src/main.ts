@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { nativeRoutes } from "./api.js";
+import { backupNow, prune } from "./backups.js";
 import { compatRoutes } from "./compat.js";
 import { Engine, NousError, type Who } from "./engine.js";
 import { compatSocket, streamChanges } from "./events.js";
@@ -25,6 +26,7 @@ const HOST = process.env.NOUS_HOST ?? "127.0.0.1";
 const TOKEN_FILE = join(HOME, "operator.token");
 /** Each member's mailbox key, for its seat (Horos) or live worker to read. */
 const KEYS_DIR = join(HOME, "keys");
+const BACKUP_DIR = process.env.NOUS_BACKUPS ?? join(HOME, "backups");
 
 /** The operator's token: made the first time, readable by this account only (on Unix; on Windows the profile's ACL). */
 function operatorToken(): string {
@@ -86,10 +88,24 @@ router.on("POST", "/v1/unlock", async (c) => {
     }
     work = new Work(engine, { apiUrl: `http://${HOST}:${PORT}` });
     console.log(`${new Date().toISOString()} unlocked`);
+    // Hourly encrypted backups from now on, the first a few minutes in.
+    const round = () => {
+      try {
+        const { file } = backupNow(engine!.db, BACKUP_DIR);
+        prune(BACKUP_DIR);
+        console.log(`${new Date().toISOString()} backed up to ${file}`);
+      } catch (err) {
+        console.error(`${new Date().toISOString()} backup failed: ${(err as Error).message}`);
+      }
+    };
+    setTimeout(round, 5 * 60_000).unref();
+    setInterval(round, 60 * 60_000).unref();
   }
   return { ok: true, locked: false };
 });
 nativeRoutes(router, unlocked, working);
+router.on("GET", "/v1/openapi.json", () => router.openapi("/v1/", "Nous"));
+router.on("GET", "/api/openapi.json", () => router.openapi("/api/", "Nous (the old engine's routes)"));
 compatRoutes(router, unlocked, working);
 
 // The mailbox: how seats and live workers take jobs, with a member's mailbox key (never an API credential).
@@ -114,7 +130,7 @@ for (const action of ["heartbeat", "log", "done"] as const) {
   });
 }
 
-const OPEN = new Set(["/v1/health", "/api/health", "/v1/unlock", "/mailbox/v1/health"]);
+const OPEN = new Set(["/v1/health", "/api/health", "/v1/unlock", "/mailbox/v1/health", "/v1/openapi.json", "/api/openapi.json"]);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${HOST}`);

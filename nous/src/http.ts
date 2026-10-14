@@ -31,6 +31,28 @@ export class Router {
     return this;
   }
 
+  /**
+   * An OpenAPI description of the routes under a prefix, made from the routes themselves so it can't
+   * drift from what's served. Hires are pointed at it to find their way around.
+   */
+  openapi(prefix: string, title: string): Record<string, unknown> {
+    const paths: Record<string, Record<string, unknown>> = {};
+    for (const r of this.routes) {
+      const path = `/${r.parts.join("/")}`;
+      if (!path.startsWith(prefix)) continue;
+      const templated = `/${r.parts.map((p) => (p.startsWith(":") ? `{${p.slice(1)}}` : p)).join("/")}`;
+      const params = r.parts.filter((p) => p.startsWith(":")).map((p) => ({ name: p.slice(1), in: "path", required: true, schema: { type: "string" } }));
+      (paths[templated] ??= {})[r.method.toLowerCase()] = { ...(params.length ? { parameters: params } : {}), responses: { default: { description: "JSON" } } };
+    }
+    return {
+      openapi: "3.1.0",
+      info: { title, version: "1" },
+      components: { securitySchemes: { bearer: { type: "http", scheme: "bearer", description: "The operator's token, or a run's token (PAPERCLIP_API_KEY in a job)." } } },
+      security: [{ bearer: [] }],
+      paths,
+    };
+  }
+
   match(method: string, path: string): { handler: Handler; params: Record<string, string> } | null {
     const segs = path.split("/").filter(Boolean).map(decodeURIComponent);
     for (const r of this.routes) {

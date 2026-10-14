@@ -45,7 +45,8 @@
     "check:private": "node scripts/check-private.mjs",
     "build": "node -e \"for (const d of ['app/dist', 'horos/dist']) require('fs').rmSync(d, { recursive: true, force: true })\" && npm --prefix app run build && npm --prefix horos run build",
     "prepack": "npm run build",
-    "postpack": "node scripts/check-private.mjs --package"
+    "postpack": "node scripts/check-private.mjs --package",
+    "contract": "node contract/run.mjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

@@ -26,6 +26,8 @@ function upstreamHeaders(req: IncomingMessage, up: Upstream, url: URL): Record<s
   headers.host = url.host;
   if (headers.origin) headers.origin = url.origin;
   if (headers.referer) delete headers.referer;
+  // The operator's session is Ogdoad's alone: the engine and Horos never see the cookie that opens the vault.
+  delete headers.cookie;
   Object.assign(headers, up.headers?.() ?? {});
   return headers;
 }

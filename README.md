@@ -74,6 +74,7 @@ On Linux, `node-pty` builds from source, so you'll need Python, make and a C++ c
 | `runtime/` | The pinned engine build Ogdoad runs, with its patches |
 | `models/membrane/` | The membrane's local model service (setup and serving) |
 | `models/dispatch/` | The dispatcher's local model service (llama.cpp, from Ollama's store) |
+| `contract/` | The engine contract as tests: what Ogdoad relies on the engine for (`npm run contract`; `docs/ENGINE-CONTRACT.md` explains it) |
 | `docs/` | How it's meant to work: start with `CONTROL-CENTER.md` and `ROOMS-AND-THE-MEMBRANE.md` |
 
 ## From source

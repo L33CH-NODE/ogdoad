@@ -97,6 +97,7 @@ export class Horos {
   private readonly rested = new WeakSet<Hire>();
   /** Sessions being restarted on request: their exit is expected and says nothing. */
   private readonly restarting = new WeakSet<Hire>();
+  private readonly restartsUnderWay = new Map<string, Promise<Hire | null>>();
   /** Needs of hires that aren't on the roster. */
   private readonly spawnNeeds = new Map<string, string[]>();
   private shuttingDown = false;
@@ -157,8 +158,18 @@ export class Horos {
   /**
    * Restart one kept hire or server (after a deploy, say): stopped the proper way (a server through its
    * own shutdown, a hire through its exit command), then started again with its needs and its seat.
+   * A second ask while one is under way joins it: two at once would start two copies, and the one Horos
+   * watched would crash on the port while the other ran with no one watching it.
    */
-  async restart(hireId: string): Promise<Hire | null> {
+  restart(hireId: string): Promise<Hire | null> {
+    const under = this.restartsUnderWay.get(hireId);
+    if (under) return under;
+    const p = this.restartOnce(hireId).finally(() => this.restartsUnderWay.delete(hireId));
+    this.restartsUnderWay.set(hireId, p);
+    return p;
+  }
+
+  private async restartOnce(hireId: string): Promise<Hire | null> {
     const entry = this.roster.find((e) => e.id === hireId);
     if (!entry || this.shuttingDown) return null;
     const live = this.hires.get(hireId);

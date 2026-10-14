@@ -217,6 +217,23 @@ test("restart stops one kept hire the proper way and starts it again, quietly", 
   }
 });
 
+test("two restarts asked at once start one copy, not two", { timeout: 40_000 }, async () => {
+  const { dir, script, horos, kinds } = fixture();
+  const hire = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, keep: true });
+  try {
+    assert.ok(await hire.waitFor((s) => s === "idle", 10_000));
+    const [a, b] = await Promise.all([horos.restart(hire.id), horos.restart(hire.id)]);
+    assert.ok(a && a !== hire, "restarted");
+    assert.equal(b, a, "the second ask joined the first");
+    assert.equal(kinds().filter((k) => k === "hire_back").length, 1, "started once");
+    assert.ok(await a.waitFor((s) => s === "idle", 10_000));
+    const again = await horos.restart(hire.id);
+    assert.ok(again && again !== a, "and a later restart is a restart of its own");
+  } finally {
+    horos.shutdown();
+  }
+});
+
 test("graceful shutdown waits for each hire, quits it, and keeps it on the roster", { timeout: 40_000 }, async () => {
   const { dir, script, rosterFile, horos, kinds } = fixture();
   const hire = horos.spawn({ harness: "idler", command: "node", args: [script], cwd: dir, keep: true });

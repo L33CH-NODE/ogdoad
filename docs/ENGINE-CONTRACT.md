@@ -21,7 +21,7 @@ ENGINE_URL=http://127.0.0.1:3410 npm run contract   # against an engine that's a
 
 The tests act as each kind of client. As the operator, they call from this machine with the engine's own Origin. As a hire, they take a job from its mailbox and use the run credentials it carries.
 
-Today the suite runs **26 tests: 23 pass on Paperclip, and 3 are improvements it doesn't have** (`todo` there, real tests on Nous).
+Today the suite runs **26 tests. On Paperclip 23 pass, and 3 are improvements it doesn't have** (`todo` there). **On Nous all 26 pass**, in about a second, against about forty on Paperclip.
 
 ## Who uses the engine, and for what
 

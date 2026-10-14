@@ -3,8 +3,9 @@
 // over, until each moves to /v1. The shapes carry the fields Ogdoad reads (docs/ENGINE-CONTRACT.md),
 // not the old engine's ninety.
 
-import { NousError, OPERATOR, type Company, type Doc, type Engine, type Member, type Message, type Room, type Task, type TaskPatch } from "./engine.js";
+import { NousError, OPERATOR, type Approval, type Card, type Company, type Doc, type Engine, type Member, type Message, type Room, type Task, type TaskPatch } from "./engine.js";
 import { created, needOperator, needSomeone, type Router } from "./http.js";
+import type { Run, Work } from "./work.js";
 
 export const toCompany = (c: Company) => ({ id: c.id, name: c.name, issuePrefix: c.prefix, status: "active", createdAt: c.createdAt, updatedAt: c.updatedAt });
 
@@ -41,6 +42,55 @@ export const toDocument = (d: Doc) => ({
   createdAt: d.createdAt, updatedAt: d.updatedAt,
 });
 
+export const toInteraction = (c: Card) => ({
+  id: c.id, companyId: c.companyId, issueId: c.taskId, kind: c.kind, status: c.status, title: c.title, payload: c.payload,
+  createdByAgentId: c.authorId, createdByUserId: c.authorId ? null : OPERATOR,
+  result: c.answers ? { answers: c.answers } : null, resolvedAt: c.answeredAt, createdAt: c.createdAt, updatedAt: c.updatedAt,
+});
+
+export const toApproval = (a: Approval) => ({
+  id: a.id, companyId: a.companyId, type: a.type, status: a.status, payload: a.payload, decisionNote: a.note,
+  requestedByAgentId: a.requestedBy, requestedByUserId: a.requestedBy ? null : OPERATOR, issueIds: a.taskIds,
+  decidedAt: a.decidedAt, createdAt: a.createdAt, updatedAt: a.updatedAt,
+});
+
+export const toRun = (r: Run) => ({
+  id: r.id, companyId: r.companyId, agentId: r.memberId, issueId: r.taskId, status: r.status, invocationSource: r.reason,
+  startedAt: r.startedAt, finishedAt: r.finishedAt, createdAt: r.createdAt, updatedAt: r.updatedAt,
+});
+
+/** The old attention feed: what's waiting on the operator, with what Flow reads from each item. */
+function attention(e: Engine, companyId: string) {
+  const name = (id: string | null) => (id ? e.member(id).name : "You");
+  const items = e.waiting(companyId).map((w) => {
+    if (w.kind === "card") {
+      const c = w.card;
+      const who = name(c.authorId);
+      return {
+        id: `card:${c.id}`, companyId, sourceKind: "issue_thread_interaction",
+        subject: { kind: "interaction", id: c.id, title: c.title ?? c.payload.title ?? "A few questions", href: null },
+        whyNow: `${who} is waiting on your answer.`, severity: "medium",
+        relatedIssue: { id: w.task.id, identifier: w.task.identifier, title: w.task.title },
+        originAgentName: who, dismissal: { isActive: false }, snoozedUntil: null,
+        detail: { kind: "questions", firstQuestionText: c.payload.questions[0]?.prompt ?? null, questionCount: c.payload.questions.length, createdByAgentName: who },
+        createdAt: c.createdAt, updatedAt: c.updatedAt,
+      };
+    }
+    const a = w.approval;
+    const who = name(a.requestedBy);
+    const task = a.taskIds[0] ? e.task(a.taskIds[0]) : null;
+    return {
+      id: `approval:${a.id}`, companyId, sourceKind: "approval",
+      subject: { kind: "approval", id: a.id, title: String(a.payload.title ?? a.type), href: null },
+      whyNow: `${who} is asking you to decide.`, severity: "high",
+      relatedIssue: task ? { id: task.id, identifier: task.identifier, title: task.title } : null,
+      originAgentName: who, dismissal: { isActive: false }, snoozedUntil: null,
+      detail: { kind: "approval", type: a.type }, createdAt: a.createdAt, updatedAt: a.updatedAt,
+    };
+  });
+  return { companyId, generatedAt: new Date().toISOString(), totalCount: items.length, items };
+}
+
 /** An old-style patch or create body, in Nous's terms. Any operator user id means the operator. */
 function patchFrom(b: any): TaskPatch {
   const p: TaskPatch = {};
@@ -55,7 +105,55 @@ function patchFrom(b: any): TaskPatch {
   return p;
 }
 
-export function compatRoutes(r: Router, engine: () => Engine): void {
+export function compatRoutes(r: Router, engine: () => Engine, work: () => Work): void {
+  r.on("GET", "/api/agents/me", (c) => {
+    const who = needSomeone(c);
+    if (who.kind !== "member") throw new NousError(404, "not_a_member", "The operator isn't a member; sign with a run's token.");
+    return toAgent(engine().member(who.memberId));
+  });
+  r.on("POST", "/api/issues/:id/checkout", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    if (who.kind === "member" && b.agentId && b.agentId !== who.memberId) throw new NousError(403, "not_you", "A member claims tasks only for itself.");
+    return toIssue(engine().claim(c.params.id, who, Array.isArray(b.expectedStatuses) ? b.expectedStatuses : undefined));
+  });
+  r.on("POST", "/api/issues/:id/release", (c) => toIssue(engine().release(c.params.id, needSomeone(c))));
+  r.on("GET", "/api/issues/:id/heartbeat-context", (c) => {
+    const e = engine();
+    const t = e.task(c.params.id, needSomeone(c));
+    const ancestors = [];
+    for (let p = t.parentId; p && ancestors.length < 10; p = e.task(p).parentId) ancestors.push(toIssue(e.task(p)));
+    return { issue: toIssue(t), ancestors, comments: e.messages(t.id, { limit: 20 }).map(toComment), documents: e.docs(t.id).map(({ body: _body, ...d }) => toDocument({ ...d, body: "" })) };
+  });
+
+  r.on("GET", "/api/issues/:id/interactions", (c) => engine().cards(c.params.id, needSomeone(c)).map(toInteraction));
+  r.on("POST", "/api/issues/:id/interactions", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    return created(toInteraction(engine().createCard(c.params.id, { kind: b.kind, title: b.title, payload: b.payload }, who)));
+  });
+  r.on("POST", "/api/issues/:id/interactions/:iid/respond", async (c) => {
+    needOperator(c);
+    const card = engine().card(c.params.iid);
+    if (card.taskId !== c.params.id) throw new NousError(404, "not_found", "No such card on that task.");
+    return toInteraction(engine().answerCard(c.params.iid, (await c.body()).answers));
+  });
+
+  r.on("POST", "/api/companies/:co/approvals", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    return created(toApproval(engine().createApproval(c.params.co, { type: b.type, payload: b.payload, taskIds: b.issueIds }, who)));
+  });
+  r.on("GET", "/api/approvals/:id", (c) => toApproval(engine().approval(c.params.id, needSomeone(c))));
+  r.on("POST", "/api/approvals/:id/approve", async (c) => (needOperator(c), toApproval(engine().decide(c.params.id, true, (await c.body()).decisionNote ?? null))));
+  r.on("POST", "/api/approvals/:id/reject", async (c) => (needOperator(c), toApproval(engine().decide(c.params.id, false, (await c.body()).decisionNote ?? null))));
+
+  r.on("GET", "/api/companies/:co/attention", (c) => (needOperator(c), attention(engine(), c.params.co)));
+  r.on("GET", "/api/companies/:co/live-runs", (c) => {
+    engine().company(c.params.co, needSomeone(c));
+    return work().live(c.params.co).map(toRun);
+  });
+
   r.on("POST", "/api/companies", async (c) => (needOperator(c), created(toCompany(engine().createCompany((await c.body()).name)))));
   r.on("GET", "/api/companies/:co", (c) => toCompany(engine().company(c.params.co, needSomeone(c))));
 

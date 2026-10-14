@@ -92,6 +92,71 @@ const MIGRATIONS: string[] = [
     UNIQUE (task_id, key)
   );
   `,
+  // Cards, approvals, and runs: the work loop.
+  `
+  ALTER TABLE members ADD COLUMN mailbox_key_hash TEXT;
+  CREATE TABLE cards (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    kind TEXT NOT NULL,
+    title TEXT,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'answered', 'withdrawn')),
+    author_id TEXT REFERENCES members(id),
+    run_id TEXT,
+    answer TEXT,
+    answered_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX cards_task ON cards(task_id, status);
+  CREATE TABLE approvals (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL REFERENCES companies(id),
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    note TEXT,
+    requested_by TEXT REFERENCES members(id),
+    decided_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX approvals_company ON approvals(company_id, status);
+  CREATE TABLE approval_tasks (
+    approval_id TEXT NOT NULL REFERENCES approvals(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    PRIMARY KEY (approval_id, task_id)
+  );
+  CREATE TABLE runs (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL REFERENCES companies(id),
+    member_id TEXT NOT NULL REFERENCES members(id),
+    task_id TEXT REFERENCES tasks(id),
+    reason TEXT NOT NULL,
+    wake TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+    job_id TEXT,
+    token_hash TEXT,
+    lease_until TEXT,
+    claims INTEGER NOT NULL DEFAULT 0,
+    summary TEXT,
+    error TEXT,
+    log TEXT NOT NULL DEFAULT '',
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX runs_member ON runs(member_id, status, created_at);
+  CREATE INDEX runs_company ON runs(company_id, status);
+  CREATE UNIQUE INDEX runs_token ON runs(token_hash) WHERE token_hash IS NOT NULL;
+  CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 function migrate(db: Db): void {

@@ -2,10 +2,14 @@
 // change them. Both the native API and the translator call these, so there's one set of rules
 // spoken in two vocabularies.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { Db } from "./store.js";
+
+export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export const OPERATOR = "operator";
 
@@ -40,11 +44,30 @@ export interface Task {
 export interface Message { id: string; taskId: string; companyId: string; authorId: string | null; runId: string | null; body: string; requestId: string | null; createdAt: string }
 export interface Doc { id: string; taskId: string; companyId: string; key: string; title: string; format: string; body: string; revision: number; authorId: string | null; createdAt: string; updatedAt: string }
 
+export interface Question { id: string; prompt: string; helpText?: string | null; selectionMode: "single" | "multi"; required?: boolean; allowOther?: boolean; options: Array<{ id: string; label: string; description?: string | null; freeText?: boolean }> }
+export interface Answer { questionId: string; optionIds: string[]; otherText: string | null }
+export interface Card {
+  id: string; taskId: string; companyId: string; kind: string; title: string | null;
+  payload: { version?: number; title?: string | null; submitLabel?: string | null; questions: Question[] };
+  status: "pending" | "answered" | "withdrawn"; authorId: string | null; answers: Answer[] | null; answeredAt: string | null; createdAt: string; updatedAt: string;
+}
+export interface Approval {
+  id: string; companyId: string; type: string; payload: Record<string, unknown>; status: "pending" | "approved" | "rejected"; note: string | null;
+  requestedBy: string | null; taskIds: string[]; decidedAt: string | null; createdAt: string; updatedAt: string;
+}
+
+/** Why a member is woken. */
+export type WakeReason = "assigned" | "message" | "mention" | "answer" | "decision" | "unfinished";
+export interface WakeDetails { messageId?: string; cardId?: string; approvalId?: string; approvalStatus?: string }
+export type Waker = (memberId: string, taskId: string | null, reason: WakeReason, details: WakeDetails) => void;
+
 /** What changed, for whoever's listening (the live stream). */
 export type Change =
   | { kind: "task"; companyId: string; taskId: string; roomId: string | null; action: string; by: Who }
   | { kind: "message"; companyId: string; taskId: string; roomId: string | null; messageId: string; by: Who }
-  | { kind: "member"; companyId: string; memberId: string; status: string };
+  | { kind: "member"; companyId: string; memberId: string; status: string }
+  | { kind: "approval"; companyId: string; approvalId: string; status: string }
+  | { kind: "run"; companyId: string; runId: string; memberId: string; taskId: string | null; status: string };
 
 const now = () => new Date().toISOString();
 
@@ -63,6 +86,15 @@ const task = (r: any): Task => ({
 });
 const message = (r: any): Message => ({ id: r.id, taskId: r.task_id, companyId: r.company_id, authorId: r.author_id, runId: r.run_id, body: r.body, requestId: r.request_id, createdAt: r.created_at });
 const doc = (r: any): Doc => ({ id: r.id, taskId: r.task_id, companyId: r.company_id, key: r.key, title: r.title, format: r.format, body: r.body, revision: r.revision, authorId: r.author_id, createdAt: r.created_at, updatedAt: r.updated_at });
+const card = (r: any): Card => ({
+  id: r.id, taskId: r.task_id, companyId: r.company_id, kind: r.kind, title: r.title, payload: JSON.parse(r.payload), status: r.status, authorId: r.author_id,
+  answers: r.answer ? JSON.parse(r.answer) : null, answeredAt: r.answered_at, createdAt: r.created_at, updatedAt: r.updated_at,
+});
+
+/** The members a message names: [@Name](agent://<id>). */
+export function mentionsIn(body: string): string[] {
+  return [...new Set([...body.matchAll(/\]\(agent:\/\/([0-9a-fA-F-]{36})\)/g)].map((m) => m[1].toLowerCase()))];
+}
 
 const TASK_SELECT = "SELECT t.*, c.prefix FROM tasks t JOIN companies c ON c.id = t.company_id";
 
@@ -73,13 +105,20 @@ export interface TaskPatch {
 
 export class Engine {
   readonly changes = new EventEmitter();
+  /** Set by the work loop: how a member is woken. */
+  waker: Waker | null = null;
 
-  constructor(readonly db: Db) {
+  /** keysDir: where each member's mailbox key is written (what its seat or live worker takes jobs with). */
+  constructor(readonly db: Db, readonly opts: { keysDir?: string } = {}) {
     this.changes.setMaxListeners(0);
   }
 
-  private emit(change: Change): void {
+  emit(change: Change): void {
     this.changes.emit("change", change);
+  }
+
+  private wake(memberId: string, taskId: string | null, reason: WakeReason, details: WakeDetails = {}): void {
+    this.waker?.(memberId, taskId, reason, details);
   }
 
   private tx<T>(fn: () => T): T {
@@ -119,9 +158,27 @@ export class Engine {
     if (!input.name?.trim()) throw new NousError(400, "bad_request", "A member needs a name.");
     const id = randomUUID();
     const at = now();
-    this.db.prepare("INSERT INTO members (id, company_id, name, role, title, capabilities, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, companyId, input.name.trim(), input.role ?? "general", input.title ?? "", input.capabilities ?? "", at, at);
+    // Its mailbox key: written for its seat to read, kept here only as a hash.
+    const key = randomBytes(32).toString("base64url");
+    this.db.prepare("INSERT INTO members (id, company_id, name, role, title, capabilities, mailbox_key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, companyId, input.name.trim(), input.role ?? "general", input.title ?? "", input.capabilities ?? "", sha256(key), at, at);
+    if (this.opts.keysDir) {
+      mkdirSync(this.opts.keysDir, { recursive: true });
+      const file = join(this.opts.keysDir, `${id}.key`);
+      writeFileSync(file, key, { mode: 0o600 });
+      try {
+        chmodSync(file, 0o600);
+      } catch {
+        // Windows: the file sits under the operator's profile.
+      }
+    }
     return this.member(id);
+  }
+
+  /** The member a mailbox key belongs to (never a member who's been let go). */
+  memberByMailboxKey(key: string): Member | null {
+    const r = this.db.prepare("SELECT * FROM members WHERE mailbox_key_hash = ? AND status != 'let_go'").get(sha256(key));
+    return r ? member(r) : null;
   }
 
   member(id: string, who?: Who): Member {
@@ -218,6 +275,8 @@ export class Engine {
     });
     const t = this.task(id);
     this.emit({ kind: "task", companyId, taskId: id, roomId: t.roomId, action: "created", by: who });
+    // Given to a member (by someone else): the member wakes to it.
+    if (t.assigneeId && !CLOSED.includes(t.status) && !(who.kind === "member" && who.memberId === t.assigneeId)) this.wake(t.assigneeId, id, "assigned");
     return t;
   }
 
@@ -228,6 +287,10 @@ export class Engine {
     if (patch.assigneeId) next.forOperator = false;
     if (patch.forOperator) next.assigneeId = null;
     if (next.status === "in_progress" && !next.assigneeId && !next.forOperator) throw new NousError(422, "needs_assignee", "A task in progress needs someone on it.");
+    // A member can't park a task in review unless something there owns the next step.
+    if (who.kind === "member" && next.status === "in_review" && cur.status !== "in_review" && !this.somethingWaiting(id)) {
+      throw new NousError(422, "nothing_to_review", "A task goes to review only when a card or an approval on it is waiting on the operator. Keep working, or ask first.");
+    }
     const at = now();
     const startedAt = next.status === "in_progress" && !cur.startedAt ? at : cur.startedAt;
     const finishedAt = CLOSED.includes(next.status) ? (CLOSED.includes(cur.status) ? cur.finishedAt : at) : null;
@@ -237,7 +300,16 @@ export class Engine {
     );
     const t = this.task(id);
     this.emit({ kind: "task", companyId: t.companyId, taskId: id, roomId: t.roomId, action: "updated", by: who });
+    if (t.assigneeId && t.assigneeId !== cur.assigneeId && !CLOSED.includes(t.status) && !(who.kind === "member" && who.memberId === t.assigneeId)) this.wake(t.assigneeId, id, "assigned");
     return t;
+  }
+
+  /** A pending card on the task, or a pending approval for it: something waiting on the operator. */
+  private somethingWaiting(taskId: string): boolean {
+    return !!(
+      this.db.prepare("SELECT 1 FROM cards WHERE task_id = ? AND status = 'pending'").get(taskId) ??
+      this.db.prepare("SELECT 1 FROM approval_tasks at JOIN approvals a ON a.id = at.approval_id WHERE at.task_id = ? AND a.status = 'pending'").get(taskId)
+    );
   }
 
   private checkFields(companyId: string, p: TaskPatch): void {
@@ -270,6 +342,14 @@ export class Engine {
     this.db.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run(at, taskId);
     const m = this.message(id);
     this.emit({ kind: "message", companyId: t.companyId, taskId, roomId: t.roomId, messageId: id, by: who });
+    // Whoever the task is with hears it; whoever's named is woken too (each once, never the speaker).
+    const author = who.kind === "member" ? who.memberId : null;
+    if (t.assigneeId && t.assigneeId !== author && t.status !== "cancelled") this.wake(t.assigneeId, taskId, "message", { messageId: id });
+    for (const named of mentionsIn(body)) {
+      if (named === author || named === t.assigneeId) continue;
+      const r = this.db.prepare("SELECT company_id FROM members WHERE id = ?").get(named) as { company_id: string } | undefined;
+      if (r?.company_id === t.companyId) this.wake(named, taskId, "mention", { messageId: id });
+    }
     return m;
   }
 
@@ -314,5 +394,150 @@ export class Engine {
   docs(taskId: string, who?: Who): Doc[] {
     this.task(taskId, who);
     return (this.db.prepare("SELECT d.*, t.company_id FROM docs d JOIN tasks t ON t.id = d.task_id WHERE d.task_id = ? ORDER BY d.updated_at DESC").all(taskId) as any[]).map(doc);
+  }
+
+  // Cards: questions for the operator ------------------------------------------------------------
+
+  createCard(taskId: string, input: { kind?: string; title?: string | null; payload: Card["payload"] }, who: Who): Card {
+    const t = this.task(taskId, who);
+    const kind = input.kind ?? "ask_user_questions";
+    if (kind !== "ask_user_questions") throw new NousError(400, "bad_request", "Nous's cards ask questions (kind: ask_user_questions).");
+    const questions = input.payload?.questions;
+    if (!Array.isArray(questions) || !questions.length) throw new NousError(400, "bad_request", "A card needs at least one question.");
+    for (const q of questions) {
+      if (!q?.id || !q.prompt || !["single", "multi"].includes(q.selectionMode) || !Array.isArray(q.options)) {
+        throw new NousError(400, "bad_request", "Each question needs an id, a prompt, a selectionMode (single or multi) and options.");
+      }
+    }
+    const id = randomUUID();
+    const at = now();
+    this.db.prepare("INSERT INTO cards (id, task_id, kind, title, payload, author_id, run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, taskId, kind, input.title ?? input.payload.title ?? null, JSON.stringify(input.payload), who.kind === "member" ? who.memberId : null, who.kind === "member" ? who.runId : null, at, at);
+    this.emit({ kind: "task", companyId: t.companyId, taskId, roomId: t.roomId, action: "card", by: who });
+    return this.card(id);
+  }
+
+  card(id: string, who?: Who): Card {
+    const r = this.db.prepare("SELECT c.*, t.company_id FROM cards c JOIN tasks t ON t.id = c.task_id WHERE c.id = ?").get(id);
+    if (!r) throw notFound("card");
+    const c = card(r);
+    if (who) this.sameCompany(who, c.companyId, "card");
+    return c;
+  }
+
+  cards(taskId: string, who?: Who): Card[] {
+    this.task(taskId, who);
+    return (this.db.prepare("SELECT c.*, t.company_id FROM cards c JOIN tasks t ON t.id = c.task_id WHERE c.task_id = ? ORDER BY c.created_at").all(taskId) as any[]).map(card);
+  }
+
+  /** The operator answers a card; whoever asked wakes to the answers. */
+  answerCard(id: string, answers: Answer[]): Card {
+    const c = this.card(id);
+    if (c.status !== "pending") throw new NousError(409, "already_answered", "That card has been answered already.");
+    const known = new Set(c.payload.questions.map((q) => q.id));
+    const clean = (Array.isArray(answers) ? answers : [])
+      .filter((a) => known.has(a?.questionId))
+      .map((a) => ({ questionId: a.questionId, optionIds: Array.isArray(a.optionIds) ? a.optionIds.map(String) : [], otherText: a.otherText ?? null }));
+    const at = now();
+    this.db.prepare("UPDATE cards SET status = 'answered', answer = ?, answered_at = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(clean), at, at, id);
+    const t = this.task(c.taskId);
+    this.emit({ kind: "task", companyId: c.companyId, taskId: c.taskId, roomId: t.roomId, action: "card_answered", by: { kind: "operator" } });
+    if (c.authorId) this.wake(c.authorId, c.taskId, "answer", { cardId: id });
+    return this.card(id);
+  }
+
+  // Approvals --------------------------------------------------------------------------------------
+
+  createApproval(companyId: string, input: { type: string; payload?: Record<string, unknown>; taskIds?: string[] }, who: Who): Approval {
+    this.company(companyId, who);
+    if (!input.type?.trim()) throw new NousError(400, "bad_request", "An approval needs a type.");
+    const taskIds = [...new Set(input.taskIds ?? [])];
+    for (const t of taskIds) if (this.task(t, who).companyId !== companyId) throw new NousError(400, "bad_request", "Those tasks belong to another company.");
+    const id = randomUUID();
+    const at = now();
+    this.tx(() => {
+      this.db.prepare("INSERT INTO approvals (id, company_id, type, payload, requested_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(id, companyId, input.type, JSON.stringify(input.payload ?? {}), who.kind === "member" ? who.memberId : null, at, at);
+      for (const t of taskIds) this.db.prepare("INSERT INTO approval_tasks (approval_id, task_id) VALUES (?, ?)").run(id, t);
+    });
+    this.emit({ kind: "approval", companyId, approvalId: id, status: "pending" });
+    return this.approval(id);
+  }
+
+  approval(id: string, who?: Who): Approval {
+    const r = this.db.prepare("SELECT * FROM approvals WHERE id = ?").get(id) as any;
+    if (!r) throw notFound("approval");
+    if (who) this.sameCompany(who, r.company_id, "approval");
+    const taskIds = (this.db.prepare("SELECT task_id FROM approval_tasks WHERE approval_id = ?").all(id) as Array<{ task_id: string }>).map((x) => x.task_id);
+    return {
+      id: r.id, companyId: r.company_id, type: r.type, payload: JSON.parse(r.payload), status: r.status, note: r.note, requestedBy: r.requested_by,
+      taskIds, decidedAt: r.decided_at, createdAt: r.created_at, updatedAt: r.updated_at,
+    };
+  }
+
+  /** The operator decides. Whoever asked is told either way, with the note. */
+  decide(id: string, approve: boolean, note: string | null): Approval {
+    const a = this.approval(id);
+    if (a.status !== "pending") throw new NousError(409, "already_decided", `That approval was ${a.status} already.`);
+    const status = approve ? "approved" : "rejected";
+    const at = now();
+    this.db.prepare("UPDATE approvals SET status = ?, note = ?, decided_at = ?, updated_at = ? WHERE id = ?").run(status, note, at, at, id);
+    this.emit({ kind: "approval", companyId: a.companyId, approvalId: id, status });
+    if (a.requestedBy) this.wake(a.requestedBy, a.taskIds[0] ?? null, "decision", { approvalId: id, approvalStatus: status });
+    return this.approval(id);
+  }
+
+  /** What's waiting on the operator: open cards and pending approvals, newest first. */
+  waiting(companyId: string): Array<{ kind: "card"; card: Card; task: Task } | { kind: "approval"; approval: Approval }> {
+    this.company(companyId);
+    const cards = (this.db.prepare("SELECT c.*, t.company_id FROM cards c JOIN tasks t ON t.id = c.task_id WHERE t.company_id = ? AND c.status = 'pending'").all(companyId) as any[]).map(card);
+    const approvals = (this.db.prepare("SELECT id FROM approvals WHERE company_id = ? AND status = 'pending'").all(companyId) as Array<{ id: string }>).map((r) => this.approval(r.id));
+    return [
+      ...cards.map((c) => ({ kind: "card" as const, card: c, task: this.task(c.taskId), at: c.createdAt })),
+      ...approvals.map((a) => ({ kind: "approval" as const, approval: a, at: a.createdAt })),
+    ].sort((x, y) => y.at.localeCompare(x.at)).map(({ at: _at, ...item }) => item);
+  }
+
+  // Claiming work ----------------------------------------------------------------------------------
+
+  /** Whether a run is still under way (queued or running). */
+  runLive(runId: string | null): boolean {
+    if (!runId) return false;
+    return !!this.db.prepare("SELECT 1 FROM runs WHERE id = ? AND status IN ('queued', 'running')").get(runId);
+  }
+
+  /**
+   * A member on a run takes a task: it's theirs and in progress. Claiming your own task again is a
+   * no-op; a task another member is working is theirs (409).
+   */
+  claim(taskId: string, who: Who, expected?: TaskStatus[]): Task {
+    if (who.kind !== "member") throw new NousError(403, "members_only", "Only a member on a run claims a task.");
+    const t = this.task(taskId, who);
+    if (t.status === "in_progress" && t.assigneeId === who.memberId) {
+      if (t.heldByRun !== who.runId) this.db.prepare("UPDATE tasks SET held_by_run = ? WHERE id = ?").run(who.runId, taskId);
+      return this.task(taskId);
+    }
+    const heldByOther = t.status === "in_progress" && t.assigneeId && t.assigneeId !== who.memberId;
+    if (heldByOther || (t.heldByRun && t.heldByRun !== who.runId && this.runLive(t.heldByRun) && t.assigneeId !== who.memberId)) {
+      throw new NousError(409, "taken", "Another member is working on that task.");
+    }
+    if (expected?.length && !expected.includes(t.status)) throw new NousError(409, "not_claimable", `That task is ${t.status}, not one of: ${expected.join(", ")}.`);
+    if (CLOSED.includes(t.status)) throw new NousError(409, "closed", "That task is closed.");
+    const at = now();
+    this.db.prepare("UPDATE tasks SET status = 'in_progress', assignee_id = ?, for_operator = 0, held_by_run = ?, started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?")
+      .run(who.memberId, who.runId, at, at, taskId);
+    this.emit({ kind: "task", companyId: t.companyId, taskId, roomId: t.roomId, action: "claimed", by: who });
+    return this.task(taskId);
+  }
+
+  /** Let a task go: back to the queue, with nobody on it. */
+  release(taskId: string, who: Who): Task {
+    const t = this.task(taskId, who);
+    if (who.kind === "member" && t.assigneeId !== who.memberId) throw new NousError(409, "not_yours", "Only whoever holds a task lets it go.");
+    const at = now();
+    const status = t.status === "in_progress" ? "todo" : t.status;
+    this.db.prepare("UPDATE tasks SET status = ?, assignee_id = CASE WHEN ? = 'todo' THEN NULL ELSE assignee_id END, held_by_run = NULL, updated_at = ? WHERE id = ?").run(status, status, at, taskId);
+    this.emit({ kind: "task", companyId: t.companyId, taskId, roomId: t.roomId, action: "released", by: who });
+    return this.task(taskId);
   }
 }

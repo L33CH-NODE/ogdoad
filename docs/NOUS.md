@@ -88,9 +88,9 @@ A run for the same hire and task that's already waiting absorbs the new reason i
 
 ## Milestones
 
-1. **The store, the keys, the core API.** Companies, the team, rooms, tasks and talk, natively and through the translator. The contract's room and talk tests pass.
-2. **Documents, cards, approvals, the waiting feed, live events.**
-3. **The work loop.** Runs, jobs, leases, the mailbox, run tokens, claim and release, and the wake rules. The whole contract passes, the two improvements included.
+1. **Done (2026-10-14): the store, the keys, the core API.** Companies, the team, rooms, tasks and talk, natively and through the translator. The contract's room and talk tests pass.
+2. **Done (2026-10-14): documents, cards, approvals, the waiting feed, live events.**
+3. **Done (2026-10-14): the work loop.** Runs, jobs, leases, the mailbox, run tokens, claim and release, and the wake rules. The whole contract passes on Nous: all 26 tests, the three improvements included, in about a second (the old engine takes about forty).
 4. **Into Ogdoad.** Horos keeps Nous up, the app hands it the key on unlock and adds the operator token, and the installer sets it up. On the practice copy first.
 5. **Moving in.** An import from the old engine through its own API, counts checked, old data untouched.
 6. **The switch.** The app, the wizard and the briefs move to `/v1`. The old engine leaves the repo.

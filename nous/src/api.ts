@@ -2,6 +2,7 @@
 
 import { NousError, type Engine, type Priority, type TaskPatch, type TaskStatus } from "./engine.js";
 import { created, needOperator, needSomeone, type Router } from "./http.js";
+import type { Work } from "./work.js";
 
 /** Only the fields a task patch may carry, whatever else the body holds. */
 export function taskPatch(b: any): TaskPatch {
@@ -20,7 +21,49 @@ export function taskPatch(b: any): TaskPatch {
 const statuses = (s: string | null) => (s ? (s.split(",").filter(Boolean) as TaskStatus[]) : undefined);
 const limit = (s: string | null) => (s ? Number(s) || undefined : undefined);
 
-export function nativeRoutes(r: Router, engine: () => Engine): void {
+export function nativeRoutes(r: Router, engine: () => Engine, work: () => Work): void {
+  r.on("GET", "/v1/me", (c) => {
+    const who = needSomeone(c);
+    if (who.kind !== "member") throw new NousError(404, "not_a_member", "The operator isn't a member; sign with a run's token.");
+    return { ...engine().member(who.memberId), runId: who.runId };
+  });
+  r.on("POST", "/v1/tasks/:id/claim", async (c) => {
+    const b = await c.body();
+    return engine().claim(c.params.id, needSomeone(c), Array.isArray(b.expect) ? b.expect : undefined);
+  });
+  r.on("POST", "/v1/tasks/:id/release", (c) => engine().release(c.params.id, needSomeone(c)));
+  r.on("GET", "/v1/tasks/:id/context", (c) => {
+    const e = engine();
+    const t = e.task(c.params.id, needSomeone(c));
+    return { task: t, messages: e.messages(t.id, { limit: 20 }), docs: e.docs(t.id).map(({ body: _b, ...d }) => d), cards: e.cards(t.id) };
+  });
+
+  r.on("GET", "/v1/tasks/:id/cards", (c) => ({ items: engine().cards(c.params.id, needSomeone(c)) }));
+  r.on("POST", "/v1/tasks/:id/cards", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    return created(engine().createCard(c.params.id, { kind: b.kind, title: b.title, payload: b.payload }, who));
+  });
+  r.on("POST", "/v1/cards/:id/answer", async (c) => (needOperator(c), engine().answerCard(c.params.id, (await c.body()).answers)));
+
+  r.on("POST", "/v1/companies/:co/approvals", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    return created(engine().createApproval(c.params.co, { type: b.type, payload: b.payload, taskIds: b.taskIds }, who));
+  });
+  r.on("GET", "/v1/approvals/:id", (c) => engine().approval(c.params.id, needSomeone(c)));
+  r.on("POST", "/v1/approvals/:id/decide", async (c) => {
+    needOperator(c);
+    const b = await c.body();
+    if (typeof b.approve !== "boolean") throw new NousError(400, "bad_request", "Say approve: true or false.");
+    return engine().decide(c.params.id, b.approve, b.note ?? null);
+  });
+  r.on("GET", "/v1/companies/:co/waiting", (c) => (needOperator(c), { items: engine().waiting(c.params.co) }));
+  r.on("GET", "/v1/companies/:co/runs", (c) => {
+    engine().company(c.params.co, needSomeone(c));
+    return { items: work().live(c.params.co) };
+  });
+
   r.on("GET", "/v1/companies", (c) => (needOperator(c), { items: engine().companies() }));
   r.on("POST", "/v1/companies", async (c) => (needOperator(c), created(engine().createCompany((await c.body()).name))));
   r.on("GET", "/v1/companies/:co", (c) => engine().company(c.params.co, needSomeone(c)));

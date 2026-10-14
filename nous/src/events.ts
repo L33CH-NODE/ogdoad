@@ -27,6 +27,11 @@ export function compatEvent(ch: Change): { type: string; payload: Record<string,
       };
     case "member":
       return { type: "agent.status", payload: { agentId: ch.memberId, status: ch.status } };
+    case "approval":
+      return { type: "activity.logged", payload: { actorType: "user", actorId: "operator", action: `approval.${ch.status}`, entityType: "approval", entityId: ch.approvalId, details: {} } };
+    case "run":
+      // Better than the old engine: a run's every status names its task, so a room sees work start.
+      return { type: "heartbeat.run.status", payload: { runId: ch.runId, agentId: ch.memberId, issueId: ch.taskId, status: ch.status } };
   }
 }
 

@@ -56,6 +56,18 @@ export interface Approval {
   requestedBy: string | null; taskIds: string[]; decidedAt: string | null; createdAt: string; updatedAt: string;
 }
 
+/** A company brought in whole from another engine: ids, numbers and times kept. */
+export interface ImportBatch {
+  company: { id: string; name: string; prefix: string; nextNumber?: number; createdAt: string; updatedAt: string };
+  members: Array<{ id: string; name: string; role: string; title: string; capabilities: string; status: Member["status"]; mailboxKey?: string | null; createdAt: string; updatedAt: string }>;
+  rooms: Array<{ id: string; name: string; brief: string | null; status: string; leadId: string | null; color: string | null; archivedAt: string | null; createdAt: string; updatedAt: string }>;
+  tasks: Array<{ id: string; roomId: string | null; parentId: string | null; number: number; title: string; description: string; status: TaskStatus; priority: Priority; assigneeId: string | null; forOperator: boolean; authorId: string | null; startedAt: string | null; finishedAt: string | null; createdAt: string; updatedAt: string }>;
+  messages: Array<{ id: string; taskId: string; authorId: string | null; body: string; requestId: string | null; createdAt: string }>;
+  docs: Array<{ id: string; taskId: string; key: string; title: string; format: string; body: string; revision: number; authorId: string | null; createdAt: string; updatedAt: string }>;
+  cards: Array<{ id: string; taskId: string; kind: string; title: string | null; payload: Card["payload"]; status: Card["status"]; authorId: string | null; answers: Answer[] | null; answeredAt: string | null; createdAt: string; updatedAt: string }>;
+  approvals: Array<{ id: string; type: string; payload: Record<string, unknown>; status: Approval["status"]; note: string | null; requestedBy: string | null; taskIds: string[]; decidedAt: string | null; createdAt: string; updatedAt: string }>;
+}
+
 /** Why a member is woken. */
 export type WakeReason = "assigned" | "message" | "mention" | "answer" | "decision" | "unfinished";
 export interface WakeDetails { messageId?: string; cardId?: string; approvalId?: string; approvalStatus?: string }
@@ -496,6 +508,86 @@ export class Engine {
       ...cards.map((c) => ({ kind: "card" as const, card: c, task: this.task(c.taskId), at: c.createdAt })),
       ...approvals.map((a) => ({ kind: "approval" as const, approval: a, at: a.createdAt })),
     ].sort((x, y) => y.at.localeCompare(x.at)).map(({ at: _at, ...item }) => item);
+  }
+
+  // Moving in ----------------------------------------------------------------------------------------
+
+  /**
+   * Bring a company in from another engine, keeping every id, number and time, so whatever points at
+   * it (Horos's seats, the app's records) still does. Idempotent: run again, it updates what's there.
+   * Nothing is woken, and no run is made: history isn't work.
+   */
+  importBatch(input: ImportBatch): Record<string, number> {
+    const b: ImportBatch = { ...input, members: input.members ?? [], rooms: input.rooms ?? [], tasks: input.tasks ?? [], messages: input.messages ?? [], docs: input.docs ?? [], cards: input.cards ?? [], approvals: input.approvals ?? [] };
+    const co = b.company;
+    if (!co?.id || !co.name || !co.prefix) throw new NousError(400, "bad_request", "An import names its company: id, name and prefix.");
+    const nextNumber = Math.max(co.nextNumber ?? 1, ...b.tasks.map((t) => t.number + 1));
+    this.tx(() => {
+      this.db.pragma("defer_foreign_keys = ON");
+      this.db.prepare(`INSERT INTO companies (id, name, prefix, next_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, prefix = excluded.prefix, next_number = MAX(companies.next_number, excluded.next_number), updated_at = excluded.updated_at`)
+        .run(co.id, co.name, co.prefix, nextNumber, co.createdAt, co.updatedAt);
+      for (const m of b.members) {
+        this.db.prepare(`INSERT INTO members (id, company_id, name, role, title, capabilities, status, mailbox_key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name = excluded.name, role = excluded.role, title = excluded.title, capabilities = excluded.capabilities, status = excluded.status,
+          mailbox_key_hash = COALESCE(excluded.mailbox_key_hash, members.mailbox_key_hash), updated_at = excluded.updated_at`)
+          .run(m.id, co.id, m.name, m.role, m.title, m.capabilities, m.status, m.mailboxKey ? sha256(m.mailboxKey) : null, m.createdAt, m.updatedAt);
+        if (m.mailboxKey && this.opts.keysDir) {
+          mkdirSync(this.opts.keysDir, { recursive: true });
+          writeFileSync(join(this.opts.keysDir, `${m.id}.key`), m.mailboxKey, { mode: 0o600 });
+        }
+      }
+      for (const r of b.rooms) {
+        this.db.prepare(`INSERT INTO rooms (id, company_id, name, brief, status, lead_id, color, archived_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name = excluded.name, brief = excluded.brief, status = excluded.status, lead_id = excluded.lead_id, color = excluded.color,
+          archived_at = excluded.archived_at, updated_at = excluded.updated_at`)
+          .run(r.id, co.id, r.name, r.brief, r.status, r.leadId, r.color, r.archivedAt, r.createdAt, r.updatedAt);
+      }
+      for (const t of b.tasks) {
+        this.db.prepare(`INSERT INTO tasks (id, company_id, room_id, parent_id, number, title, description, status, priority, assignee_id, for_operator, author_id, started_at, finished_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id, parent_id = excluded.parent_id, title = excluded.title, description = excluded.description, status = excluded.status,
+          priority = excluded.priority, assignee_id = excluded.assignee_id, for_operator = excluded.for_operator, started_at = excluded.started_at, finished_at = excluded.finished_at,
+          updated_at = excluded.updated_at`)
+          .run(t.id, co.id, t.roomId, t.parentId, t.number, t.title, t.description, t.status, t.priority, t.assigneeId, t.forOperator ? 1 : 0, t.authorId,
+            t.startedAt, t.finishedAt, t.createdAt, t.updatedAt);
+      }
+      for (const m of b.messages) {
+        this.db.prepare("INSERT INTO messages (id, task_id, author_id, run_id, body, request_id, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?) ON CONFLICT DO NOTHING")
+          .run(m.id, m.taskId, m.authorId, m.body, m.requestId, m.createdAt);
+      }
+      for (const d of b.docs) {
+        this.db.prepare(`INSERT INTO docs (id, task_id, key, title, format, body, revision, author_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(task_id, key) DO UPDATE SET title = excluded.title, format = excluded.format, body = excluded.body, revision = MAX(docs.revision, excluded.revision), updated_at = excluded.updated_at`)
+          .run(d.id, d.taskId, d.key, d.title, d.format, d.body, d.revision, d.authorId, d.createdAt, d.updatedAt);
+      }
+      for (const c of b.cards) {
+        this.db.prepare(`INSERT INTO cards (id, task_id, kind, title, payload, status, author_id, answer, answered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, answer = excluded.answer, answered_at = excluded.answered_at, updated_at = excluded.updated_at`)
+          .run(c.id, c.taskId, c.kind, c.title, JSON.stringify(c.payload), c.status, c.authorId, c.answers ? JSON.stringify(c.answers) : null, c.answeredAt, c.createdAt, c.updatedAt);
+      }
+      for (const a of b.approvals) {
+        this.db.prepare(`INSERT INTO approvals (id, company_id, type, payload, status, note, requested_by, decided_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, note = excluded.note, decided_at = excluded.decided_at, updated_at = excluded.updated_at`)
+          .run(a.id, co.id, a.type, JSON.stringify(a.payload), a.status, a.note, a.requestedBy, a.decidedAt, a.createdAt, a.updatedAt);
+        for (const t of a.taskIds) this.db.prepare("INSERT INTO approval_tasks (approval_id, task_id) VALUES (?, ?) ON CONFLICT DO NOTHING").run(a.id, t);
+      }
+    });
+    return this.counts(co.id);
+  }
+
+  /** How much a company holds: what an import is checked against. */
+  counts(companyId: string): Record<string, number> {
+    const one = (sql: string) => (this.db.prepare(sql).get(companyId) as { n: number }).n;
+    return {
+      members: one("SELECT COUNT(*) AS n FROM members WHERE company_id = ?"),
+      rooms: one("SELECT COUNT(*) AS n FROM rooms WHERE company_id = ?"),
+      tasks: one("SELECT COUNT(*) AS n FROM tasks WHERE company_id = ?"),
+      messages: one("SELECT COUNT(*) AS n FROM messages m JOIN tasks t ON t.id = m.task_id WHERE t.company_id = ?"),
+      docs: one("SELECT COUNT(*) AS n FROM docs d JOIN tasks t ON t.id = d.task_id WHERE t.company_id = ?"),
+      cards: one("SELECT COUNT(*) AS n FROM cards c JOIN tasks t ON t.id = c.task_id WHERE t.company_id = ?"),
+      approvals: one("SELECT COUNT(*) AS n FROM approvals WHERE company_id = ?"),
+    };
   }
 
   // Claiming work ----------------------------------------------------------------------------------

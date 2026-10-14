@@ -89,3 +89,24 @@ test("closing a job with the claimed task still in progress brings the member ba
   assert.match(repair!.prompt, /finish it properly/);
   work.stop();
 });
+
+test("moving in keeps ids and numbers, wakes nobody, and a second run changes nothing", () => {
+  const { engine, work } = setup();
+  const at = "2026-09-01T00:00:00.000Z";
+  const batch = {
+    company: { id: "c0000000-0000-4000-8000-000000000001", name: "Old Co", prefix: "OLD", nextNumber: 8, createdAt: at, updatedAt: at },
+    members: [{ id: "m0000000-0000-4000-8000-000000000001", name: "Veteran", role: "general", title: "", capabilities: "", status: "idle" as const, mailboxKey: "an-old-key", createdAt: at, updatedAt: at }],
+    rooms: [],
+    tasks: [{ id: "t0000000-0000-4000-8000-000000000001", roomId: null, parentId: null, number: 7, title: "Old task", description: "", status: "todo" as const, priority: "high" as const, assigneeId: "m0000000-0000-4000-8000-000000000001", forOperator: false, authorId: null, startedAt: null, finishedAt: null, createdAt: at, updatedAt: at }],
+    messages: [{ id: "x0000000-0000-4000-8000-000000000001", taskId: "t0000000-0000-4000-8000-000000000001", authorId: null, body: "From before", requestId: "r1", createdAt: at }],
+    docs: [], cards: [], approvals: [],
+  };
+  const first = engine.importBatch(batch);
+  assert.deepEqual(engine.importBatch(batch), first, "idempotent");
+  assert.equal(engine.task("t0000000-0000-4000-8000-000000000001").identifier, "OLD-7");
+  assert.equal(work.live("c0000000-0000-4000-8000-000000000001").length, 0, "history isn't work: nobody woken");
+  assert.equal(engine.memberByMailboxKey("an-old-key")?.id, "m0000000-0000-4000-8000-000000000001", "the old mailbox key still opens its mailbox");
+  const next = engine.createTask("c0000000-0000-4000-8000-000000000001", { title: "New" }, operator);
+  assert.equal(next.identifier, "OLD-8", "numbering carries on");
+  work.stop();
+});

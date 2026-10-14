@@ -58,6 +58,8 @@ export function nativeRoutes(r: Router, engine: () => Engine, work: () => Work):
     if (typeof b.approve !== "boolean") throw new NousError(400, "bad_request", "Say approve: true or false.");
     return engine().decide(c.params.id, b.approve, b.note ?? null);
   });
+  r.on("POST", "/v1/import", async (c) => (needOperator(c), { counts: engine().importBatch(await c.body()) }));
+  r.on("GET", "/v1/companies/:co/counts", (c) => (needOperator(c), engine().counts(c.params.co)));
   r.on("GET", "/v1/companies/:co/waiting", (c) => (needOperator(c), { items: engine().waiting(c.params.co) }));
   r.on("GET", "/v1/companies/:co/runs", (c) => {
     engine().company(c.params.co, needSomeone(c));

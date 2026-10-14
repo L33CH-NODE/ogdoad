@@ -18,8 +18,21 @@ import { candidatesFrom, recommendSophia, type Candidate, type Trust } from "./r
 
 const HOROS_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
 const OGDOAD_URL = (process.env.OGDOAD_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, "");
-/** On Nous (OGDOAD_ENGINE=nous) the wizard signs as the operator; the engine Ogdoad started on trusted this machine. */
-const ON_NOUS = process.env.OGDOAD_ENGINE === "nous";
+/** The control center (on Nous, task pages live there, not on the engine). */
+const APP_URL = (process.env.OGDOAD_APP_URL ?? "http://127.0.0.1:3101").replace(/\/+$/, "");
+/** On Nous the wizard signs as the operator; the engine Ogdoad started on trusted this machine. Settled by runWizard. */
+let ON_NOUS = process.env.OGDOAD_ENGINE === "nous";
+/** OGDOAD_ENGINE when it's set; otherwise the engine says what it is (Nous answers /v1/health with its protocol). */
+async function engineIsNous(): Promise<boolean> {
+  const said = process.env.OGDOAD_ENGINE?.trim();
+  if (said) return said === "nous";
+  try {
+    const health = (await (await fetch(`${OGDOAD_URL}/v1/health`, { signal: AbortSignal.timeout(2000) })).json()) as { protocol?: unknown };
+    return String(health.protocol ?? "").startsWith("nous/");
+  } catch {
+    return false;
+  }
+}
 function nousAuth(): Record<string, string> {
   if (!ON_NOUS) return {};
   const file = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "operator.token");
@@ -98,6 +111,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
   try {
     say("0GD0AD: choosing SOPHIA, your CEO\n");
     if (!(await up(`${OGDOAD_URL}/api/health`))) throw new Error(`Ogdoad isn't answering at ${OGDOAD_URL}. Start it first (OGDOAD-START).`);
+    ON_NOUS = await engineIsNous();
     await startDetached();
 
     // 1. Company.
@@ -184,7 +198,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     });
     say(`\nSOPHIA is starting on ${pick.name} (hire ${hire.id}).`);
 
-    // 6. Seat her, then give her the setup task; Paperclip wakes her and the job flows through Horos.
+    // 6. Seat her, then give her the setup task; the engine wakes her and the job flows through Horos.
     await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id, ...(ON_NOUS ? { mailbox: `${OGDOAD_URL}/mailbox` } : {}) });
     const task = await ogdoad("POST", `/api/companies/${company.id}/issues`, {
       title: "Set up the company with SOPHIA",
@@ -198,8 +212,8 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     writeFileSync(join(OGDOAD_HOME, "sophia.json"), JSON.stringify(state, null, 2));
 
     // 7. Open the UI on SOPHIA's task.
-    const prefix = company.issuePrefix ?? (await ogdoad("GET", `/api/companies/${company.id}`)).issuePrefix;
-    const url = prefix && task.identifier ? `${OGDOAD_URL}/${prefix}/issues/${task.identifier}` : OGDOAD_URL;
+    const prefix = ON_NOUS ? null : company.issuePrefix ?? (await ogdoad("GET", `/api/companies/${company.id}`)).issuePrefix;
+    const url = ON_NOUS ? `${APP_URL}/team/task/${task.id}` : prefix && task.identifier ? `${OGDOAD_URL}/${prefix}/issues/${task.identifier}` : OGDOAD_URL;
     if (opts.openBrowser !== false) openInBrowser(url);
     say(`\nOgdoad is opening in your browser.`);
     say(`Didn't open? Click here: ${url}`);

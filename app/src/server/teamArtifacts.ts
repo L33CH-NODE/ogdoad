@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { Artifact } from "./center.js";
+import { engineAuth } from "./engineClient.js";
 import { OGDOAD_HOME } from "./money/db.js";
 
 const CLOUD = new Set(["claude", "codex", "grok", "gemini"]);
@@ -33,7 +34,7 @@ export async function teamArtifacts(serverUrl: string, companyId: string, home =
   const key = `${serverUrl}|${companyId}`;
   if (cached && cached.key === key && Date.now() - cached.at < 60_000) return cached.list;
   const get = async <T>(path: string): Promise<T> => {
-    const r = await fetch(`${serverUrl}${path}`, { signal: AbortSignal.timeout(4000), headers: { accept: "application/json" } });
+    const r = await fetch(`${serverUrl}${path}`, { signal: AbortSignal.timeout(4000), headers: { accept: "application/json", ...engineAuth() } });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return (await r.json()) as T;
   };

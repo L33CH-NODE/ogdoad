@@ -4,7 +4,7 @@
 // A kept hire's seat outlives its sessions: while the hire rests, the seat keeps listening, and a
 // new job wakes the hire again. The mailbox key stays with horos; hires only see per-job credentials.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 const HOROS_CLI = fileURLToPath(new URL("./cli.js", import.meta.url));
 
 import type { Hire } from "./hire.js";
+import { OGDOAD_HOME } from "./paths.js";
 import type { HireState } from "./rules.js";
 
 export interface MailboxJob {
@@ -36,8 +37,11 @@ interface JobControl {
 /** How long after the hire settles Horos waits for it to close the job itself before closing it. */
 const SELF_CLOSE_GRACE_MS = 45_000;
 
+/** A member's mailbox key: where Nous writes it, or (on the engine Ogdoad started on) under its home. */
 export function mailboxKeyFor(agentId: string): string {
   if (!/^[0-9a-zA-Z-]{8,64}$/.test(agentId)) throw new Error(`not an agent id: ${agentId}`);
+  const nous = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "keys", `${agentId}.key`);
+  if (existsSync(nous)) return readFileSync(nous, "utf8").trim();
   const home = process.env.PAPERCLIP_HOME?.trim() || join(homedir(), ".paperclip");
   return readFileSync(join(home, "live-agent", "keys", `${agentId}.key`), "utf8").trim();
 }

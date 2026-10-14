@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { OGDOAD_HOME } from "./money/db.js";
+import { engineAuth } from "./engineClient.js";
 import type { Money } from "./money/service.js";
 
 export type Where = "cloud" | "local" | "either" | "unknown";
@@ -73,7 +74,7 @@ export async function recipientFor(issueId: string, serverUrl: string, home = OG
   const known = recipientOf(issueId, home);
   if (known) return known;
   try {
-    const r = await fetch(`${serverUrl}/api/issues/${encodeURIComponent(issueId)}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json" } });
+    const r = await fetch(`${serverUrl}/api/issues/${encodeURIComponent(issueId)}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json", ...engineAuth() } });
     const issue = r.ok ? ((await r.json()) as { assigneeAgentId?: string | null }) : null;
     const agentId = issue?.assigneeAgentId;
     if (agentId) {

@@ -18,6 +18,13 @@ import { candidatesFrom, recommendSophia, type Candidate, type Trust } from "./r
 
 const HOROS_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
 const OGDOAD_URL = (process.env.OGDOAD_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, "");
+/** On Nous (OGDOAD_ENGINE=nous) the wizard signs as the operator; the engine Ogdoad started on trusted this machine. */
+const ON_NOUS = process.env.OGDOAD_ENGINE === "nous";
+function nousAuth(): Record<string, string> {
+  if (!ON_NOUS) return {};
+  const file = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "operator.token");
+  return { authorization: `Bearer ${readFileSync(file, "utf8").trim()}` };
+}
 const HOROS_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
 export interface WizardOptions {
@@ -32,7 +39,7 @@ async function ogdoad(method: string, path: string, body?: unknown): Promise<any
   // Local-trusted Ogdoad treats loopback requests as the operator; Origin marks them as same-site.
   const res = await fetch(`${OGDOAD_URL}${path}`, {
     method,
-    headers: { "content-type": "application/json", origin: OGDOAD_URL },
+    headers: { "content-type": "application/json", origin: OGDOAD_URL, ...nousAuth() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -140,7 +147,8 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
       adapterConfig: {},
       capabilities: `CEO seat, run by ${pick.name} through Horos.`,
     });
-    ensureAgentKey(agent.id);
+    // Nous writes each member's mailbox key itself.
+    if (!ON_NOUS) ensureAgentKey(agent.id);
 
     // 5. Brief and spawn her.
     const seatDir = join(OGDOAD_HOME, "seats", `sophia-${company.id.slice(0, 8)}`);
@@ -177,7 +185,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     say(`\nSOPHIA is starting on ${pick.name} (hire ${hire.id}).`);
 
     // 6. Seat her, then give her the setup task; Paperclip wakes her and the job flows through Horos.
-    await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id });
+    await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id, ...(ON_NOUS ? { mailbox: `${OGDOAD_URL}/mailbox` } : {}) });
     const task = await ogdoad("POST", `/api/companies/${company.id}/issues`, {
       title: "Set up the company with SOPHIA",
       description: `SOPHIA interviews the operator with multiple-choice questions about ${company.name} and about how Ogdoad should be set up, then writes a company profile and proposes the first hires.`,

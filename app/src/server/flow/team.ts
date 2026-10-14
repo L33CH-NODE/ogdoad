@@ -3,6 +3,7 @@
 // the operator. A question card is answered right inside Flow; everything else opens where it lives.
 
 import type { Raised } from "./flow.js";
+import { engineAuth } from "../engineClient.js";
 
 export interface TeamSource {
   serverUrl: string;
@@ -101,7 +102,7 @@ export function raisedFromAttention(items: AttentionItem[], assigned: AssignedIs
 /** Read what's waiting on the operator. null when the server can't be read, so Flow keeps what it had. */
 export async function raisedFromTeam(src: TeamSource): Promise<Raised[] | null> {
   const get = async <T>(path: string): Promise<T> => {
-    const r = await fetch(`${src.serverUrl}${path}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json" } });
+    const r = await fetch(`${src.serverUrl}${path}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json", ...engineAuth() } });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return (await r.json()) as T;
   };

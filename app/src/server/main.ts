@@ -1,7 +1,8 @@
 // The Ogdoad app server: the operator's UI and Ogdoad's own APIs on 127.0.0.1:3101, in front of the
 // Ogdoad server (/api) and Horos (/horos). Horos runs it as a server, after the Ogdoad server.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,7 @@ import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { defaultPlaces, SealedBackups } from "./sealedBackups.js";
 import { handleCenter, type CenterContext } from "./center.js";
 import { recipientFor, recipientOfAgent, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
+import { ENGINE, NOUS_HOME, engineAuth, handNousKey, nousState } from "./engineClient.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { teamArtifacts } from "./teamArtifacts.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
@@ -40,7 +42,7 @@ const WEB_DIR = resolve(fileURLToPath(new URL("../web/", import.meta.url)));
 
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`, "http://127.0.0.1:5173", "http://localhost:5173"]);
 
-const paperclip: Upstream = { base: SERVER_URL };
+const paperclip: Upstream = { base: SERVER_URL, headers: engineAuth };
 const horos: Upstream = {
   base: HOROS_URL,
   strip: "/horos",
@@ -68,10 +70,11 @@ function serveStatic(pathname: string, res: import("node:http").ServerResponse):
   res.end(readFileSync(target));
 }
 
-/** Who SOPHIA is and where her conversation lives (written by the first-launch wizard). */
+/** Who SOPHIA is and where her conversation lives (written by the first-launch wizard; one per instance). */
+const SOPHIA_FILE = process.env.OGDOAD_SOPHIA_FILE ?? join(OGDOAD_HOME, "sophia.json");
 function readSophia(): { companyId: string; companyName: string; agentId: string; taskId: string; hireId: string } | null {
   try {
-    const s = JSON.parse(readFileSync(join(OGDOAD_HOME, "sophia.json"), "utf8"));
+    const s = JSON.parse(readFileSync(SOPHIA_FILE, "utf8"));
     return { companyId: s.companyId, companyName: s.companyName, agentId: s.agentId, taskId: s.taskId, hireId: s.hireId };
   } catch {
     return null;
@@ -85,7 +88,7 @@ function readSophia(): { companyId: string; companyName: string; agentId: string
 function teamContext(): RoomsContext {
   const s = readSophia();
   return {
-    serverUrl: SERVER_URL, companyId: s?.companyId ?? "", practice: PRACTICE, horos: { base: HOROS_URL, headers: horos.headers! }, backstop: BACKSTOP_URL === "off" ? null : BACKSTOP_URL, wakeBackstop,
+    serverUrl: SERVER_URL, companyId: s?.companyId ?? "", practice: PRACTICE, sharedTeam: PRACTICE && ENGINE !== "nous", horos: { base: HOROS_URL, headers: horos.headers! }, backstop: BACKSTOP_URL === "off" ? null : BACKSTOP_URL, wakeBackstop,
     dispatch: { url: DISPATCH_URL === "off" ? null : DISPATCH_URL, wake: wakeDispatch },
     onAlarm: (title, body) => {
       notify(title, body);
@@ -127,7 +130,7 @@ const wakeDispatch = wakerFor("dispatch", DISPATCH_URL);
 
 /** Send JSON on to the engine and hand its answer back as it came. */
 async function forwardJson(res: ServerResponse, path: string, body: unknown): Promise<{ status: number; text: string }> {
-  const r = await fetch(`${SERVER_URL}${path}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
+  const r = await fetch(`${SERVER_URL}${path}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", ...engineAuth() }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
     .catch(() => {
       throw new HttpError(502, "engine_down", "The Ogdoad server didn't answer. Is it running?");
     });
@@ -290,6 +293,68 @@ const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(proces
   notify("Ogdoad is locked", `${why.charAt(0).toUpperCase()}${why.slice(1)}. Your password or recovery phrase opens it again.`);
 });
 
+// Nous keeps its key once handed it ("after first unlock"). If it restarted while the vault is open,
+// it's handed the key again; while the vault is locked, it waits for the operator.
+let nousBusy = false;
+async function keepNousUnlocked(): Promise<void> {
+  if (ENGINE !== "nous" || nousBusy) return;
+  nousBusy = true;
+  try {
+    const state = await nousState(SERVER_URL);
+    if (state.up && state.locked) {
+      const key = PRACTICE ? practiceNousKey() : keeper.vault?.unlocked ? keeper.vault.key("nous") : null;
+      if (key && (await handNousKey(SERVER_URL, key))) broadcast("changed", { area: "rooms" });
+    }
+    if (PRACTICE && state.up) await seedPracticeCompany();
+  } catch (err) {
+    console.error("keeping Nous unlocked:", (err as Error).message);
+  } finally {
+    nousBusy = false;
+  }
+}
+setInterval(() => void keepNousUnlocked(), 30_000).unref();
+setTimeout(() => void keepNousUnlocked(), 3000).unref();
+
+/** Horos as a practice copy with its own made-up team sees it: no hires, so nothing reaches a real one. */
+function practiceHoros(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, url: URL): void {
+  const path = url.pathname.slice("/horos".length);
+  if (req.method === "GET" && path === "/v1/events") {
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache" });
+    res.write("event: snapshot\ndata: []\n\n");
+    const ping = setInterval(() => res.write(": ping\n\n"), 25_000);
+    req.on("close", () => clearInterval(ping));
+    return;
+  }
+  if (req.method === "GET" && ["/v1/hires", "/v1/roster", "/v1/seats"].includes(path)) return sendJson(res, 200, []);
+  if (req.method === "GET" && path === "/v1/notifications") return sendJson(res, 200, { items: [], unread: 0 });
+  if (req.method === "GET" && path === "/v1/quiet") return sendJson(res, 200, false);
+  throw new HttpError(403, "practice", "This practice copy's team is made up: it has no hires of its own, so nothing reaches a real one.");
+}
+
+/** The practice copy has no vault: its made-up company's key sits beside it (nothing real is in there). */
+function practiceNousKey(): Buffer {
+  const file = join(NOUS_HOME, "practice.key");
+  if (!existsSync(file)) {
+    mkdirSync(NOUS_HOME, { recursive: true });
+    writeFileSync(file, randomBytes(32).toString("hex"));
+  }
+  return Buffer.from(readFileSync(file, "utf8").trim(), "hex");
+}
+
+/** A made-up company for the practice copy on Nous, the first time: SOPHIA as a member, with no live hire behind her. */
+async function seedPracticeCompany(): Promise<void> {
+  if (existsSync(SOPHIA_FILE)) return;
+  const call = async (method: string, path: string, body?: unknown) => {
+    const r = await fetch(`${SERVER_URL}${path}`, { method, headers: { "content-type": "application/json", ...engineAuth() }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${method} ${path} answered ${r.status}`);
+    return (await r.json()) as { id: string; name?: string };
+  };
+  const co = await call("POST", "/v1/companies", { name: "Practice Co" });
+  const sophia = await call("POST", `/v1/companies/${co.id}/members`, { name: "SOPHIA", role: "ceo", title: "CEO", capabilities: "Runs the practice company." });
+  const task = await call("POST", `/v1/companies/${co.id}/tasks`, { title: "Set up the company with SOPHIA" });
+  writeFileSync(SOPHIA_FILE, JSON.stringify({ companyId: co.id, companyName: co.name, agentId: sophia.id, taskId: task.id, hireId: null, engine: "nous" }, null, 2));
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   try {
@@ -307,6 +372,8 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/ogdoad/app" && req.method === "GET") return sendJson(res, 200, { practice: PRACTICE, realAppPort: 3101 });
     if (url.pathname === "/ogdoad/vault" && req.method === "GET") return sendJson(res, 200, keeper.status());
     if (url.pathname.startsWith("/ogdoad/vault/") && req.method === "POST") {
+      // Once the vault opens, Nous gets its key too.
+      res.on("finish", () => void keepNousUnlocked());
       const action = url.pathname.slice("/ogdoad/vault/".length);
       const body = await readJson(req);
       if (action === "prepare") return sendJson(res, 200, keeper.prepare(String(body.login ?? ""), String(body.password ?? "")));
@@ -423,7 +490,7 @@ const server = createServer(async (req, res) => {
         if (answer) {
           recordCrossing(money, decodeURIComponent(answer[1]), "answer", Buffer.from(JSON.stringify(body)), await recipientFor(decodeURIComponent(answer[1]), SERVER_URL));
         } else if (decided) {
-          const a = (await fetch(`${SERVER_URL}/api/approvals/${encodeURIComponent(decided[1])}`, { signal: AbortSignal.timeout(2500) }).then((x) => x.json()).catch(() => null)) as { requestedByAgentId?: string | null } | null;
+          const a = (await fetch(`${SERVER_URL}/api/approvals/${encodeURIComponent(decided[1])}`, { signal: AbortSignal.timeout(2500), headers: engineAuth() }).then((x) => x.json()).catch(() => null)) as { requestedByAgentId?: string | null } | null;
           const note = String(body.decisionNote ?? "").trim();
           recordDirectCrossing(money, `approval:${decided[1]}`, `${decided[2] === "approve" ? "approved" : "turned down"} a request${note ? `: ${note}` : ""}`, recipientOfAgent(a?.requestedByAgentId));
         }
@@ -433,6 +500,9 @@ const server = createServer(async (req, res) => {
       return proxyHttp(paperclip, req, res);
     }
     if (url.pathname.startsWith("/horos/")) {
+      // A practice copy with a made-up team of its own (on its own Nous) never sees the real hires:
+      // Horos is shared, and their terminals hold real work.
+      if (PRACTICE && ENGINE === "nous") return practiceHoros(req, res, url);
       // Typed straight into a hire's terminal. A prompt goes through the membrane (a cloud hire's may
       // wait for a check); keys pressed for a hire waiting on a decision are a crossing too. A hire that
       // isn't kept on the roster is named from Horos's live list.

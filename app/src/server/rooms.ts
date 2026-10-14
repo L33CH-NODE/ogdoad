@@ -18,6 +18,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { tokenRe, type Kind } from "../shared/standins.js";
 import { harnessInfo, hireOfAgent, recipientOfAgent, recipientOfHire, recipientsOfComment, recordCrossing, recordDirectCrossing, type Recipient, type Where } from "./crossings.js";
 import { propose, refuseBroken, type Lineup, type ProposedPart, type TeamMember } from "./dispatch/dispatch.js";
+import { engineAuth } from "./engineClient.js";
 import { hire as startHire, type HireInput } from "./hire.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { Membrane, digestOf, type Change, type Warning } from "./membrane/membrane.js";
@@ -30,6 +31,8 @@ export interface RoomsContext {
   serverUrl: string;
   companyId: string;
   practice: boolean;
+  /** The practice copy on the old engine shares the real team (default: when practising); on its own Nous it has a made-up one. */
+  sharedTeam?: boolean;
   home?: string;
   /** Horos, for what's typed into a hire's terminal and for hiring. */
   horos?: { base: string; headers: () => Record<string, string> };
@@ -147,7 +150,7 @@ export class Rooms {
     try {
       r = await fetch(`${this.ctx.serverUrl}${path}`, {
         method: init?.method ?? "GET",
-        headers: { accept: "application/json", ...(init ? { "content-type": "application/json" } : {}) },
+        headers: { accept: "application/json", ...(init ? { "content-type": "application/json" } : {}), ...engineAuth() },
         body: init ? JSON.stringify(init.body) : undefined,
         signal: AbortSignal.timeout(8000),
       });
@@ -307,8 +310,8 @@ export class Rooms {
   }
 
   private refuseInPractice(what: string): void {
-    // The practice copy's books are made up, but its team is the real one: starting work is for the real app.
-    if (this.ctx.practice) throw new HttpError(400, "practice", `${what} from your real Ogdoad: the practice copy shares the real team.`);
+    // The practice copy's books are made up; when its team is the real one, starting work is for the real app.
+    if (this.ctx.sharedTeam ?? this.ctx.practice) throw new HttpError(400, "practice", `${what} from your real Ogdoad: the practice copy shares the real team.`);
   }
 
   private threadBrief(name: string, brief: string): string {
@@ -705,7 +708,7 @@ export async function handleRooms(money: Money, req: IncomingMessage, res: Serve
   const [id, action] = url.pathname.split("/").filter(Boolean).slice(2); // after /ogdoad/rooms
   const method = req.method ?? "GET";
   const answer = (made: unknown) => sendJson(res, made && typeof made === "object" && "held" in made ? 202 : 201, made);
-  if (!id && method === "GET") return sendJson(res, 200, { practice: ctx.practice, rooms: await rooms.list() });
+  if (!id && method === "GET") return sendJson(res, 200, { practice: ctx.sharedTeam ?? ctx.practice, rooms: await rooms.list() });
   if (!id && method === "POST") return answer(await rooms.open(await readJson(req)));
   if (id && !action && method === "GET") return sendJson(res, 200, await rooms.get(id));
   if (id && action === "parts" && method === "POST") return answer(await rooms.addPart(id, await readJson(req)));

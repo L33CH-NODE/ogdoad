@@ -86,6 +86,11 @@ A run for the same hire and task that's already waiting absorbs the new reason i
 - Claiming moves a task to `in_progress` for one hire only; another hire trying gets `409`.
 - Releasing puts it back to `todo`.
 
+**Hiring rules:**
+- Only the operator creates members. A hire that tries is refused with the way to ask instead.
+- A hire asks with an approval of type `hire_agent` (`payload.name` required), or the old engine's `POST /api/companies/:co/agent-hires`. Asking creates nobody, and neither does a no.
+- The operator's yes creates the member, writes its mailbox key, and puts its id on the approval as `payload.memberId`. Whoever asked is woken with the decision and seats the new member's harness through Horos.
+
 ## After the switch: what Nous grows into
 
 These were chosen by the operator on 2026-10-14, after a survey of what's current in agent engines, protocols and agent security. All sixteen are on the roadmap. The move to Nous comes first, then these.

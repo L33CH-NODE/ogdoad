@@ -89,6 +89,9 @@ export function prefixFor(name: string): string {
 }
 
 const company = (r: any): Company => ({ id: r.id, name: r.name, prefix: r.prefix, createdAt: r.created_at, updatedAt: r.updated_at });
+/** An approval asking for a new member. Members ask; the operator's yes creates the member (see decide). */
+export const HIRE = "hire_agent";
+
 const member = (r: any): Member => ({ id: r.id, companyId: r.company_id, name: r.name, role: r.role, title: r.title, capabilities: r.capabilities, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at });
 const room = (r: any): Room => ({ id: r.id, companyId: r.company_id, name: r.name, brief: r.brief, status: r.status, leadId: r.lead_id, color: r.color, archivedAt: r.archived_at, createdAt: r.created_at, updatedAt: r.updated_at });
 const task = (r: any): Task => ({
@@ -465,11 +468,17 @@ export class Engine {
     if (!input.type?.trim()) throw new NousError(400, "bad_request", "An approval needs a type.");
     const taskIds = [...new Set(input.taskIds ?? [])];
     for (const t of taskIds) if (this.task(t, who).companyId !== companyId) throw new NousError(400, "bad_request", "Those tasks belong to another company.");
+    const payload = { ...(input.payload ?? {}) };
+    if (input.type === HIRE) {
+      // Checked now, so the operator's yes can't fail later; the member's id is Nous's to fill in.
+      if (typeof payload.name !== "string" || !payload.name.trim()) throw new NousError(422, "needs_name", "A hire needs a name (payload.name).");
+      delete payload.memberId;
+    }
     const id = randomUUID();
     const at = now();
     this.tx(() => {
       this.db.prepare("INSERT INTO approvals (id, company_id, type, payload, requested_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(id, companyId, input.type, JSON.stringify(input.payload ?? {}), who.kind === "member" ? who.memberId : null, at, at);
+        .run(id, companyId, input.type, JSON.stringify(payload), who.kind === "member" ? who.memberId : null, at, at);
       for (const t of taskIds) this.db.prepare("INSERT INTO approval_tasks (approval_id, task_id) VALUES (?, ?)").run(id, t);
     });
     this.emit({ kind: "approval", companyId, approvalId: id, status: "pending" });
@@ -493,7 +502,16 @@ export class Engine {
     if (a.status !== "pending") throw new NousError(409, "already_decided", `That approval was ${a.status} already.`);
     const status = approve ? "approved" : "rejected";
     const at = now();
-    this.db.prepare("UPDATE approvals SET status = ?, note = ?, decided_at = ?, updated_at = ? WHERE id = ?").run(status, note, at, at, id);
+    const hired = this.tx(() => {
+      this.db.prepare("UPDATE approvals SET status = ?, note = ?, decided_at = ?, updated_at = ? WHERE id = ?").run(status, note, at, at, id);
+      // An approved hire becomes a member, and its id goes back on the approval for whoever asked.
+      if (!approve || a.type !== HIRE) return null;
+      const text = (v: unknown) => (typeof v === "string" ? v : undefined);
+      const m = this.createMember(a.companyId, { name: String(a.payload.name), role: text(a.payload.role), title: text(a.payload.title), capabilities: text(a.payload.capabilities) });
+      this.db.prepare("UPDATE approvals SET payload = ? WHERE id = ?").run(JSON.stringify({ ...a.payload, memberId: m.id }), id);
+      return m;
+    });
+    if (hired) this.emit({ kind: "member", companyId: a.companyId, memberId: hired.id, status: hired.status });
     this.emit({ kind: "approval", companyId: a.companyId, approvalId: id, status });
     if (a.requestedBy) this.wake(a.requestedBy, a.taskIds[0] ?? null, "decision", { approvalId: id, approvalStatus: status });
     return this.approval(id);

@@ -104,9 +104,9 @@ export function sendError(res: ServerResponse, err: unknown): void {
   send(res, 500, { error: "internal", message: "Something went wrong in Nous. It's in its log." });
 }
 
-/** Who may call a route. */
-export function needOperator(ctx: Ctx): void {
-  if (ctx.who?.kind !== "operator") throw new NousError(ctx.who ? 403 : 401, ctx.who ? "operator_only" : "unauthorized", ctx.who ? "Only the operator can do that." : "Sign the request with the operator's token or a run's token.");
+/** Who may call a route. `instead` tells a member refused here what they can do. */
+export function needOperator(ctx: Ctx, instead?: string): void {
+  if (ctx.who?.kind !== "operator") throw new NousError(ctx.who ? 403 : 401, ctx.who ? "operator_only" : "unauthorized", ctx.who ? `Only the operator can do that.${instead ? ` ${instead}` : ""}` : "Sign the request with the operator's token or a run's token.");
 }
 export function needSomeone(ctx: Ctx): Who {
   if (!ctx.who) throw new NousError(401, "unauthorized", "Sign the request with the operator's token or a run's token.");

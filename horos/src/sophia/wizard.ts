@@ -170,6 +170,7 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     const brief = renderBrief({
       companyName: company.name, companyId: company.id, agentId: agent.id, apiUrl: OGDOAD_URL,
       horosUrl: HOROS_URL, horosTokenFile: TOKEN_FILE, horosCli: HOROS_CLI, trust,
+      nousMailbox: ON_NOUS ? `${OGDOAD_URL}/mailbox` : undefined,
     });
     const briefFile = join(seatDir, "SOPHIA.md");
     writeFileSync(briefFile, brief, "utf8");

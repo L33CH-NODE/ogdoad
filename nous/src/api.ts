@@ -72,7 +72,7 @@ export function nativeRoutes(r: Router, engine: () => Engine, work: () => Work):
 
   r.on("GET", "/v1/companies/:co/members", (c) => ({ items: engine().members(c.params.co, needSomeone(c)) }));
   r.on("POST", "/v1/companies/:co/members", async (c) => {
-    needOperator(c);
+    needOperator(c, `Ask for the hire instead: an approval of type "hire_agent" with payload.name. The operator's yes creates the member.`);
     const b = await c.body();
     return created(engine().createMember(c.params.co, { name: b.name, role: b.role, title: b.title, capabilities: b.capabilities }));
   });

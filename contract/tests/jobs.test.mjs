@@ -167,6 +167,31 @@ test("a rejected approval says so, and the hire is told", better("a rejection re
   await told.done();
 });
 
+// Ogdoad does better: a hire is only asked for, and the operator's yes is what makes the member. The engine
+// Ogdoad started on makes the agent first and leaves it waiting, so a no leaves one behind.
+test("a hire asks for a hire: making one is refused with the way to ask, and the operator's yes makes the member", better("hires are asked for, then made"), async () => {
+  const { task, job, agent } = await working("Recruiter");
+  const direct = await call("POST", `/api/companies/${co.id}/agents`, { name: "Shortcut", adapterType: "live_agent" }, job.asAgent);
+  assert.equal(direct.status, 403);
+  assert.match(String(direct.body?.error), /agent-hires/, "the refusal names the way to ask");
+
+  const asked = await ok("POST", `/api/companies/${co.id}/agent-hires`, { name: "Builder", role: "engineer", title: "Engineer", sourceIssueIds: [task.id] }, job.asAgent);
+  assert.equal(asked.approval.type, "hire_agent");
+  assert.equal(asked.approval.status, "pending");
+  assert.equal(asked.approval.requestedByAgentId, agent.id);
+  await close(job, task, "in_review");
+  assert.ok(!(await ok("GET", `/api/companies/${co.id}/agents`)).some((a) => a.name === "Builder"), "asking makes nobody");
+
+  await ok("POST", `/api/approvals/${asked.approval.id}/approve`, { decisionNote: "Welcome." });
+  const memberId = (await ok("GET", `/api/approvals/${asked.approval.id}`)).payload.memberId;
+  const hired = (await ok("GET", `/api/companies/${co.id}/agents`)).find((a) => a.id === memberId);
+  assert.equal(hired?.name, "Builder");
+  const told = await nextJob(agent.id);
+  assert.equal(told.job.env.PAPERCLIP_APPROVAL_ID, asked.approval.id);
+  assert.equal(told.job.env.PAPERCLIP_APPROVAL_STATUS, "approved");
+  await told.done();
+});
+
 // Ogdoad does better here. Rooms, the crossings log and the briefs all say a mention wakes the hire it
 // names; the engine Ogdoad started on treats a mention as context only, so it's expected to fail there.
 test("a mention wakes the hire it names", better("mentions wake (Paperclip's don't)"), async () => {

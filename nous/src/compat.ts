@@ -3,7 +3,7 @@
 // over, until each moves to /v1. The shapes carry the fields Ogdoad reads (docs/ENGINE-CONTRACT.md),
 // not the old engine's ninety.
 
-import { NousError, OPERATOR, type Approval, type Card, type Company, type Doc, type Engine, type Member, type Message, type Room, type Task, type TaskPatch } from "./engine.js";
+import { HIRE, NousError, OPERATOR, type Approval, type Card, type Company, type Doc, type Engine, type Member, type Message, type Room, type Task, type TaskPatch } from "./engine.js";
 import { created, needOperator, needSomeone, type Router } from "./http.js";
 import type { Run, Work } from "./work.js";
 
@@ -159,9 +159,18 @@ export function compatRoutes(r: Router, engine: () => Engine, work: () => Work):
 
   r.on("GET", "/api/companies/:co/agents", (c) => engine().members(c.params.co, needSomeone(c)).map(toAgent));
   r.on("POST", "/api/companies/:co/agents", async (c) => {
-    needOperator(c);
+    needOperator(c, "Ask for the hire instead: POST /api/companies/:co/agent-hires. The operator's yes creates the agent.");
     const b = await c.body();
     return created(toAgent(engine().createMember(c.params.co, { name: b.name, role: b.role, title: b.title, capabilities: b.capabilities })));
+  });
+  // A hire is asked for, never made: this files a hire_agent approval. The operator's yes creates the agent,
+  // and the approval then carries its id (payload.memberId). The asker is woken with the decision.
+  r.on("POST", "/api/companies/:co/agent-hires", async (c) => {
+    const who = needSomeone(c);
+    const b = await c.body();
+    const taskIds = b.sourceIssueIds ?? (b.sourceIssueId ? [b.sourceIssueId] : []);
+    const payload = { name: b.name, role: b.role, title: b.title, capabilities: b.capabilities, reason: b.reason };
+    return created({ agent: null, approval: toApproval(engine().createApproval(c.params.co, { type: HIRE, payload, taskIds }, who)) });
   });
   r.on("POST", "/api/agents/:id/pause", (c) => (needOperator(c), toAgent(engine().setPaused(c.params.id, true))));
   r.on("POST", "/api/agents/:id/resume", (c) => (needOperator(c), toAgent(engine().setPaused(c.params.id, false))));

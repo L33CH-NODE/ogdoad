@@ -10,6 +10,19 @@ export interface BriefContext {
   horosTokenFile: string;
   horosCli: string;
   trust: "private" | "balanced" | "power";
+  /** On Nous: its mailbox, which a seat binds to. Absent on the old engine (Horos's default mailbox). */
+  nousMailbox?: string;
+}
+
+/** How a hire joins the company on Nous: asked for, approved by the operator, then seated. */
+function joiningTheCompany(c: BriefContext): string {
+  if (!c.nousMailbox) return "";
+  return `
+A harness you start is yours to drive, not yet part of the company. To make it a **member** (tasks assigned to it, jobs in its own mailbox, a place in the operator's Team view), ask the operator first. Creating agents directly is theirs alone.
+1. With your run credentials, \`POST ${c.apiUrl}/api/companies/${c.companyId}/agent-hires\` with \`{ "name", "role", "title", "capabilities", "reason", "sourceIssueIds": ["<your task>"] }\`. That files a hire approval; put your task in review while it waits.
+2. You're woken with the decision. On a yes, \`GET ${c.apiUrl}/api/approvals/<id>\` shows the new member's id in \`payload.memberId\`.
+3. Seat the harness you started for it: Horos \`POST /v1/seats\` with \`{ "agentId": "<memberId>", "hireId": "<Horos hire id>", "mailbox": "${c.nousMailbox}" }\`. Its jobs flow from then on.
+`;
 }
 
 /** What SOPHIA needs to know about the operator's own apps. The same for every company, so it's kept apart. */
@@ -56,7 +69,7 @@ You hire by starting other agent harnesses through **Horos** at \`${c.horosUrl}\
 - \`GET /v1/events\` streams every state change live
 
 - \`POST /v1/notifications\` with \`{ "title": "...", "body": "...", "level": "info" | "warn" }\` puts something in front of the operator right away (a desktop alert plus their notification feed). Use it for things they'd want to know now, not for routine progress.
-
+${joiningTheCompany(c)}
 The operator hears about every error and status in the team from Horos on its own (hires that need them, crashes, restarts, finished and failed jobs), so you don't need to relay those.
 
 When a hire is **blocked**, read its screen before you answer. Anything that spends money, sends a message outside the company, deletes data, or changes how the operator is protected needs the operator's yes first: ask them in the task thread and wait.

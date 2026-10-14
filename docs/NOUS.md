@@ -86,6 +86,34 @@ A run for the same hire and task that's already waiting absorbs the new reason i
 - Claiming moves a task to `in_progress` for one hire only; another hire trying gets `409`.
 - Releasing puts it back to `todo`.
 
+## After the switch: what Nous grows into
+
+These were chosen by the operator on 2026-10-14, after a survey of what's current in agent engines, protocols and agent security. All sixteen are on the roadmap. The move to Nous comes first, then these.
+
+**How hires reach Nous**
+- **Nous as an MCP server.** Typed tools for tasks, talk, cards and approvals, instead of HTTP calls taught through prompts. Each hire sees only the tools its run's token allows. Cards become native question forms.
+- **Handoff packets.** Every run ends with a checklist (pass or fail), the next step and open questions. The next wake starts from them, whichever hire gets it.
+- **Durable runs, self-healing.** Steps are journaled in the same store. A crash resumes instead of redoing work. A stalled run is restarted from its handoff, or reassigned.
+- **An ACP driver in Horos.** Harnesses that speak the Agent Client Protocol give the watch structured permission requests. Reading the screen stays for the rest.
+
+**Privacy at the edge**
+- **The membrane at the model egress.** A local gateway that **every cloud hire's model traffic passes through, always.** Stand-ins are applied to everything that leaves, including the files a hire reads on this machine, and canary identities raise the alarm if a real one crosses. A harness that can't be routed through the gateway can't be a cloud hire in a room with real records.
+- **The Rule of Two at dispatch.** A run that would read untrusted input, touch sensitive data and act outward is split into a reader and an actor, or else its outward acts wait for the operator.
+- **Taint on talk and documents.** Anything from outside is marked. A run that has read it can't assign work, approve or send out without the operator.
+- **Containment per hire.** Each run's filesystem and network are limited to its room and the gateway, enforced outside the hire. Windows' agent containers are new, so they get verified first.
+
+**Trust and the operator's attention**
+- **The trust ladder.** Autonomy is set per hire and per kind of work. **A new hire, and a hire whose model or harness has changed, starts with everything outside reading its own room asking first.** It climbs only through clean, accepted runs, and an incident sends it down. The watch reads its thresholds from the ladder.
+- **An attention budget and digests.** Low-risk questions come in digests at times the operator picks, and only urgent ones interrupt.
+- **A local two-stage watch.** A fast local model screens permission prompts and a second looks closer at what the first flags. It sees the operator's rules and the action, never the hire's persuasion.
+- **Signed approvals (mandates).** An approval binds the exact action, so it can't be replayed on a changed one, and standing approvals are bounded. **They're signed with a hardware security key, with the operator's phone passkey as an optional second way** (both use WebAuthn). The same key signs the log's checkpoints.
+
+**Learning and proof**
+- **A lessons bank that becomes skills.** Lessons come from the operator's accepts and rejects. A procedure that works again and again becomes a skill the operator reviews, mounted into every harness.
+- **Company facts with time.** Facts carry valid-from and valid-to dates and can be searched by words and by meaning, inside the same encrypted store.
+- **A tamper-evident log and receipts.** Every decision, run and approval goes into a Merkle log whose checkpoints the operator's key signs, and every finished run leaves a signed receipt.
+- **Probation by replay.** A new model or harness replays real past tasks, with stand-ins and in a sandbox, before it gets live work.
+
 ## Milestones
 
 1. **Done (2026-10-14): the store, the keys, the core API.** Companies, the team, rooms, tasks and talk, natively and through the translator. The contract's room and talk tests pass.

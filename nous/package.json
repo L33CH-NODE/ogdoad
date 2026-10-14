@@ -1,0 +1,27 @@
+{
+  "name": "@ogdoad/nous",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Nous, Ogdoad's engine: the company's rooms, tasks, talk, cards and approvals, encrypted, and the loop that wakes a hire when there's work for it.",
+  "license": "MIT",
+  "author": "L33CH-NODE",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

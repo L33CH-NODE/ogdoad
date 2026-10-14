@@ -13,6 +13,7 @@ This document is the contract the new engine has to honour. The tests in `contra
 npm install                  # once, at the repo root
 npm run contract             # boots an isolated engine, runs every test, stops it
 npm run contract -- --keep   # leaves it running: the next run starts in seconds
+CONTRACT_ENGINE=nous npm run contract             # against Nous, Ogdoad's own engine (docs/NOUS.md)
 ENGINE_URL=http://127.0.0.1:3410 npm run contract   # against an engine that's already up
 ```
 
@@ -20,7 +21,7 @@ ENGINE_URL=http://127.0.0.1:3410 npm run contract   # against an engine that's a
 
 The tests act as each kind of client. As the operator, they call from this machine with the engine's own Origin. As a hire, they take a job from its mailbox and use the run credentials it carries.
 
-Today the suite runs **25 tests: 23 pass on Paperclip, and 2 are the improvements still to come** (marked `todo`).
+Today the suite runs **26 tests: 23 pass on Paperclip, and 3 are improvements it doesn't have** (`todo` there, real tests on Nous).
 
 ## Who uses the engine, and for what
 
@@ -179,6 +180,7 @@ Hires are told to send `Authorization: Bearer $PAPERCLIP_API_KEY` and `X-Papercl
 | **Jobs** | Work goes engine → adapter → mailbox → Horos seat. A lost lease always fails the run. A second job for a busy seat can time out while it waits. | Jobs go to the hire's seat directly, queued per hire, never timing out behind a busy seat; a lost lease puts the job back in the queue. The mailbox stays, for live workers outside Horos. |
 | **One way to finish** | Hires get two different "close the job" instructions. | One. |
 | **Objects** | A task carries about 90 fields; Ogdoad reads about a dozen. | Lean objects with the fields that mean something, extended when something needs more. |
+| **Who's the operator** | Anything on this machine: a request from loopback is the board, so a hire's shell could approve its own approval. | Whoever holds the operator's token: the app and Horos. A hire is only ever itself, on its own runs (test). |
 | **The session cookie** | The app's proxy forwards the operator's vault session cookie to the engine. | The engine never sees it. (Fixed in the proxy now, ahead of the switch.) |
 | **Errors** | Messages written for the engine's own UI. | Plain sentences, the way Ogdoad's own APIs speak. |
 
@@ -194,8 +196,8 @@ Any of these can come back if Ogdoad needs it.
 
 ## Build order
 
-1. **The contract.** Done: this document and `contract/`, 23 of 25 green on Paperclip.
-2. **Ogdoad's engine on the practice copy.** A part of the app on SQLCipher, answering the same routes, until the contract passes against it. That's all 25, the two improvements included.
+1. **The contract.** Done: this document and `contract/`, 23 of 26 green on Paperclip.
+2. **Ogdoad's engine, Nous** ([NOUS.md](NOUS.md)), **on the practice copy.** A part of the app on SQLCipher, answering the same routes, until the contract passes against it. That's all 25, the two improvements included.
 3. **Jobs straight to Horos.** Wake-ups, runs and leases, with the mailbox kept for outside workers.
 4. **Moving in.** An import from the old engine through its own API, every count checked, and the old data left untouched as a backup.
 5. **The switch.** `core/` and `runtime/` leave the repo, the installer stops downloading an engine, and the README says "inspired by Paperclip".

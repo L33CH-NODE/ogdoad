@@ -6,12 +6,22 @@ import { randomUUID } from "node:crypto";
 
 export const ENGINE = (process.env.ENGINE_URL ?? "http://127.0.0.1:3410").replace(/\/+$/, "");
 export const MAILBOX = (process.env.CONTRACT_MAILBOX_URL ?? "http://127.0.0.1:3413").replace(/\/+$/, "");
+const TOKEN = process.env.CONTRACT_OPERATOR_TOKEN;
+
+/**
+ * Where Ogdoad's own engine does better, a test is a `todo` on the engine Ogdoad started on (expected to
+ * fail there) and a real test on Nous: pass its result as the test's options.
+ */
+export const better = (why) => ((process.env.CONTRACT_ENGINE ?? "paperclip") === "nous" ? {} : { todo: `Ogdoad's own engine: ${why}` });
+
+/** How the operator signs a request: the engine's own Origin, and the operator's token where the engine asks for one. */
+export const operatorHeaders = { origin: ENGINE, ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) };
 
 /** One request: the status and the parsed body (or the raw text when it isn't JSON). */
 export async function call(method, path, body, headers = {}) {
   const res = await fetch(`${ENGINE}${path}`, {
     method,
-    headers: { "content-type": "application/json", origin: ENGINE, ...headers },
+    headers: { "content-type": "application/json", ...operatorHeaders, ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -43,13 +53,13 @@ export async function liveAgent(companyId, name = "Contract Agent", extra = {}) 
 
 // --- The hire's side: its mailbox, and the engine as the agent sees it on a job. ---------------------
 
-const PAPERCLIP_HOME = process.env.CONTRACT_PAPERCLIP_HOME;
+const KEYS_DIR = process.env.CONTRACT_KEYS_DIR;
 
 /** The agent's mailbox key (made by the engine the first time it has work for that agent). */
 export async function mailboxKey(agentId) {
   const { existsSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const file = join(PAPERCLIP_HOME, "live-agent", "keys", `${agentId}.key`);
+  const file = join(KEYS_DIR, `${agentId}.key`);
   await eventually(() => existsSync(file), { what: `${agentId}'s mailbox key` });
   return readFileSync(file, "utf8").trim();
 }

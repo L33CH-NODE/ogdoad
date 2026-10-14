@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ENGINE, MAILBOX, call, eventually, freshCompany, liveAgent, mailboxKey, nextJob, ok } from "../client.mjs";
+import { ENGINE, MAILBOX, call, eventually, freshCompany, liveAgent, mailboxKey, nextJob, ok, operatorHeaders } from "../client.mjs";
 
 const co = await freshCompany("hire");
 
@@ -47,7 +47,7 @@ test("without run credentials a request is the operator's, never a hire's", asyn
 test("the live stream tells a room when a hire's run on one of its tasks finishes", async () => {
   const agent = await liveAgent(co.id, "Visible");
   const events = [];
-  const ws = new WebSocket(`${ENGINE.replace(/^http/, "ws")}/api/companies/${co.id}/events/ws`, { headers: { origin: ENGINE } });
+  const ws = new WebSocket(`${ENGINE.replace(/^http/, "ws")}/api/companies/${co.id}/events/ws`, { headers: operatorHeaders });
   ws.onmessage = (e) => events.push(JSON.parse(e.data));
   await new Promise((resolve, reject) => {
     ws.onopen = resolve;

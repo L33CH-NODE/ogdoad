@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ENGINE, eventually, freshCompany, ok } from "../client.mjs";
+import { ENGINE, eventually, freshCompany, ok, operatorHeaders } from "../client.mjs";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -52,7 +52,7 @@ test("a document on a task: listed as a plain array, and read back whole by its 
 
 test("the live stream tells a page when a task in its room changes", async () => {
   const events = [];
-  const ws = new WebSocket(`${ENGINE.replace(/^http/, "ws")}/api/companies/${co.id}/events/ws`, { headers: { origin: ENGINE } });
+  const ws = new WebSocket(`${ENGINE.replace(/^http/, "ws")}/api/companies/${co.id}/events/ws`, { headers: operatorHeaders });
   ws.onmessage = (e) => events.push(JSON.parse(e.data));
   await new Promise((resolve, reject) => {
     ws.onopen = resolve;

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { call, eventually, freshCompany, liveAgent, nextJob, noJob, ok } from "../client.mjs";
+import { better, call, eventually, freshCompany, liveAgent, nextJob, noJob, ok } from "../client.mjs";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const co = await freshCompany("jobs");
@@ -156,7 +156,7 @@ test("an approval: asked for by the hire, shown to the operator, decided with a 
 });
 
 // Ogdoad does better: the engine it started on wakes the hire when you approve, not when you reject.
-test("a rejected approval says so, and the hire is told", { todo: "Ogdoad's own engine: a rejection reaches the hire too" }, async () => {
+test("a rejected approval says so, and the hire is told", better("a rejection reaches the hire too"), async () => {
   const { task, job, agent } = await working("Hopeful");
   const asked = await ok("POST", `/api/companies/${co.id}/approvals`, { type: "request_board_approval", requestedByAgentId: agent.id, issueIds: [task.id], payload: { title: "Hire ten people" } }, job.asAgent);
   await close(job, task, "in_review");
@@ -169,7 +169,7 @@ test("a rejected approval says so, and the hire is told", { todo: "Ogdoad's own 
 
 // Ogdoad does better here. Rooms, the crossings log and the briefs all say a mention wakes the hire it
 // names; the engine Ogdoad started on treats a mention as context only, so it's expected to fail there.
-test("a mention wakes the hire it names", { todo: "Ogdoad's own engine: mentions wake (Paperclip's don't)" }, async () => {
+test("a mention wakes the hire it names", better("mentions wake (Paperclip's don't)"), async () => {
   const { task, job } = await working("Mentioner");
   await close(job, task, "done");
   const other = await liveAgent(co.id, "Named");

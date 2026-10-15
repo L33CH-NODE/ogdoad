@@ -50,6 +50,18 @@ const SPECS: Spec[] = [
     read: (money) => new Work(money).shifts({}).map((s) => [s.id, s.clientName, s.participantName, s.day, s.start, s.end, Math.round((s.minutes / 60) * 100) / 100, s.support, s.status, s.note === "final" ? 1 : 0, s.billed ? 1 : 0, s.cents / 100]),
   },
   {
+    name: "quotes",
+    about: "the watchlist's latest prices (public market data: crypto in AUD, shares in their market's currency)",
+    columns: [["symbol", "BTC, BHP.AX, ^AXJO, AUDUSD, GOLD"], ["name", "text"], ["kind", "crypto | stock | index | fx | commodity"], ["market", "Crypto | ASX | US | FX | Commodities | another exchange"], ["currency", "AUD, USD, ..."], ["price", "number"], ["prev_close", "number (crypto: 24 hours ago)"], ["change_pct", "percent since prev_close"], ["at", "ISO timestamp"]],
+    read: (money) => rowsOf(money, "SELECT q.id, q.name, q.kind, q.market, q.currency, q.price, q.prev_close, q.change_pct, q.at FROM market_quotes q JOIN market_watchlist w ON w.id = q.id ORDER BY w.position"),
+  },
+  {
+    name: "prices",
+    about: "daily closing prices of watchlist symbols, up to a year back (filled as the Markets board is looked at)",
+    columns: [["symbol", "as in quotes"], ["day", "YYYY-MM-DD"], ["close", "number, in the symbol's currency"]],
+    read: (money) => rowsOf(money, "SELECT d.id, d.day, d.close FROM market_daily d JOIN market_watchlist w ON w.id = d.id ORDER BY d.id, d.day"),
+  },
+  {
     name: "tasks",
     about: "the operator's Flow, past and present",
     columns: [["source", "you | money | bank | work | team"], ["title", "text"], ["state", "open | parked | done | dropped"], ["urgency", "0 calm to 3 alarm"], ["created_at", "ISO timestamp"], ["closed_at", "ISO timestamp"], ["closed_by", "you | cleared"]],

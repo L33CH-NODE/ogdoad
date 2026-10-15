@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import "./styles/app.css";
 import "./styles/center.css";
+import "./styles/motion.css";
 import { ControlCenter } from "./center/ControlCenter";
 import { VaultGate } from "./components/VaultGate";
 

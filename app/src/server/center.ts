@@ -83,8 +83,10 @@ export function signals(money: Money, limit = 40): Signal[] {
         try {
           d = JSON.parse(e.detail);
         } catch {}
-        const where = d.where === "cloud" ? ", a cloud model" : d.where === "local" ? ", on this machine" : "";
-        return { ...base, who: "crossing", text: `to ${d.who ?? "the team"} (${d.via ?? "?"}${where}): ${d.what ?? ""}`, tone: d.where === "cloud" ? ("warn" as const) : ("muted" as const) };
+        // A price service gets the watchlist's symbols, not the operator's words: named for what it is, and quiet.
+        const prices = d.via === "market data";
+        const where = prices ? ", a public price service" : d.where === "cloud" ? ", a cloud model" : d.where === "local" ? ", on this machine" : "";
+        return { ...base, who: "crossing", text: `to ${d.who ?? "the team"} (${d.via ?? "?"}${where}): ${d.what ?? ""}`, tone: d.where === "cloud" && !prices ? ("warn" as const) : ("muted" as const) };
       }
       // The membrane's trail: what was held, and what became of it (never what it said).
       case "held":

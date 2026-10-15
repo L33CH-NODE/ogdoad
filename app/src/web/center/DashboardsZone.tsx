@@ -11,15 +11,16 @@ import { navigate } from "../lib/router";
 import { Chart } from "./Chart";
 import { useZoom, Zone } from "./ControlCenter";
 import { useCenter, type SophiaRecipe } from "./data";
+import { MarketsBoard, MarketsStrip } from "./markets/MarketsBoard";
 
 const who = (p: { madeBy: string }) => (p.madeBy === "Ogdoad" ? "built in" : p.madeBy === "you" ? "yours" : `by ${p.madeBy}`);
 const sawWhat = (p: { madeBy: string }) =>
   p.madeBy === "you" || p.madeBy === "Ogdoad" ? "It ran here, on the curated tables. Nothing left this machine." : `${p.madeBy} wrote the query from the tables' shape. It ran here; ${p.madeBy} never saw a row.`;
 
-function PanelFigure({ p, tall, onRemove }: { p: Panel; tall: boolean; onRemove?: () => void }) {
+function PanelFigure({ p, tall, i = 0, onRemove }: { p: Panel; tall: boolean; i?: number; onRemove?: () => void }) {
   const [query, setQuery] = useState(false);
   return (
-    <figure className="panel">
+    <figure className="panel rise" style={{ ["--i" as string]: i }}>
       <figcaption className="panel-cap">
         <strong>{p.title}</strong>{tall ? <span className="muted"> · {who(p)}</span> : null}
         <span className="spacer" />
@@ -183,6 +184,7 @@ export function DashboardsZone() {
   if (!open) {
     return (
       <Zone id="dashboards" chip={chip}>
+        <MarketsStrip />
         <div className="dash-grid">
           {list.slice(0, 1).map((p) => <PanelFigure key={p.id} p={p} tall={false} />)}
           {incomingTile}
@@ -209,8 +211,10 @@ export function DashboardsZone() {
           <button className="btn small primary" type="button" onClick={() => setEditing("new")}><Icon name="plus" size={14} /> Write one</button>
         </form>
         {editing ? <Editor start={editing === "new" ? null : editing} onDone={() => { if (editing !== "new" && editing && incoming) setAside(incoming); setEditing(null); }} /> : incomingTile}
+        <MarketsBoard />
+        <span className="zlabel">Your panels</span>
         <div className="dash-grid open">
-          {list.map((p) => <PanelFigure key={p.id} p={p} tall onRemove={() => void remove(p)} />)}
+          {list.map((p, i) => <PanelFigure key={p.id} p={p} i={i} tall onRemove={() => void remove(p)} />)}
         </div>
       </div>
     </Zone>

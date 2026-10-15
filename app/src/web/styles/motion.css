@@ -1,0 +1,170 @@
+/* Motion for panels and the Markets board. One easing family (fast out, long settle), staggered
+   entrances (--i is a thing's place in line), lines that draw themselves in, bars that rise from the
+   axis, digits that roll. Under "reduce motion" app.css stops every animation, so anything whose
+   resting state depends on an animation is set to its finished state at the bottom of this file. */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --stagger: 45ms;
+  --mono: "Geist Mono Variable", ui-monospace, monospace;
+}
+
+/* --- primitives ------------------------------------------------------------------------------- */
+
+.rise { animation: rise 0.7s var(--ease-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(0.985); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+.draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.25s var(--ease-in-out) forwards; animation-delay: var(--d, 0ms); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+.chart-area, .focus-area, .spark-area { animation: fade-in 0.9s var(--ease-out) 0.35s both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.bar-rise { transform-box: fill-box; transform-origin: 50% 100%; animation: bar-rise 0.75s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 32ms); }
+.bar-rise.neg { transform-origin: 50% 0%; }
+@keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+.dot-pop, .spark-end { transform-box: fill-box; transform-origin: center; animation: pop 0.45s var(--ease-out) both; animation-delay: calc(1s + var(--i, 0) * 12ms); }
+@keyframes pop { from { transform: scale(0); } 70% { transform: scale(1.35); } to { transform: scale(1); } }
+
+.shimmer { display: block; width: 70%; height: 10px; border-radius: 6px; background: linear-gradient(90deg, var(--faint), color-mix(in oklch, var(--fg) 12%, transparent), var(--faint)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Digits roll like a departures board, each a beat after the one to its right. */
+.roll { display: inline-flex; align-items: baseline; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.roll-digit { display: inline-block; height: 1.15em; line-height: 1.15em; overflow: hidden; }
+.roll-strip { display: flex; flex-direction: column; transition: transform 0.8s var(--ease-out); transition-delay: calc(var(--k, 0) * 24ms); }
+.roll-strip > span { display: block; height: 1.15em; line-height: 1.15em; text-align: center; }
+.roll-char { line-height: 1.15em; }
+
+/* A tick: a quick glow in the direction it moved. A tile already has its entrance animation, so its glow
+   is on a layer of its own (swapping the tile's own animation would replay the entrance on every tick). */
+.qtile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; }
+.qtile.tick-up::after { animation: tick-glow 0.9s var(--ease-out); --tick: var(--good); }
+.qtile.tick-down::after { animation: tick-glow 0.9s var(--ease-out); --tick: var(--bad); }
+@keyframes tick-glow { from { opacity: 1; box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--tick) 75%, transparent), inset 0 0 28px -8px color-mix(in oklch, var(--tick) 70%, transparent); background: color-mix(in oklch, var(--tick) 10%, transparent); } to { opacity: 0; } }
+.flash-up { animation: flash-up 0.9s var(--ease-out); }
+.flash-down { animation: flash-down 0.9s var(--ease-out); }
+@keyframes flash-up { from { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--good) 75%, transparent), 0 0 26px -6px color-mix(in oklch, var(--good) 60%, transparent); background-color: color-mix(in oklab, var(--good) 13%, var(--panel-solid)); } }
+@keyframes flash-down { from { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--bad) 75%, transparent), 0 0 26px -6px color-mix(in oklch, var(--bad) 60%, transparent); background-color: color-mix(in oklab, var(--bad) 13%, var(--panel-solid)); } }
+
+.chg { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font: 600 11.5px/1.35 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; transition: color 0.4s, background-color 0.4s; }
+.chg.up { color: var(--good); background: color-mix(in oklch, var(--good) 14%, transparent); }
+.chg.down { color: var(--bad); background: color-mix(in oklch, var(--bad) 14%, transparent); }
+.chg.flat { color: var(--muted); background: var(--faint); }
+.chg.lg { font-size: 13px; padding: 3px 10px; }
+.chg-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid currentColor; transition: transform 0.45s var(--ease-out); }
+.chg.down .chg-arrow { transform: rotate(180deg); }
+.chg.flat .chg-arrow { display: none; }
+
+.live-dot { position: relative; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--good); vertical-align: middle; flex: 0 0 auto; }
+.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--good); animation: ping 1.8s var(--ease-out) infinite; }
+
+/* --- the ticker tape ----------------------------------------------------------------------------- */
+
+.tape { position: relative; overflow: hidden; flex: 0 0 auto; padding: 7px 0; border-radius: 11px; border: 1px solid var(--edge); background: var(--zone2);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); }
+.tape-track { display: inline-flex; white-space: nowrap; animation: tape linear infinite; will-change: transform; }
+.tape-group { display: inline-flex; gap: 22px; padding-right: 22px; }
+.tape:hover .tape-track { animation-play-state: paused; }
+@keyframes tape { to { transform: translateX(-50%); } }
+.tape.still { overflow-x: auto; -webkit-mask-image: none; mask-image: none; scrollbar-width: none; }
+.tape.still .tape-track { animation: none; padding-left: 12px; }
+.tape-empty { display: grid; place-items: center; min-height: 34px; }
+.tape-item { display: inline-flex; align-items: center; gap: 7px; padding: 2px 6px; border-radius: 8px; font-size: 12px; }
+.tape-item b { font-weight: 700; letter-spacing: 0.03em; }
+.tape-item .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tape-item .chg { padding: 1px 6px; font-size: 11px; }
+
+/* --- the board ----------------------------------------------------------------------------------- */
+
+.markets { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 18px; border: 1px solid var(--edge); overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in oklch, var(--primary) 11%, transparent), transparent 55%),
+              radial-gradient(90% 120% at 100% 100%, color-mix(in oklch, var(--c1) 8%, transparent), transparent 60%), var(--zone2); }
+.mk-head { display: flex; align-items: center; gap: 10px; }
+.mk-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.mk-main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.mk-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 10px; }
+.mk-sources { margin: 0; font-size: 11.5px; line-height: 1.55; max-width: 92ch; }
+
+/* The focus chart */
+.focus { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 14px 12px; border-radius: 15px; background: var(--panel); border: 1px solid var(--edge); box-shadow: var(--shadow); }
+.focus-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.focus-name { font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.focus-meta { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 11.5px; }
+.focus-price { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; font-size: 12px; }
+.focus-num { font-family: var(--head); font-size: clamp(24px, 3vw, 34px); font-weight: 680; letter-spacing: -0.02em; }
+.focus-plot { position: relative; min-height: 220px; }
+.focus.up .focus-plot { color: var(--good); }
+.focus.down .focus-plot { color: var(--bad); }
+.focus-plot svg { display: block; overflow: visible; cursor: crosshair; touch-action: pan-y; }
+.focus-base { stroke: var(--muted); stroke-dasharray: 3 4; opacity: 0.5; }
+.focus-marks text, .focus-axis text { font: 500 10.5px var(--mono); fill: var(--muted); }
+.focus-cross line { stroke: var(--fg); stroke-opacity: 0.35; stroke-dasharray: 2 3; }
+.focus-cross circle, .focus-end { fill: currentColor; stroke: var(--panel-solid); stroke-width: 2; }
+.focus-cross circle { filter: drop-shadow(0 0 6px currentColor); }
+.focus-end { transform-box: fill-box; transform-origin: center; animation: pop 0.45s var(--ease-out) 1.15s both, glow-dot 2.6s ease-in-out 1.7s infinite; }
+@keyframes glow-dot { 50% { filter: drop-shadow(0 0 7px currentColor); } }
+.focus-wait { display: grid; place-items: center; }
+
+/* The range switch: a pill that glides to the chosen range */
+.seg { position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); align-self: flex-start; min-width: 210px; padding: 3px; border-radius: 10px; background: var(--faint); border: 1px solid var(--edge); }
+.seg button { position: relative; z-index: 1; border: 0; background: none; padding: 5px 10px; font: 600 11.5px var(--mono); color: var(--muted); cursor: pointer; transition: color 0.3s; }
+.seg button.on { color: var(--fg); }
+.seg button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 7px; }
+.seg-glide { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 7px; background: var(--panel-solid); box-shadow: var(--shadow);
+  transform: translateX(calc(var(--at) * 100%)); transition: transform 0.45s var(--ease-out); }
+
+/* The heat grid */
+.heat { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; align-content: start; }
+.heat-cell { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 6px; min-height: 58px; padding: 8px 9px; border-radius: 10px; cursor: pointer; text-align: left; font: inherit; color: var(--fg);
+  /* oklab, not oklch: mixing in oklch walks the hue wheel, so red into a violet-grey ground came out pink. */
+  border: 1px solid color-mix(in oklab, var(--tone) 30%, var(--edge)); background: color-mix(in oklab, var(--tone) var(--heat), var(--zone2));
+  transition: transform 0.25s var(--ease-out), box-shadow 0.25s, background-color 0.6s; }
+.heat-cell b { font-size: 12px; letter-spacing: 0.02em; }
+.heat-cell span { font: 600 11.5px var(--mono); }
+.heat-cell:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -14px var(--tone); }
+.heat-cell.on { outline: 2px solid color-mix(in oklch, var(--tone) 70%, transparent); outline-offset: 1px; }
+
+/* A tile per symbol */
+.qtile { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-width: 0; padding: 11px 13px 10px; border-radius: 14px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); font: inherit; text-align: left; cursor: pointer; overflow: hidden;
+  transition: transform 0.3s var(--ease-out), border-color 0.3s, box-shadow 0.3s; }
+.qtile:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.qtile.on { border-color: color-mix(in oklch, var(--primary) 60%, transparent); box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 35%, transparent), var(--shadow); }
+.qtile:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.qtile-top { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.qtile-sym { font-weight: 700; letter-spacing: 0.03em; }
+.qtile-mkt { color: var(--muted); }
+.qtile-name { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qtile-price { font-family: var(--head); font-size: 21px; font-weight: 660; letter-spacing: -0.01em; }
+.qtile .chg { align-self: flex-start; }
+.mkt-state { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--edge); font-size: 10.5px; color: var(--muted); }
+.mkt-state.open { color: var(--good); border-color: color-mix(in oklch, var(--good) 40%, transparent); }
+.spark { display: block; margin-top: 2px; }
+.spark.up { color: var(--good); }
+.spark.down { color: var(--bad); }
+
+/* The watchlist editor */
+.wl-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--edge); }
+.wl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wl-chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 3px 3px 9px; border-radius: 999px; background: var(--faint); border: 1px solid var(--edge); font: 600 11.5px var(--mono); }
+.wl-chip button { border: 0; background: none; padding: 0 5px; border-radius: 999px; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.wl-chip button:hover { color: var(--bad); }
+.wl-edit .input { flex: 1; min-width: 0; }
+
+/* Ultraviolet: the lines and the chosen things glow. */
+:root[data-skin="cyberpunk-uv"] .focus-line { filter: drop-shadow(0 0 6px currentColor); }
+:root[data-skin="cyberpunk-uv"] .spark-line { filter: drop-shadow(0 0 3px currentColor); }
+:root[data-skin="cyberpunk-uv"] .qtile.on, :root[data-skin="cyberpunk-uv"] .heat-cell.on { box-shadow: 0 0 22px -6px var(--primary), var(--shadow); }
+
+@media (max-width: 900px) {
+  .mk-main { grid-template-columns: minmax(0, 1fr); }
+  .focus-head { flex-direction: column; }
+  .focus-price { align-items: flex-start; }
+}
+
+/* Reduce motion: app.css stops every animation; these show their finished state instead of their first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .draw { stroke-dashoffset: 0; }
+}

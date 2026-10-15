@@ -106,7 +106,8 @@ export class Dashboards {
   /** What the curated tables were read from: when none of it has moved, the last results still stand. */
   private version(): string {
     const r = this.db.prepare(`SELECT (SELECT MAX(id) FROM events) AS e, (SELECT MAX(updated_at) FROM tasks) AS t, (SELECT COUNT(*) FROM tasks) AS tc,
-      (SELECT MAX(updated_at) FROM shifts) AS s, (SELECT MAX(updated_at) FROM invoices) AS i, (SELECT COUNT(*) FROM payments) AS p, (SELECT MAX(updated_at) FROM dashboards) AS d, (SELECT COUNT(*) FROM dashboards) AS dc`).get() as Record<string, unknown>;
+      (SELECT MAX(updated_at) FROM shifts) AS s, (SELECT MAX(updated_at) FROM invoices) AS i, (SELECT COUNT(*) FROM payments) AS p, (SELECT MAX(updated_at) FROM dashboards) AS d, (SELECT COUNT(*) FROM dashboards) AS dc,
+      (SELECT MAX(at) FROM market_quotes) AS mq, (SELECT COUNT(*) FROM market_daily) AS md, (SELECT group_concat(id) FROM market_watchlist) AS mw`).get() as Record<string, unknown>;
     // The day matters too: a panel can ask for "this month".
     return `${Object.values(r).join("|")}|${this.money.today()}`;
   }

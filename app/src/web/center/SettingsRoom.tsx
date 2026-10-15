@@ -126,19 +126,22 @@ function CrossingsCard() {
   const { data } = useLive<Crossing[]>("/ogdoad/crossings", ["crossing"]);
   const list = data ?? [];
   const links = useLinks(list.slice(0, 30).map((c) => c.what));
-  const cloud = list.filter((c) => c.where === "cloud").length;
+  // The price services Markets asks get symbols, not anything the operator wrote: they're listed, not counted as the cloud.
+  const cloud = list.filter((c) => c.where === "cloud" && c.via !== "market data").length;
   return (
     <section className="card stack" aria-label="What the cloud has seen" id="crossings">
       <div className="row"><Icon name="send" /><h3>What the cloud has seen</h3><span className="spacer" /><span className={`chip ${cloud ? "warn-chip" : "paid"}`}>{cloud} to a cloud model</span></div>
       <p className="muted" style={{ margin: 0 }}>
-        Every message, answer and panel request you send a hire is noted here as it leaves: who got it, through which harness, and whether that harness runs in the cloud. Panels a hire writes run here, so the hire sees the tables' shape, never the rows. Your clients' details leave only as stand-ins (like C-4821): hover one to see who it is.
+        Every message, answer and panel request you send a hire is noted here as it leaves: who got it, through which harness, and whether that harness runs in the cloud. Panels a hire writes run here, so the hire sees the tables' shape, never the rows. Your clients' details leave only as stand-ins (like C-4821): hover one to see who it is. Markets' price services get your watchlist's symbols (once a day each, and again when you add one), never anything from your books.
       </p>
       {list.length ? (
         <ul className="crossings">
           {list.slice(0, 30).map((c) => (
             <li key={c.id}>
               <span className="mono muted">{ago(c.at)}</span>
-              <span className={`chip quiet ${c.where === "cloud" ? "t-warn" : c.where === "local" ? "t-good" : ""}`}>{c.who} · {c.via}{c.where === "cloud" ? " · cloud" : c.where === "local" ? " · local" : ""}</span>
+              {c.via === "market data"
+                ? <span className="chip quiet">{c.who} · prices</span>
+                : <span className={`chip quiet ${c.where === "cloud" ? "t-warn" : c.where === "local" ? "t-good" : ""}`}>{c.who} · {c.via}{c.where === "cloud" ? " · cloud" : c.where === "local" ? " · local" : ""}</span>}
               <span className="crossing-what"><Relinked text={c.what} links={links} asSent /></span>
             </li>
           ))}

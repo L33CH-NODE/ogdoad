@@ -22,6 +22,9 @@ import { practiceStatement, resetPractice } from "./money/practice.js";
 import { handleMoney } from "./money/routes.js";
 import { Vault } from "./vault.js";
 import { handleDashboards } from "./dash/routes.js";
+import { handleMarkets } from "./markets/routes.js";
+import { fetchJson, Markets, nodeStream } from "./markets/service.js";
+import type { Money } from "./money/service.js";
 import { CalendarSync } from "./work/calendar.js";
 import { handleWork } from "./work/routes.js";
 import { DISPATCH_URL } from "./dispatch/dispatch.js";
@@ -287,7 +290,19 @@ function sealRound(): void {
 setInterval(sealRound, 2 * 60_000).unref();
 setTimeout(sealRound, 15_000).unref();
 
+// Markets live with the open books (the watchlist is in them) and close with them.
+let markets: { money: Money; service: Markets } | null = null;
+function marketsFor(money: Money): Markets {
+  if (markets?.money !== money) {
+    markets?.service.close();
+    markets = { money, service: new Markets(money, { fetch: fetchJson, openStream: nodeStream }) };
+  }
+  return markets.service;
+}
+
 const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(process.env.OGDOAD_LOCK_MINUTES ?? 30) * 60_000, (why) => {
+  markets?.service.close();
+  markets = null;
   broadcast("locked", { why });
   for (const s of streams) s.end();
   streams.clear();
@@ -412,6 +427,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/ogdoad/dashboards" || url.pathname.startsWith("/ogdoad/dashboards/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
       return await handleDashboards(money, req, res, url);
+    }
+    if (url.pathname === "/ogdoad/markets" || url.pathname.startsWith("/ogdoad/markets/")) {
+      if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      return await handleMarkets(marketsFor(money), req, res, url);
     }
     if (url.pathname.startsWith("/ogdoad/work/")) {
       if (!money) throw new HttpError(401, "locked", "Ogdoad is locked.");

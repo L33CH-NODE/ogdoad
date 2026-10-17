@@ -119,9 +119,11 @@ export function Chart({ spec, result, tall = false, label }: { spec: ChartSpec; 
           <g key={i} onMouseEnter={() => setHover(i)} className={hover === i ? "hot" : ""}>
             <rect x={i * step} y="0" width={step} height={H + 12} fill="transparent" />
             {spec.type === "bar" ? values[i].map((v, k) => {
-              const bw = (step * 0.7) / ys.length;
+              // A few rows mustn't make slabs: a group is at most 28 wide, centred in its step.
+              const group = Math.min(step * 0.7, 28);
+              const bw = group / ys.length;
               const top = Math.min(y(v), y(0));
-              return <rect key={k} className={`bar-rise${v < 0 ? " neg" : ""}`} style={{ ["--i" as string]: i }} x={i * step + step * 0.15 + k * bw} y={top} width={Math.max(0.5, bw - 0.6)} height={Math.abs(y(v) - y(0))} rx="1.2" fill={COLORS[k]} opacity={hover === null || hover === i ? 1 : 0.55} />;
+              return <rect key={k} className={`bar-rise${v < 0 ? " neg" : ""}`} style={{ ["--i" as string]: i }} x={i * step + (step - group) / 2 + k * bw} y={top} width={Math.max(0.5, bw - 0.6)} height={Math.abs(y(v) - y(0))} rx="1.2" fill={COLORS[k]} opacity={hover === null || hover === i ? 1 : 0.55} />;
             }) : null}
             {xi >= 0 && (i % every === 0 || i === rows.length - 1) ? <text x={i * step + step / 2} y={H + 10} className="bar-label">{tick(r[xi])}</text> : null}
           </g>

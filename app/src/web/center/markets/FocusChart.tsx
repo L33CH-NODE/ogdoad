@@ -81,7 +81,7 @@ export function FocusChart({ q }: { q: Quote }) {
         <div className="stack" style={{ gap: 2, minWidth: 0 }}>
           <span className="focus-name">{q.name}</span>
           <span className="muted focus-meta">
-            {q.id} · {KIND_LABEL[q.kind]}{q.market !== KIND_LABEL[q.kind] ? ` · ${q.market}` : ""}
+            {q.id} · {KIND_LABEL[q.kind]}{!["Crypto", "FX", "Commodities"].includes(q.market) ? ` · ${q.market}` : ""}
             {q.live ? <> · <LiveDot /> live</> : q.kind !== "crypto" ? <> · {q.open ? "market open" : "market closed"}</> : null}
           </span>
         </div>

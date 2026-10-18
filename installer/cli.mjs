@@ -306,8 +306,8 @@ const onOldEngine = (state) => !!state?.engine && state.engine !== "nous";
  * the old engine's data are left as they are); SOPHIA's record is kept aside, so she's chosen again on
  * Nous. The operator's books (Money, Work, dashboards) carry on untouched.
  */
-function leaveOldEngine(before) {
-  horosCli(before, ["stop"]);
+async function leaveOldEngine(before) {
+  if (await up(`${local(before.ports.horos)}/v1/health`)) horosCli(before, ["stop"]);
   const file = join(HOME, "horos", "roster.json");
   const roster = readJson(file, []);
   const gone = roster.filter((e) => e.id === before.ids?.engine || e.label === OLD_ENGINE_LABEL || e.seat);
@@ -350,7 +350,7 @@ async function setup() {
   const upgrading = before && (before.version !== VERSION || onOldEngine(before));
   if (onOldEngine(before)) {
     say(`Moving Ogdoad onto Nous: stopping it first (work in flight finishes)...`);
-    leaveOldEngine(before);
+    await leaveOldEngine(before);
     delete state.ids.engine;
     delete state.welcomed;
     delete state.paperclipHome;

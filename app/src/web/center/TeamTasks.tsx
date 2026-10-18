@@ -1,5 +1,5 @@
 // The team's tasks, in the Team zone: what's in hand and who has it, newest first. Any task opens as a
-// conversation (its thread, its question cards, a reply), so the classic view isn't needed day to day.
+// conversation (its thread, its question cards, a reply).
 
 import { useEffect, useState } from "react";
 
@@ -8,7 +8,8 @@ import { navigate } from "../lib/router";
 import { Conversation } from "./Conversation";
 import { useCenter } from "./data";
 
-export interface TeamTask { id: string; identifier: string | null; title: string; status: string; assigneeAgentId: string | null; assigneeUserId: string | null; updatedAt: string }
+/** A task as Nous holds it: with a member (assigneeId), or the operator's (forOperator). */
+export interface TeamTask { id: string; identifier: string | null; title: string; status: string; assigneeId: string | null; forOperator: boolean; updatedAt: string }
 interface Agent { id: string; name: string }
 
 export const STATUS: Record<string, { word: string; tone: string }> = {
@@ -26,8 +27,8 @@ export function useTeamTasks(): { tasks: TeamTask[] | null; nameOf: (t: TeamTask
     let alive = true;
     const load = () => {
       if (document.hidden) return;
-      api.get<TeamTask[] | { items: TeamTask[] }>(`/api/companies/${sophia.companyId}/issues?limit=40`).then((r) => alive && setTasks(Array.isArray(r) ? r : r.items ?? []), () => alive && setTasks([]));
-      api.get<Agent[] | { items: Agent[] }>(`/api/companies/${sophia.companyId}/agents`).then((r) => alive && setAgents(Array.isArray(r) ? r : r.items ?? []), () => {});
+      api.get<{ items: TeamTask[] }>(`/nous/v1/companies/${sophia.companyId}/tasks?limit=40`).then((r) => alive && setTasks(r.items), () => alive && setTasks([]));
+      api.get<{ items: Agent[] }>(`/nous/v1/companies/${sophia.companyId}/members`).then((r) => alive && setAgents(r.items), () => {});
     };
     load();
     const t = setInterval(load, 20_000);
@@ -36,7 +37,7 @@ export function useTeamTasks(): { tasks: TeamTask[] | null; nameOf: (t: TeamTask
       clearInterval(t);
     };
   }, [sophia?.companyId]);
-  const nameOf = (t: TeamTask) => (t.assigneeUserId ? "you" : agents.find((a) => a.id === t.assigneeAgentId)?.name?.replace(/ - .*$/, "") ?? "nobody yet");
+  const nameOf = (t: TeamTask) => (t.forOperator ? "you" : agents.find((a) => a.id === t.assigneeId)?.name?.replace(/ - .*$/, "") ?? "nobody yet");
   return { tasks, nameOf };
 }
 

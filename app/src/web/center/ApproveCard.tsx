@@ -7,7 +7,7 @@ import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 import { useCenter } from "./data";
 
-interface Approval { id: string; type: string; status: string; payload: Record<string, unknown>; decisionNote: string | null; createdAt: string }
+interface Approval { id: string; type: string; status: string; payload: Record<string, unknown>; note: string | null; createdAt: string }
 
 const KIND: Record<string, string> = {
   hire_agent: "Hire a new agent",
@@ -21,7 +21,7 @@ function details(payload: Record<string, unknown>): Array<[string, string]> {
   return Object.entries(payload)
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
     .slice(0, 12)
-    .map(([k, v]) => [k.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase(), typeof v === "object" ? (Array.isArray(v) ? `${v.length} item${v.length === 1 ? "" : "s"}` : "details in the classic view") : String(v).slice(0, 400)]);
+    .map(([k, v]) => [k.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase(), typeof v === "object" ? (Array.isArray(v) ? `${v.length} item${v.length === 1 ? "" : "s"}` : "more details") : String(v).slice(0, 400)]);
 }
 
 export function ApproveCard({ id }: { id: string }) {
@@ -32,7 +32,7 @@ export function ApproveCard({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     setA(undefined);
-    api.get<Approval>(`/api/approvals/${id}`).then(setA, () => setA(null));
+    api.get<Approval>(`/nous/v1/approvals/${id}`).then(setA, () => setA(null));
   }, [id]);
 
   if (a === undefined) return <div className="now-card askcard"><span className="muted">Opening it…</span></div>;
@@ -48,7 +48,7 @@ export function ApproveCard({ id }: { id: string }) {
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/api/approvals/${a.id}/${verb}`, { decisionNote: note.trim() || null });
+      await api.post(`/nous/v1/approvals/${a.id}/decide`, { approve: verb === "approve", note: note.trim() || null });
       say("you", `${verb === "approve" ? "approved" : "turned down"}: ${KIND[a.type] ?? a.type}${note.trim() ? ` (${note.trim()})` : ""}`, verb === "approve" ? "good" : "muted");
       reloadFlow();
       navigate("/flow");

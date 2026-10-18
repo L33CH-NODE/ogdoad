@@ -1,5 +1,5 @@
-// The Ogdoad app server: the operator's UI and Ogdoad's own APIs on 127.0.0.1:3101, in front of the
-// Ogdoad server (/api) and Horos (/horos). Horos runs it as a server, after the Ogdoad server.
+// The Ogdoad app server: the operator's UI and Ogdoad's own APIs on 127.0.0.1:3101, in front of Nous,
+// the Ogdoad server (/nous/v1), and Horos (/horos). Horos runs it as a server, after Nous.
 
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { BACKUP_DIR, backupNow, listBackups } from "./backup.js";
 import { defaultPlaces, SealedBackups } from "./sealedBackups.js";
 import { handleCenter, type CenterContext } from "./center.js";
 import { recipientFor, recipientOfAgent, recipientOfHire, recordCrossing, recordDirectCrossing } from "./crossings.js";
-import { ENGINE, NOUS_HOME, engineAuth, handNousKey, nousState } from "./engineClient.js";
+import { NOUS_HOME, engineAuth, handNousKey, nousState } from "./engineClient.js";
 import { raisedFromTeam } from "./flow/team.js";
 import { teamArtifacts } from "./teamArtifacts.js";
 import { checkRequest, HttpError, sendError, sendJson } from "./http.js";
@@ -33,7 +33,7 @@ import { Membrane } from "./membrane/membrane.js";
 import { handleMembrane, handleRooms, Rooms, type RoomsContext } from "./rooms.js";
 import { handleWatch } from "./watch/routes.js";
 import { Watch } from "./watch/watch.js";
-import { proxyHttp, proxyUpgrade, type Upstream } from "./proxy.js";
+import { proxyHttp, type Upstream } from "./proxy.js";
 
 const PORT = Number(process.env.OGDOAD_APP_PORT ?? 3101);
 /** The practice copy: its own made-up books, a ribbon in the UI, and a reset button. */
@@ -45,7 +45,23 @@ const WEB_DIR = resolve(fileURLToPath(new URL("../web/", import.meta.url)));
 
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`, "http://127.0.0.1:5173", "http://localhost:5173"]);
 
-const paperclip: Upstream = { base: SERVER_URL, headers: engineAuth };
+const nous: Upstream = { base: SERVER_URL, strip: "/nous", headers: engineAuth };
+
+/**
+ * What the browser may ask of Nous through Ogdoad: reading the team's work, and the operator's few acts
+ * (a message, a card's answers, an approval's decision, pausing or resuming a hire). The rest of the
+ * operator's token (importing, unlocking, making members) stays with the app server.
+ */
+const NOUS_ROUTES: Array<[string, RegExp]> = [
+  ["GET", /^\/v1\/companies\/[^/]+(\/(tasks|members|rooms|runs|waiting|events))?$/],
+  ["GET", /^\/v1\/tasks\/[^/]+(\/(messages|cards|docs|context)|\/docs\/[^/]+)?$/],
+  ["GET", /^\/v1\/(cards|approvals|members|rooms)\/[^/]+$/],
+  ["POST", /^\/v1\/tasks\/[^/]+\/messages$/],
+  ["POST", /^\/v1\/cards\/[^/]+\/answer$/],
+  ["POST", /^\/v1\/approvals\/[^/]+\/decide$/],
+  ["PATCH", /^\/v1\/members\/[^/]+$/],
+];
+const nousAllows = (method: string, path: string) => NOUS_ROUTES.some(([m, re]) => m === method && re.test(path));
 const horos: Upstream = {
   base: HOROS_URL,
   strip: "/horos",
@@ -91,7 +107,8 @@ function readSophia(): { companyId: string; companyName: string; agentId: string
 function teamContext(): RoomsContext {
   const s = readSophia();
   return {
-    serverUrl: SERVER_URL, companyId: s?.companyId ?? "", practice: PRACTICE, sharedTeam: PRACTICE && ENGINE !== "nous", horos: { base: HOROS_URL, headers: horos.headers! }, backstop: BACKSTOP_URL === "off" ? null : BACKSTOP_URL, wakeBackstop,
+    // A practice copy runs on its own Nous with a made-up team, so it shares nothing with the real one.
+    serverUrl: SERVER_URL, companyId: s?.companyId ?? "", practice: PRACTICE, sharedTeam: false, horos: { base: HOROS_URL, headers: horos.headers! }, backstop: BACKSTOP_URL === "off" ? null : BACKSTOP_URL, wakeBackstop,
     dispatch: { url: DISPATCH_URL === "off" ? null : DISPATCH_URL, wake: wakeDispatch },
     onAlarm: (title, body) => {
       notify(title, body);
@@ -161,12 +178,10 @@ setInterval(() => {
 
 /** The team in Flow: on in the real app; the practice copy keeps to its made-up books unless asked. */
 const TEAM_FLOW = (process.env.OGDOAD_TEAM_FLOW ?? (PRACTICE ? "0" : "1")) === "1";
-/** The old engine's own view, where Flow's links pointed; Nous has none. */
-const CLASSIC_URL = ENGINE === "nous" ? null : (process.env.OGDOAD_CLASSIC_URL ?? SERVER_URL);
 const center: CenterContext = {
   team: async () => {
     const s = TEAM_FLOW ? readSophia() : null;
-    return s ? raisedFromTeam({ serverUrl: SERVER_URL, companyId: s.companyId, classicUrl: CLASSIC_URL }) : null;
+    return s ? raisedFromTeam({ serverUrl: SERVER_URL, companyId: s.companyId }) : null;
   },
   teamArtifacts: async () => {
     const s = TEAM_FLOW ? readSophia() : null;
@@ -265,9 +280,9 @@ function backupIfDue(): void {
 }
 setInterval(backupIfDue, 10 * 60_000).unref();
 
-// The engine's own hourly dumps are plain; each is sealed (to Ogdoad's backup public key, so locked or
-// not), and the plain dump is cleared only once its sealed copy has opened again identical (which
-// needs the vault open). The real app only: the practice copy shares the engine but has no vault.
+// The old engine's hourly dumps were plain; any left is sealed (to Ogdoad's backup public key, so locked
+// or not), and the plain dump is cleared only once its sealed copy has opened again identical (which
+// needs the vault open). The real app only: the practice copy has no vault.
 const sealedBackups = new SealedBackups(defaultPlaces(OGDOAD_HOME));
 let sealingBusy = false;
 function sealRound(): void {
@@ -313,7 +328,7 @@ const keeper = new Keeper(PRACTICE, PRACTICE ? null : new Vault(), Number(proces
 // it's handed the key again; while the vault is locked, it waits for the operator.
 let nousBusy = false;
 async function keepNousUnlocked(): Promise<void> {
-  if (ENGINE !== "nous" || nousBusy) return;
+  if (nousBusy) return;
   nousBusy = true;
   try {
     const state = await nousState(SERVER_URL);
@@ -404,7 +419,7 @@ const server = createServer(async (req, res) => {
     }
 
     // Everything else needs an unlocked session. The page itself still loads, so it can show the lock.
-    const isPage = (req.method === "GET" || req.method === "HEAD") && !/^\/(api|horos|ogdoad)(\/|$)/.test(url.pathname);
+    const isPage = (req.method === "GET" || req.method === "HEAD") && !/^\/(api|nous|horos|ogdoad)(\/|$)/.test(url.pathname);
     if (!isPage && !keeper.allows(req)) throw new HttpError(401, "locked", "Ogdoad is locked. Unlock it with your password.");
 
     if (url.pathname === "/ogdoad/vault/password" && req.method === "POST") {
@@ -484,45 +499,51 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="practice-statement.csv"', "cache-control": "no-store" });
       return void res.end(practiceStatement(money));
     }
-    if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
-      // Whatever the operator writes for the team goes through the membrane before the engine sees it.
-      const post = req.method === "POST";
-      // A message on a task: real identities become stand-ins, and one that named someone waits for a check.
-      const comment = post ? /^\/api\/issues\/([^/]+)\/comments$/.exec(url.pathname) : null;
-      if (comment && money) {
-        const r = await new Rooms(money, teamContext()).sayOn(decodeURIComponent(comment[1]), await readJson(req));
+    // A page from before Ogdoad moved onto Nous's own API, still open: it says what to do.
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) throw new HttpError(410, "reload", "Ogdoad speaks Nous's own API now. Reload the page.");
+    if (url.pathname.startsWith("/nous/")) {
+      const path = url.pathname.slice("/nous".length);
+      const method = req.method ?? "GET";
+      if (!nousAllows(method, path)) throw new HttpError(404, "not_found", "Nothing here.");
+      if (method !== "GET" && !money) throw new HttpError(401, "locked", "Ogdoad is locked.");
+      // Whatever the operator writes for the team goes through the membrane before Nous sees it. A
+      // message on a task: real identities become stand-ins, and one that named someone waits for a check.
+      const message = method === "POST" ? /^\/v1\/tasks\/([^/]+)\/messages$/.exec(path) : null;
+      if (message && money) {
+        const r = await new Rooms(money, teamContext()).sayOn(decodeURIComponent(message[1]), await readJson(req));
         broadcast("changed", { area: "crossing" });
         return "held" in r ? sendJson(res, 202, r) : sendJson(res, 201, r.comment);
       }
       // A question card's written answers and an approval's note: they're part of an act already
       // chosen, so they aren't held, but they leave with stand-ins all the same.
-      const answer = post ? /^\/api\/issues\/([^/]+)\/interactions\/[^/]+\/respond$/.exec(url.pathname) : null;
-      const decided = post ? /^\/api\/approvals\/([^/]+)\/(approve|reject)$/.exec(url.pathname) : null;
+      const answer = method === "POST" ? /^\/v1\/cards\/([^/]+)\/answer$/.exec(path) : null;
+      const decided = method === "POST" ? /^\/v1\/approvals\/([^/]+)\/decide$/.exec(path) : null;
       if ((answer || decided) && money) {
         const membrane = new Membrane(money);
         const body = await readJson(req);
         if (answer && Array.isArray(body.answers)) {
           for (const a of body.answers) if (a && typeof a.otherText === "string" && a.otherText.trim()) a.otherText = membrane.out(a.otherText).text;
         }
-        if (decided && typeof body.decisionNote === "string" && body.decisionNote.trim()) body.decisionNote = membrane.out(body.decisionNote).text;
-        const r = await forwardJson(res, `${url.pathname}${url.search}`, body);
+        if (decided && typeof body.note === "string" && body.note.trim()) body.note = membrane.out(body.note).text;
+        const r = await forwardJson(res, `${path}${url.search}`, body);
         if (r.status >= 400) return;
-        if (answer) {
-          recordCrossing(money, decodeURIComponent(answer[1]), "answer", Buffer.from(JSON.stringify(body)), await recipientFor(decodeURIComponent(answer[1]), SERVER_URL));
+        // Nous answers with the card or the approval as it now stands: whose it is comes from there.
+        const back = JSON.parse(r.text) as { taskId?: string; status?: string; requestedBy?: string | null };
+        if (answer && back.taskId) {
+          recordCrossing(money, back.taskId, "answer", Buffer.from(JSON.stringify(body)), await recipientFor(back.taskId, SERVER_URL));
         } else if (decided) {
-          const a = (await fetch(`${SERVER_URL}/api/approvals/${encodeURIComponent(decided[1])}`, { signal: AbortSignal.timeout(2500), headers: engineAuth() }).then((x) => x.json()).catch(() => null)) as { requestedByAgentId?: string | null } | null;
-          const note = String(body.decisionNote ?? "").trim();
-          recordDirectCrossing(money, `approval:${decided[1]}`, `${decided[2] === "approve" ? "approved" : "turned down"} a request${note ? `: ${note}` : ""}`, recipientOfAgent(a?.requestedByAgentId));
+          const note = String(body.note ?? "").trim();
+          recordDirectCrossing(money, `approval:${decided[1]}`, `${back.status === "approved" ? "approved" : "turned down"} a request${note ? `: ${note}` : ""}`, recipientOfAgent(back.requestedBy));
         }
         broadcast("changed", { area: "crossing" });
         return;
       }
-      return proxyHttp(paperclip, req, res);
+      return proxyHttp(nous, req, res);
     }
     if (url.pathname.startsWith("/horos/")) {
       // A practice copy with a made-up team of its own (on its own Nous) never sees the real hires:
       // Horos is shared, and their terminals hold real work.
-      if (PRACTICE && ENGINE === "nous") return practiceHoros(req, res, url);
+      if (PRACTICE) return practiceHoros(req, res, url);
       // Typed straight into a hire's terminal. A prompt goes through the membrane (a cloud hire's may
       // wait for a check); keys pressed for a hire waiting on a decision are a crossing too. A hire that
       // isn't kept on the roster is named from Horos's live list.
@@ -553,18 +574,6 @@ const server = createServer(async (req, res) => {
   } catch (err) {
     sendError(res, err);
   }
-});
-
-server.on("upgrade", (req, socket, head) => {
-  try {
-    checkRequest(req, ALLOWED_ORIGINS);
-  } catch {
-    return socket.destroy();
-  }
-  if (!keeper.allows(req)) return socket.destroy();
-  const path = req.url ?? "/";
-  if (path.startsWith("/api/")) return proxyUpgrade(paperclip, req, socket as import("node:net").Socket, head);
-  socket.destroy();
 });
 
 server.listen(PORT, "127.0.0.1", () => console.log(`Ogdoad ${PRACTICE ? "PRACTICE copy" : "app"} on http://127.0.0.1:${PORT} (${keeper.status().exists ? "locked until unlocked" : "no vault yet: first launch"})`));

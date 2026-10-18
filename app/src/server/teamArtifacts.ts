@@ -7,16 +7,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { Artifact } from "./center.js";
-import { engineAuth } from "./engineClient.js";
+import { Nous, type NousDoc } from "./engineClient.js";
 import { OGDOAD_HOME } from "./money/db.js";
 
 const CLOUD = new Set(["claude", "codex", "grok", "gemini"]);
 const LOCAL = new Set(["ollama"]);
 const NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", grok: "grok CLI", gemini: "Gemini CLI", opencode: "opencode", hermes: "Hermes", ollama: "Ollama" };
-
-interface Doc { id: string; issueId: string; key: string; title: string | null; createdByAgentId: string | null; createdByUserId: string | null; updatedAt: string }
-interface Issue { id: string; identifier: string | null; title: string; updatedAt: string }
-interface Agent { id: string; name: string }
 
 let cached: { at: number; key: string; list: Artifact[] } | null = null;
 
@@ -33,37 +29,32 @@ function rosterHires(home: string): any[] {
 export async function teamArtifacts(serverUrl: string, companyId: string, home = OGDOAD_HOME): Promise<Artifact[] | null> {
   const key = `${serverUrl}|${companyId}`;
   if (cached && cached.key === key && Date.now() - cached.at < 60_000) return cached.list;
-  const get = async <T>(path: string): Promise<T> => {
-    const r = await fetch(`${serverUrl}${path}`, { signal: AbortSignal.timeout(4000), headers: { accept: "application/json", ...engineAuth() } });
-    if (!r.ok) throw new Error(`${path}: ${r.status}`);
-    return (await r.json()) as T;
-  };
+  const nous = new Nous(serverUrl, 4000);
   try {
-    const c = encodeURIComponent(companyId);
-    const [issuesRaw, agentsRaw] = await Promise.all([get<Issue[] | { items: Issue[] }>(`/api/companies/${c}/issues?limit=30`), get<Agent[] | { items: Agent[] }>(`/api/companies/${c}/agents`)]);
-    const issues = Array.isArray(issuesRaw) ? issuesRaw : issuesRaw.items ?? [];
-    const agents = Array.isArray(agentsRaw) ? agentsRaw : agentsRaw.items ?? [];
-    const docs = (await Promise.all(issues.map((i) => get<Doc[]>(`/api/issues/${encodeURIComponent(i.id)}/documents`).then((d) => (Array.isArray(d) ? d : []), () => [] as Doc[])))).flat();
+    const [issues, agents] = await Promise.all([nous.tasks(companyId, { limit: 30 }), nous.members(companyId)]);
+    const docs = (await Promise.all(issues.map((i) => nous.docs(i.id).catch((): NousDoc[] => [])))).flat();
     const hires = rosterHires(home);
     const list = docs.map((d): Artifact => {
-      const agent = agents.find((a) => a.id === d.createdByAgentId);
-      const hire = d.createdByAgentId ? hires.find((h) => h.seat?.agentId === d.createdByAgentId) : null;
+      // A document with no author is the operator's own.
+      const yours = !d.authorId;
+      const agent = agents.find((a) => a.id === d.authorId);
+      const hire = d.authorId ? hires.find((h) => h.seat?.agentId === d.authorId) : null;
       const harness = String(hire?.harness ?? "");
-      const issue = issues.find((i) => i.id === d.issueId);
+      const issue = issues.find((i) => i.id === d.taskId);
       const cloud = CLOUD.has(harness);
       return {
         id: `doc:${d.id}`,
         kind: "document",
         title: `${d.title || d.key}${issue?.identifier ? ` · ${issue.identifier}` : ""}`,
-        by: d.createdByUserId ? "you" : (agent?.name ?? "a hire").replace(/ - .*$/, ""),
-        via: d.createdByUserId ? "the classic view" : NAMES[harness] ?? "its harness",
+        by: yours ? "you" : (agent?.name ?? "a hire").replace(/ - .*$/, ""),
+        via: yours ? "Ogdoad" : NAMES[harness] ?? "its harness",
         at: new Date(d.updatedAt).toISOString(),
-        tier: d.createdByUserId ? "local only" : cloud ? "made by a cloud hire" : LOCAL.has(harness) ? "made on this machine" : "made by a hire",
-        cloudSaw: d.createdByUserId ? "nothing" : cloud ? `whatever its task gave ${NAMES[harness]}; check "What the cloud has seen"` : LOCAL.has(harness) ? "nothing" : "depends on the hire's harness",
+        tier: yours ? "local only" : cloud ? "made by a cloud hire" : LOCAL.has(harness) ? "made on this machine" : "made by a hire",
+        cloudSaw: yours ? "nothing" : cloud ? `whatever its task gave ${NAMES[harness]}; check "What the cloud has seen"` : LOCAL.has(harness) ? "nothing" : "depends on the hire's harness",
         sealed: false,
         open: null,
-        ref: `/team/task/${d.issueId}`,
-        source: { issueId: d.issueId, key: d.key },
+        ref: `/team/task/${d.taskId}`,
+        source: { issueId: d.taskId, key: d.key },
       };
     });
     cached = { at: Date.now(), key, list };

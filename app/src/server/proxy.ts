@@ -1,9 +1,8 @@
-// Pass requests through to the Ogdoad server and Horos: plain requests, streamed events (SSE) and
-// WebSocket upgrades. Headers are rewritten so each upstream sees a request from its own origin,
+// Pass requests through to Nous (the Ogdoad server) and Horos: plain requests and streamed events
+// (SSE). Headers are rewritten so each upstream sees a request from its own origin,
 // and Horos gets its token added here, so the browser never holds it.
 
 import { request, type IncomingMessage, type ServerResponse } from "node:http";
-import { connect, type Socket } from "node:net";
 
 export interface Upstream {
   /** e.g. http://127.0.0.1:3100 */
@@ -54,22 +53,4 @@ export function proxyHttp(up: Upstream, req: IncomingMessage, res: ServerRespons
   });
   req.pipe(out);
   res.on("close", () => out.destroy());
-}
-
-export function proxyUpgrade(up: Upstream, req: IncomingMessage, client: Socket, head: Buffer): void {
-  const { url, path } = target(up, req.url ?? "/");
-  const server = connect(Number(url.port), url.hostname, () => {
-    const headers = upstreamHeaders(req, up, url);
-    const lines = [`${req.method} ${path} HTTP/1.1`, ...Object.entries(headers).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => `${k}: ${x}`) : [`${k}: ${v}`]))];
-    server.write(lines.join("\r\n") + "\r\n\r\n");
-    if (head.length) server.write(head);
-    server.pipe(client);
-    client.pipe(server);
-  });
-  const end = () => {
-    server.destroy();
-    client.destroy();
-  };
-  server.on("error", end);
-  client.on("error", end);
 }

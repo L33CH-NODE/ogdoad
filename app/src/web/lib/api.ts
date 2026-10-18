@@ -1,4 +1,4 @@
-// Talking to the app server: Money (/ogdoad/money), Horos (/horos) and the Ogdoad server (/api).
+// Talking to the app server: Money (/ogdoad/money), Horos (/horos) and Nous, the Ogdoad server (/nous/v1).
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
@@ -26,6 +26,7 @@ export const api = {
   get: <T>(path: string) => call<T>("GET", path),
   post: <T>(path: string, body: unknown = {}) => call<T>("POST", path, body),
   put: <T>(path: string, body: unknown) => call<T>("PUT", path, body),
+  patch: <T>(path: string, body: unknown) => call<T>("PATCH", path, body),
   del: <T>(path: string) => call<T>("DELETE", path),
 };
 

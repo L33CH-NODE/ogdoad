@@ -129,8 +129,8 @@ export function CenterProvider({ children }: { children: ReactNode }) {
     let alive = true;
     const load = () => {
       if (document.hidden) return;
-      api.get<Array<{ id: string; body: string; createdAt: string; authorType?: string; authorAgentId?: string | null }>>(`/api/issues/${sophia.taskId}/comments?order=desc&limit=12`)
-        .then((list) => alive && setReplies(list.filter((c) => c.authorAgentId || c.authorType === "agent").map((c) => ({ id: c.id, body: c.body, at: c.createdAt }))), () => {});
+      api.get<{ items: Array<{ id: string; body: string; createdAt: string; authorId: string | null }> }>(`/nous/v1/tasks/${sophia.taskId}/messages?limit=12`)
+        .then((r) => alive && setReplies(r.items.filter((c) => c.authorId).map((c) => ({ id: c.id, body: c.body, at: c.createdAt }))), () => {});
     };
     load();
     const t = setInterval(load, 15_000);
@@ -181,7 +181,7 @@ export function CenterProvider({ children }: { children: ReactNode }) {
       "",
       "chart.type is bar, line, stat or table. x is the column along the bottom (bar, line). y lists the numeric columns to draw. format is aud, number, hours or percent. Amounts are dollars.",
     ].join("\n");
-    const r = await api.post<{ held?: { id: string } }>(`/api/issues/${sophia.taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+    const r = await api.post<{ held?: { id: string } }>(`/nous/v1/tasks/${sophia.taskId}/messages`, { body, requestId: crypto.randomUUID() });
     if (r?.held) {
       say("Ogdoad", "That request names someone, so it's held: check it in Flow before it goes.", "warn");
       return navigate(`/flow/check/${r.held.id}`);

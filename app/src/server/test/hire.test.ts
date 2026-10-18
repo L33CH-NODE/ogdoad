@@ -70,11 +70,11 @@ test("the hires' documents reach the shelf with where they came from", async () 
   const server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     const at = "2026-10-10T01:00:00.000Z";
-    if (req.url?.startsWith("/api/companies/co/issues")) return res.end(JSON.stringify([{ id: "i1", identifier: "OGD-1", title: "Set up", updatedAt: at }]));
-    if (req.url === "/api/companies/co/agents") return res.end(JSON.stringify([{ id: "ag-1", name: "SOPHIA - Claude Code" }]));
-    if (req.url === "/api/issues/i1/documents") return res.end(JSON.stringify([{ id: "d1", issueId: "i1", key: "profile", title: "Company profile", createdByAgentId: "ag-1", createdByUserId: null, updatedAt: at }]));
+    if (req.url?.startsWith("/v1/companies/co/tasks")) return res.end(JSON.stringify({ items: [{ id: "i1", identifier: "OGD-1", title: "Set up", updatedAt: at }] }));
+    if (req.url === "/v1/companies/co/members") return res.end(JSON.stringify({ items: [{ id: "ag-1", name: "SOPHIA - Claude Code" }] }));
+    if (req.url === "/v1/tasks/i1/docs") return res.end(JSON.stringify({ items: [{ id: "d1", taskId: "i1", key: "profile", title: "Company profile", authorId: "ag-1", updatedAt: at }] }));
     res.statusCode = 404;
-    res.end("[]");
+    res.end(JSON.stringify({ error: "not_found", message: "No such thing." }));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   try {

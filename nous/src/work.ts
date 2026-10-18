@@ -149,7 +149,15 @@ export class Work {
   }
 
   private job(r: Run, member: Member, token: string, jobId: string): Job {
+    // Nous's own names, which the briefs teach; the old engine's beside them, for live workers outside
+    // Horos that still read those.
     const env: Record<string, string> = {
+      NOUS_API_URL: this.opts.apiUrl,
+      NOUS_RUN_TOKEN: token,
+      NOUS_RUN_ID: r.id,
+      NOUS_MEMBER_ID: member.id,
+      NOUS_COMPANY_ID: member.companyId,
+      NOUS_WAKE_REASON: r.reason,
       PAPERCLIP_API_URL: this.opts.apiUrl,
       PAPERCLIP_API_KEY: token,
       PAPERCLIP_RUN_ID: r.id,
@@ -157,10 +165,11 @@ export class Work {
       PAPERCLIP_COMPANY_ID: member.companyId,
       PAPERCLIP_WAKE_REASON: COMPAT_REASON[r.reason],
     };
-    if (r.taskId) env.PAPERCLIP_TASK_ID = r.taskId;
-    if (r.wake.messageId) env.PAPERCLIP_WAKE_COMMENT_ID = r.wake.messageId;
-    if (r.wake.approvalId) env.PAPERCLIP_APPROVAL_ID = r.wake.approvalId;
-    if (r.wake.approvalStatus) env.PAPERCLIP_APPROVAL_STATUS = r.wake.approvalStatus;
+    if (r.taskId) env.NOUS_TASK_ID = env.PAPERCLIP_TASK_ID = r.taskId;
+    if (r.wake.messageId) env.NOUS_WAKE_MESSAGE_ID = env.PAPERCLIP_WAKE_COMMENT_ID = r.wake.messageId;
+    if (r.wake.cardId) env.NOUS_WAKE_CARD_ID = r.wake.cardId;
+    if (r.wake.approvalId) env.NOUS_APPROVAL_ID = env.PAPERCLIP_APPROVAL_ID = r.wake.approvalId;
+    if (r.wake.approvalStatus) env.NOUS_APPROVAL_STATUS = env.PAPERCLIP_APPROVAL_STATUS = r.wake.approvalStatus;
     return {
       jobId, protocol: PROTOCOL, runId: r.id, agentId: member.id, agentName: member.name, companyId: member.companyId, taskId: r.taskId,
       wakeReason: COMPAT_REASON[r.reason], prompt: promptFor(this.engine, r, member, this.opts.apiUrl), env, leaseSec: this.leaseSec,

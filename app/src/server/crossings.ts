@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { OGDOAD_HOME } from "./money/db.js";
-import { engineAuth } from "./engineClient.js";
+import { Nous } from "./engineClient.js";
 import type { Money } from "./money/service.js";
 
 export type Where = "cloud" | "local" | "either" | "unknown";
@@ -74,9 +74,7 @@ export async function recipientFor(issueId: string, serverUrl: string, home = OG
   const known = recipientOf(issueId, home);
   if (known) return known;
   try {
-    const r = await fetch(`${serverUrl}/api/issues/${encodeURIComponent(issueId)}`, { signal: AbortSignal.timeout(2500), headers: { accept: "application/json", ...engineAuth() } });
-    const issue = r.ok ? ((await r.json()) as { assigneeAgentId?: string | null }) : null;
-    const agentId = issue?.assigneeAgentId;
+    const agentId = (await new Nous(serverUrl, 2500).task(issueId)).assigneeId;
     if (agentId) {
       const hire = rosterHires(home).find((h) => h.seat?.agentId === agentId);
       if (hire) return describe(hire, String(hire.label ?? "a hire").replace(/ - .*$/, ""));

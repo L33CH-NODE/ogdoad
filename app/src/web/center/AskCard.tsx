@@ -11,18 +11,20 @@ import { useCenter } from "./data";
 
 interface Option { id: string; label: string; description?: string | null; freeText?: boolean }
 interface Question { id: string; prompt: string; helpText?: string | null; selectionMode: "single" | "multi"; required?: boolean; allowOther?: boolean; options: Option[] }
-interface Interaction {
+/** A card, as Nous holds it: authorId is the member who asked. */
+interface Card {
   id: string;
+  taskId: string;
   kind: string;
   status: string;
   title: string | null;
-  createdByAgentId: string | null;
+  authorId: string | null;
   payload: { title?: string | null; submitLabel?: string | null; questions: Question[] };
 }
 
 export function AskCard({ issueId, interactionId }: { issueId: string; interactionId: string }) {
   const { sophia, say, reloadFlow } = useCenter();
-  const [card, setCard] = useState<Interaction | null | undefined>(undefined);
+  const [card, setCard] = useState<Card | null | undefined>(undefined);
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [text, setText] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -30,11 +32,11 @@ export function AskCard({ issueId, interactionId }: { issueId: string; interacti
 
   useEffect(() => {
     setCard(undefined);
-    api.get<Interaction[]>(`/api/issues/${issueId}/interactions`).then((list) => setCard(list.find((i) => i.id === interactionId) ?? null), () => setCard(null));
+    api.get<Card>(`/nous/v1/cards/${interactionId}`).then((c) => setCard(c.taskId === issueId ? c : null), () => setCard(null));
   }, [issueId, interactionId]);
 
   if (card === undefined) return <div className="now-card askcard"><span className="muted">Opening the question…</span></div>;
-  const who = card && sophia?.agentId && card.createdByAgentId === sophia.agentId ? "SOPHIA" : "Your hire";
+  const who = card && sophia?.agentId && card.authorId === sophia.agentId ? "SOPHIA" : "Your hire";
   if (!card || card.kind !== "ask_user_questions" || card.status !== "pending") {
     return (
       <div className="now-card askcard calm">
@@ -63,7 +65,7 @@ export function AskCard({ issueId, interactionId }: { issueId: string; interacti
       .map((q) => ({ questionId: q.id, optionIds: picked[q.id] ?? [], otherText: wantsText(q) ? text[q.id]?.trim() || null : null }))
       .filter((a) => a.optionIds.length || a.otherText);
     try {
-      await api.post(`/api/issues/${issueId}/interactions/${interactionId}/respond`, { answers });
+      await api.post(`/nous/v1/cards/${interactionId}/answer`, { answers });
       say("you", `answered ${who}: ${card.title ?? card.payload.title ?? "a question"}`);
       reloadFlow();
       navigate("/flow");

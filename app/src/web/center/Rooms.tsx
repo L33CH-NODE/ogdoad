@@ -87,7 +87,7 @@ export function RoomList() {
   const { sophia, team, roster } = useCenter();
   const { data, error, reload } = useLive<{ practice: boolean; rooms: RoomSummary[] }>(sophia ? "/ogdoad/rooms" : null, ["rooms"]);
   const soon = useSoon(reload, 1500);
-  useEngineEvents(sophia?.companyId, (e) => e.type === "activity.logged" && e.payload.entityType === "issue" && soon());
+  useEngineEvents(sophia?.companyId, (e) => (e.type === "task" || e.type === "message") && soon());
   if (!sophia) return null;
   return (
     <div className="stack" style={{ gap: 6 }}>
@@ -120,8 +120,8 @@ function useAgents(companyId: string | undefined): RoomMember[] | null {
   const [agents, setAgents] = useState<RoomMember[] | null>(null);
   useEffect(() => {
     if (!companyId) return;
-    api.get<Array<{ id: string; name: string; status?: string }> | { items: Array<{ id: string; name: string; status?: string }> }>(`/api/companies/${companyId}/agents`)
-      .then((r) => setAgents((Array.isArray(r) ? r : r.items ?? []).filter((a) => a.status !== "terminated").map((a) => ({ agentId: a.id, name: shortName(a.name), hireId: null, harness: null, where: "unknown" as const }))), () => setAgents([]));
+    api.get<{ items: Array<{ id: string; name: string; status: string }> }>(`/nous/v1/companies/${companyId}/members`)
+      .then((r) => setAgents(r.items.filter((a) => a.status !== "let_go").map((a) => ({ agentId: a.id, name: shortName(a.name), hireId: null, harness: null, where: "unknown" as const }))), () => setAgents([]));
   }, [companyId]);
   return agents;
 }
@@ -217,13 +217,10 @@ export function RoomView({ id }: { id: string }) {
   const [fresh, setFresh] = useState<Check[]>([]);
   const mentionRef = useRef<((m: RoomMember) => void) | null>(null);
 
-  // Live: a comment, a task change or a run starting or ending on any of this room's parts.
+  // Live: a message, a task change or a run starting or ending on any of this room's parts.
   useEngineEvents(sophia?.companyId, (e) => {
     if (!room) return;
-    const p = e.payload;
-    const issueId = e.type === "activity.logged" && p.entityType === "issue" ? String(p.entityId) : e.type === "heartbeat.run.status" ? String(p.issueId ?? "") : "";
-    const projectId = typeof p.projectId === "string" ? p.projectId : typeof (p.details as Record<string, unknown> | undefined)?.projectId === "string" ? String((p.details as Record<string, unknown>).projectId) : "";
-    if (room.parts.some((x) => x.id === issueId) || projectId === room.id) soon();
+    if (room.parts.some((x) => x.id === e.taskId) || (e.roomId && e.roomId === room.id)) soon();
   });
   useEffect(() => {
     const t = setInterval(() => !document.hidden && reload(), 20_000);
@@ -255,7 +252,7 @@ export function RoomView({ id }: { id: string }) {
   // Held for a check: what this page just sent, and anything still waiting from before.
   // Oldest first, so the newest sits by the box it came from.
   const heldIds = [...new Set([...room.held.map((h) => h.id), ...fresh.map((c) => c.id)])];
-  const resume = (m: RoomMember) => api.post(`/api/agents/${m.agentId}/resume`, {}).then(reload, (err) => say("Ogdoad", `Couldn't resume ${m.name}: ${(err as Error).message}`, "bad"));
+  const resume = (m: RoomMember) => api.patch(`/nous/v1/members/${m.agentId}`, { paused: false }).then(reload, (err) => say("Ogdoad", `Couldn't resume ${m.name}: ${(err as Error).message}`, "bad"));
 
   return (
     <div className="stack room" style={{ gap: 12 }}>

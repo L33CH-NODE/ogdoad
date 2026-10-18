@@ -1,5 +1,6 @@
-// The engine's backups, sealed. The engine (core/) dumps its database every hour as plain .sql.gz
-// files; Ogdoad seals each one to its backup public key within minutes, locked or not, and deletes the
+// The old engine's backups, sealed. The engine Ogdoad started on dumped its database every hour as plain
+// .sql.gz files (Nous's own backups are encrypted from the start, and need none of this). Ogdoad seals
+// any such dump to its backup public key within minutes, locked or not, and deletes the
 // plain dump only after the sealed copy has been opened again with the private key (which needs the
 // vault unlocked) and found identical. Nothing is ever deleted on a seal alone. Old backup folders can
 // be queued too (backups/to-seal.json): each becomes one sealed archive next to where it was.

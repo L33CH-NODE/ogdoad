@@ -44,6 +44,7 @@ export function nativeRoutes(r: Router, engine: () => Engine, work: () => Work):
     const b = await c.body();
     return created(engine().createCard(c.params.id, { kind: b.kind, title: b.title, payload: b.payload }, who));
   });
+  r.on("GET", "/v1/cards/:id", (c) => engine().card(c.params.id, needSomeone(c)));
   r.on("POST", "/v1/cards/:id/answer", async (c) => (needOperator(c), engine().answerCard(c.params.id, (await c.body()).answers)));
 
   r.on("POST", "/v1/companies/:co/approvals", async (c) => {

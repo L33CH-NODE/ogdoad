@@ -1,6 +1,6 @@
 // A conversation with SOPHIA, in the control center: her task's thread as messages, her question cards
-// in line (answered in Flow), and a box to reply. It's the same thread the classic view shows, so
-// nothing is lost either way, and every message sent from here is noted in the crossings log. A message
+// in line (answered in Flow), and a box to reply. It's her task's thread as Nous keeps it, and every
+// message sent from here is noted in the crossings log. A message
 // goes through the membrane: one that names someone waits here for a check, and the hire's stand-ins
 // read as who they are.
 
@@ -14,8 +14,9 @@ import { navigate } from "../lib/router";
 import { CheckCard } from "./CheckCard";
 import { useCenter } from "./data";
 
-interface Comment { id: string; body: string; createdAt: string; authorType?: string; authorAgentId?: string | null }
-interface Card { id: string; kind: string; status: string; title: string | null; createdAt: string; resolvedAt?: string | null }
+/** A message on the task: authorId is the member who wrote it, null when it was the operator. */
+interface Comment { id: string; body: string; createdAt: string; authorId: string | null }
+interface Card { id: string; kind: string; status: string; title: string | null; createdAt: string }
 
 type Item = { at: string; kind: "comment"; c: Comment } | { at: string; kind: "card"; card: Card };
 
@@ -31,8 +32,8 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
 
   const load = () =>
     Promise.all([
-      api.get<Comment[]>(`/api/issues/${taskId}/comments?order=desc&limit=60`),
-      api.get<Card[]>(`/api/issues/${taskId}/interactions`).catch(() => [] as Card[]),
+      api.get<{ items: Comment[] }>(`/nous/v1/tasks/${taskId}/messages?limit=60`).then((r) => r.items),
+      api.get<{ items: Card[] }>(`/nous/v1/tasks/${taskId}/cards`).then((r) => r.items, () => [] as Card[]),
     ]).then(([comments, cards]) => {
       const list: Item[] = [
         ...comments.map((c) => ({ at: c.createdAt, kind: "comment" as const, c })),
@@ -58,7 +59,7 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<MaybeHeld<unknown>>(`/api/issues/${taskId}/comments`, { body, clientRequestId: crypto.randomUUID() });
+      const r = await api.post<MaybeHeld<unknown>>(`/nous/v1/tasks/${taskId}/messages`, { body, requestId: crypto.randomUUID() });
       setText("");
       if (isHeld(r)) return setHeld((h) => [...h, r.held]);
       say("you", `to ${name}: ${body}`);
@@ -71,7 +72,7 @@ export function Conversation({ taskId, name }: { taskId: string; name: string })
     }
   };
 
-  const fromHire = (c: Comment) => !!c.authorAgentId || c.authorType === "agent";
+  const fromHire = (c: Comment) => !!c.authorId;
   return (
     <div className="stack conversation" style={{ gap: 10 }}>
       <div className="thread" aria-live="polite">

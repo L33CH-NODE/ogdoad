@@ -186,7 +186,7 @@ function TeamRoom({ people, core, seats, selectedId, taskId, hiring, chip, syste
         {hiring ? <HireForm />
           : task ? <TaskRoom task={task} nameOf={nameOf} />
           : taskId ? <p className="muted">{tasks === null ? "Opening the task…" : "That task isn't there any more."}</p>
-          : selected ? <HireRoom person={selected} /> : <p className="muted">No hires yet. SOPHIA comes first; the setup in the classic view walks you through it.</p>}
+          : selected ? <HireRoom person={selected} /> : <p className="muted">No hires yet. SOPHIA comes first: <span className="mono">npx ogdoad sophia</span> asks who she should be, and briefs her.</p>}
       </div>
     </Zone>
   );

@@ -39,7 +39,7 @@ function KeyCard() {
     <section className="card stack" aria-label="Your key">
       <div className="row"><Icon name="shield" /><h3>Your key</h3><span className="spacer" /><span className="chip paid">vault open</span></div>
       <p className="muted" style={{ margin: 0 }}>
-        Ogdoad's own data (Money, Flow, shifts and their notes, dashboards, the calendar's login, and the PDFs it keeps) is encrypted with your key and opens only with your password or recovery phrase. Not yet covered: the borrowed engine's database (the hires' tasks and comments), until it moves into an encrypted container. It locks itself after {vault?.lockMinutes ?? 30} idle minutes.
+        Ogdoad's own data (Money, Flow, shifts and their notes, dashboards, the calendar's login, and the PDFs it keeps) is encrypted with your key and opens only with your password or recovery phrase. So is Nous, the team's engine (the hires' tasks, talk and documents), with a key of its own that your vault hands it, and its hourly backups stay encrypted the same way. Ogdoad locks itself after {vault?.lockMinutes ?? 30} idle minutes; the team keeps working until the machine restarts.
       </p>
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); void change(); }}>
         <label className="field">Current password<input className="input" type="password" value={oldPassword} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" /></label>
@@ -92,14 +92,14 @@ function Backups() {
       {data.sealed ? (
         <>
           <div className="row" style={{ marginTop: 6 }}>
-            <strong style={{ fontSize: 14 }}>The engine's backups, sealed</strong>
+            <strong style={{ fontSize: 14 }}>The old engine's backups, sealed</strong>
             <span className="muted" style={{ fontSize: 13 }}>
               {!data.sealed.ready ? "sealing starts once you've unlocked" : data.sealed.engine[0] ? `last ${ago(data.sealed.engine[0].at)}, ${data.sealed.engine.length} kept` : "none yet"}
               {data.sealed.pending ? ` · ${data.sealed.pending} waiting to be checked` : ""}
             </span>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-            The engine (tasks, comments, runs) dumps its database every hour in the clear. Each dump is sealed within minutes, even while Ogdoad is locked, to a key only your vault opens (ML-KEM-768 + X25519, then XChaCha20-Poly1305). The plain dump is cleared only once its sealed copy has opened again, identical. Kept for 30 days.
+            The engine Ogdoad started on dumped its database every hour in the clear. Any of those dumps still on this machine is sealed within minutes, even while Ogdoad is locked, to a key only your vault opens (ML-KEM-768 + X25519, then XChaCha20-Poly1305). The plain dump is cleared only once its sealed copy has opened again, identical. Kept for 30 days. Nous's own backups need none of this: they're encrypted from the start.
           </p>
           {data.sealed.engine.length ? (
             <ul className="crossings">

@@ -17,7 +17,7 @@ function DocumentText({ source }: { source: { issueId: string; key: string } }) 
   const [body, setBody] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     setBody(undefined);
-    api.get<{ body?: string }>(`/api/issues/${source.issueId}/documents/${encodeURIComponent(source.key)}`).then((d) => setBody(d.body ?? ""), () => setBody(null));
+    api.get<{ body?: string }>(`/nous/v1/tasks/${source.issueId}/docs/${encodeURIComponent(source.key)}`).then((d) => setBody(d.body ?? ""), () => setBody(null));
   }, [source.issueId, source.key]);
   if (body === undefined) return <span className="muted">Opening it…</span>;
   if (body === null) return <span className="muted">It couldn't be read just now.</span>;

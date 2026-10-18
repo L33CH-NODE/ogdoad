@@ -50,7 +50,7 @@ export function promptFor(engine: Engine, run: Run, member: Member, apiUrl: stri
 
   lines.push(
     "",
-    `To act, call ${apiUrl} with \`Authorization: Bearer $PAPERCLIP_API_KEY\` (this run's token, in your job's env; it stops working when the job closes).`,
+    `To act, call ${apiUrl}/v1 with \`Authorization: Bearer $NOUS_RUN_TOKEN\` (this run's token, in your job's env; it stops working when the job closes). \`GET ${apiUrl}/v1/openapi.json\` lists every route.`,
     "Reply on the task, claim it, update it, write documents on it, ask the operator with a card, or ask for an approval.",
     "Finish by settling the task: done, or in review while a card or an approval of yours waits on the operator. Then close the job.",
   );

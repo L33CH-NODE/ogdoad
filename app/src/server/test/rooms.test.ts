@@ -1,4 +1,4 @@
-// Project rooms, against a stand-in Ogdoad server (nothing real is created or woken): opening a room
+// Project rooms, against a stand-in Nous (nothing real is created or woken): opening a room
 // makes a project and its thread, parts hang under the thread and tell their hire who else is on the
 // job, the room reads every thread in time order, and every message is noted for everyone it reaches.
 
@@ -21,11 +21,11 @@ import { standIn } from "../work/work.js";
 const CID = "co-1";
 
 async function fakeEngine() {
-  const projects: any[] = [{ id: "p-old", name: "Old idea", status: "backlog", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", archivedAt: "2026-10-02T00:00:00Z" }];
-  const issues: any[] = [{ id: "i-other", title: "Not in any room", status: "todo", projectId: "p-elsewhere", createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z" }];
-  const comments: any[] = [];
+  const rooms: any[] = [{ id: "p-old", name: "Old idea", brief: null, status: "backlog", leadId: null, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", archivedAt: "2026-10-02T00:00:00Z" }];
+  const tasks: any[] = [{ id: "i-other", identifier: "SOL-0", title: "Not in any room", status: "todo", roomId: "p-elsewhere", parentId: null, assigneeId: null, forOperator: false, authorId: null, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z" }];
+  const messages: any[] = [];
   const typed: Array<{ hireId: string; text: string }> = [];
-  const agents: any[] = [{ id: "a-sophia", name: "SOPHIA - Claude Code", status: "active" }, { id: "a-scout", name: "Scout - grok CLI", status: "active" }, { id: "a-gone", name: "Gone", status: "terminated" }];
+  const members: any[] = [{ id: "a-sophia", name: "SOPHIA - Claude Code", status: "idle" }, { id: "a-scout", name: "Scout - grok CLI", status: "idle" }, { id: "a-gone", name: "Gone", status: "let_go" }];
   let n = 0;
   let clock = Date.parse("2026-10-10T09:00:00Z");
   const now = () => new Date((clock += 1000)).toISOString();
@@ -38,55 +38,58 @@ async function fakeEngine() {
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(data));
       };
+      const missing = (what: string) => send(404, { error: "not_found", message: `No such ${what}.` });
       let m: RegExpExecArray | null;
-      if (url.pathname === `/api/companies/${CID}/projects`) {
+      if (url.pathname === `/v1/companies/${CID}/rooms`) {
         if (req.method === "POST") {
-          const p = { id: `p-${++n}`, ...body, createdAt: now(), updatedAt: now() };
-          projects.push(p);
-          return send(201, p);
+          const r = { id: `p-${++n}`, brief: null, leadId: null, archivedAt: null, ...body, createdAt: now(), updatedAt: now() };
+          rooms.push(r);
+          return send(201, r);
         }
-        return send(200, projects);
+        return send(200, { items: rooms });
       }
-      if ((m = /^\/api\/projects\/([^/]+)$/.exec(url.pathname))) {
-        const p = projects.find((x) => x.id === m![1]);
-        return p ? send(200, p) : send(404, { error: "Project not found" });
+      if ((m = /^\/v1\/rooms\/([^/]+)$/.exec(url.pathname))) {
+        const r = rooms.find((x) => x.id === m![1]);
+        return r ? send(200, r) : missing("room");
       }
-      if (url.pathname === `/api/companies/${CID}/issues`) {
+      if (url.pathname === `/v1/companies/${CID}/tasks`) {
         if (req.method === "POST") {
-          const i = { id: `i-${++n}`, identifier: `SOL-${n}`, createdAt: now(), updatedAt: now(), createdByUserId: "local", ...body };
-          issues.push(i);
-          return send(201, i);
+          const t = { id: `i-${++n}`, identifier: `SOL-${n}`, roomId: null, parentId: null, assigneeId: null, forOperator: false, authorId: null, ...body, createdAt: now(), updatedAt: now() };
+          tasks.push(t);
+          return send(201, t);
         }
-        // Wrapped, to prove both list shapes are read.
-        return send(200, { items: issues.filter((i) => !url.searchParams.get("projectId") || i.projectId === url.searchParams.get("projectId")) });
+        return send(200, { items: tasks.filter((t) => !url.searchParams.get("room") || t.roomId === url.searchParams.get("room")) });
       }
-      if ((m = /^\/api\/issues\/([^/]+)$/.exec(url.pathname))) return send(200, issues.find((i) => i.id === m![1]) ?? {});
-      if ((m = /^\/api\/issues\/([^/]+)\/comments$/.exec(url.pathname))) {
+      if ((m = /^\/v1\/tasks\/([^/]+)$/.exec(url.pathname))) {
+        const t = tasks.find((x) => x.id === m![1]);
+        return t ? send(200, t) : missing("task");
+      }
+      if ((m = /^\/v1\/tasks\/([^/]+)\/messages$/.exec(url.pathname))) {
         if (req.method === "POST") {
-          const c = { id: `c-${++n}`, issueId: m[1], body: body.body, createdAt: now(), authorUserId: "local" };
-          comments.push(c);
+          const c = { id: `c-${++n}`, taskId: m[1], body: body.body, requestId: body.requestId ?? null, authorId: null, createdAt: now() };
+          messages.push(c);
           return send(201, c);
         }
-        return send(200, comments.filter((c) => c.issueId === m![1]).reverse());
+        return send(200, { items: messages.filter((c) => c.taskId === m![1]).reverse() });
       }
-      if (url.pathname === `/api/companies/${CID}/agents`) return send(200, agents);
-      if ((m = /^\/api\/agents\/([^/]+)\/pause$/.exec(url.pathname)) && req.method === "POST") {
-        const a = agents.find((x) => x.id === m![1]);
-        if (a) a.status = "paused";
-        return a ? send(200, a) : send(404, { error: "Agent not found" });
+      if (url.pathname === `/v1/companies/${CID}/members`) return send(200, { items: members });
+      if ((m = /^\/v1\/members\/([^/]+)$/.exec(url.pathname)) && req.method === "PATCH") {
+        const a = members.find((x) => x.id === m![1]);
+        if (a && typeof body.paused === "boolean") a.status = body.paused ? "paused" : "idle";
+        return a ? send(200, a) : missing("member");
       }
       // Horos's prompt route, for what's typed into a hire's terminal.
       if ((m = /^\/v1\/hires\/([^/]+)\/prompt$/.exec(url.pathname)) && req.method === "POST") {
         typed.push({ hireId: m[1], text: body.text });
         return send(200, { ok: true });
       }
-      if (url.pathname === `/api/companies/${CID}/live-runs`) return send(200, issues.filter((i) => i.assigneeAgentId === "a-scout").map((i) => ({ id: "r1", agentId: "a-scout", issueId: i.id, status: "running", startedAt: now() })));
-      send(404, { error: "no" });
+      if (url.pathname === `/v1/companies/${CID}/runs`) return send(200, { items: tasks.filter((t) => t.assigneeId === "a-scout").map((t) => ({ id: "r1", memberId: "a-scout", taskId: t.id, status: "running", startedAt: now() })) });
+      missing("route");
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const agentSays = (issueId: string, agentId: string, text: string) => comments.push({ id: `c-${++n}`, issueId, body: text, createdAt: now(), authorAgentId: agentId });
-  return { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, projects, issues, comments, agents, typed, agentSays, close: () => server.close() };
+  const memberSays = (taskId: string, memberId: string, text: string) => messages.push({ id: `c-${++n}`, taskId, body: text, createdAt: now(), authorId: memberId });
+  return { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, rooms, tasks, messages, members, typed, memberSays, close: () => server.close() };
 }
 
 function setup(practice = false) {
@@ -111,7 +114,7 @@ function held(x: unknown): Check {
   return (x as { held: Check }).held;
 }
 
-test("mentions are read in the engine's own form, each once", () => {
+test("mentions are read in Nous's own form, each once", () => {
   assert.deepEqual(mentionsIn("[@Scout](agent://a-scout) and [@SOPHIA](agent://a-sophia), [@Scout](agent://a-scout) again, @plain text"), ["a-scout", "a-sophia"]);
   assert.deepEqual(mentionsIn("no one here"), []);
 });
@@ -122,22 +125,22 @@ test("a room is a project with its own thread, and parts tell their hire who els
   try {
     const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: false, home });
     const opened = sent(await rooms.open({ name: "Launch the price page", brief: "Ship the new price page this week.", leadAgentId: "a-sophia" }));
-    const project = e.projects.find((p) => p.id === opened.id)!;
-    assert.deepEqual([project.name, project.status, project.leadAgentId], ["Launch the price page", "in_progress", "a-sophia"]);
-    const thread = e.issues.find((i) => i.projectId === opened.id)!;
+    const project = e.rooms.find((p) => p.id === opened.id)!;
+    assert.deepEqual([project.name, project.status, project.leadId], ["Launch the price page", "in_progress", "a-sophia"]);
+    const thread = e.tasks.find((i) => i.roomId === opened.id)!;
     assert.equal(thread.title, "The room: Launch the price page");
-    assert.equal(thread.assigneeAgentId, "a-sophia");
+    assert.equal(thread.assigneeId, "a-sophia");
     assert.match(thread.description, /^Ship the new price page this week\.\n\n---\n\nThis is the room/);
-    assert.match(thread.description, /\[@Name\]\(agent:\/\/their-agent-id\)/, "the thread tells hires how to bring each other in");
+    assert.match(thread.description, /\[@Name\]\(agent:\/\/their-member-id\)/, "the thread tells hires how to bring each other in");
 
     const part = sent(await rooms.addPart(opened.id, { title: "Research competitor prices", brief: "Three competitors, monthly prices.", agentId: "a-scout" }));
-    const made = e.issues.find((i) => i.id === part.id)!;
-    assert.deepEqual([made.parentId, made.projectId, made.assigneeAgentId, made.status], [thread.id, opened.id, "a-scout", "todo"]);
+    const made = e.tasks.find((i) => i.id === part.id)!;
+    assert.deepEqual([made.parentId, made.roomId, made.assigneeId, made.status], [thread.id, opened.id, "a-scout", "todo"]);
     assert.match(made.description, new RegExp(`Its room is ${thread.identifier}`));
     assert.match(made.description, /The others on this project: \[@SOPHIA\]\(agent:\/\/a-sophia\)\./, "its hire learns who else is on the job, mention-ready");
 
     // The part's hire answers on its part, and mentions SOPHIA: the room reads it all in order.
-    e.agentSays(part.id, "a-scout", "Found three. [@SOPHIA](agent://a-sophia) want them in a table?");
+    e.memberSays(part.id, "a-scout", "Found three. [@SOPHIA](agent://a-sophia) want them in a table?");
     await rooms.say(opened.id, { body: "Yes please, a table. [@Scout](agent://a-scout)" });
     const room = await rooms.get(opened.id);
     assert.equal(room.threadId, thread.id);
@@ -175,13 +178,13 @@ test("a project started elsewhere gets its thread when the operator first speaks
   const e = await fakeEngine();
   const { home, money } = setup();
   try {
-    e.projects.push({ id: "p-sophia", name: "SOPHIA's own project", status: "planned", leadAgentId: "a-sophia", createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z" });
+    e.rooms.push({ id: "p-sophia", name: "SOPHIA's own project", brief: null, status: "planned", leadId: "a-sophia", archivedAt: null, createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z" });
     const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: false, home });
     assert.equal((await rooms.get("p-sophia")).threadId, null);
     const said = sent(await rooms.say("p-sophia", { body: "How's it going?" }));
     const room = await rooms.get("p-sophia");
     assert.equal(room.threadId, said.issueId);
-    assert.equal(e.issues.find((i) => i.id === said.issueId)!.assigneeAgentId, "a-sophia", "the project's lead reads its thread");
+    assert.equal(e.tasks.find((i) => i.id === said.issueId)!.assigneeId, "a-sophia", "the project's lead reads its thread");
     await assert.rejects(() => rooms.say("p-sophia", { body: "hi", partId: "i-other" }), /isn't in this room/);
     await assert.rejects(() => rooms.say("p-sophia", { body: "   " }), /Nothing to send/);
   } finally {
@@ -195,16 +198,16 @@ test("the practice copy can look at rooms but can't start work in them", async (
   try {
     const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: true, home });
     await assert.rejects(() => rooms.open({ name: "Anything" }), /from your real Ogdoad/);
-    e.projects.push({ id: "p-x", name: "Real project", status: "in_progress", createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z" });
+    e.rooms.push({ id: "p-x", name: "Real project", brief: null, status: "in_progress", leadId: null, archivedAt: null, createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z" });
     await assert.rejects(() => rooms.addPart("p-x", { title: "A part" }), /from your real Ogdoad/);
     assert.equal((await rooms.list()).length, 1);
-    assert.equal(e.issues.length, 1, "nothing was created");
+    assert.equal(e.tasks.length, 1, "nothing was created");
 
     // A room the real app opened: the practice copy's books never saw its thread, but find it by name
     // (never opening a second one), and can speak in it, after a look: its made-up books can't know the
     // real clients, so everything it sends waits for one.
-    e.issues.push({ id: "i-room", identifier: "SOL-9", title: "The room: Real project", status: "todo", projectId: "p-x", parentId: null, assigneeAgentId: "a-sophia", createdAt: "2026-10-09T00:00:01Z", updatedAt: "2026-10-09T00:00:01Z" });
-    e.issues.push({ id: "i-part", identifier: "SOL-10", title: "A part", status: "todo", projectId: "p-x", parentId: "i-room", assigneeAgentId: "a-scout", createdAt: "2026-10-09T00:00:02Z", updatedAt: "2026-10-09T00:00:02Z" });
+    e.tasks.push({ id: "i-room", identifier: "SOL-9", title: "The room: Real project", status: "todo", roomId: "p-x", parentId: null, assigneeId: "a-sophia", forOperator: false, authorId: null, createdAt: "2026-10-09T00:00:01Z", updatedAt: "2026-10-09T00:00:01Z" });
+    e.tasks.push({ id: "i-part", identifier: "SOL-10", title: "A part", status: "todo", roomId: "p-x", parentId: "i-room", assigneeId: "a-scout", forOperator: false, authorId: null, createdAt: "2026-10-09T00:00:02Z", updatedAt: "2026-10-09T00:00:02Z" });
     const room = await rooms.get("p-x");
     assert.equal(room.threadId, "i-room");
     assert.deepEqual(room.parts.filter((p) => !p.thread).map((p) => p.title), ["A part"]);
@@ -213,7 +216,7 @@ test("the practice copy can look at rooms but can't start work in them", async (
     const r = await rooms.sendHeld(check.id, check.digest);
     assert.ok("sent" in r);
     assert.equal((r.sent as { issueId: string }).issueId, "i-room");
-    assert.equal(e.issues.length, 3, "no second thread");
+    assert.equal(e.tasks.length, 3, "no second thread");
   } finally {
     e.close();
   }
@@ -228,11 +231,11 @@ test("the membrane in a room: held for a check, sent as checked, kept local, and
     const j = standIn(juniper.id, "Juniper Ashgrove");
     const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: false, home, onAlarm: (t) => alarms.push(t) });
     const opened = sent(await rooms.open({ name: "Chase the overdue", brief: "", leadAgentId: "a-sophia" }));
-    const before = e.comments.length;
+    const before = e.messages.length;
 
     // A real name: held, nothing posted, and Flow carries a card until it's decided.
     const check = held(await rooms.say(opened.id, { body: "Draft a gentle reminder for Juniper Ashgrove about invoice 106." }));
-    assert.equal(e.comments.length, before, "nothing left yet");
+    assert.equal(e.messages.length, before, "nothing left yet");
     assert.equal(check.pieces[0].text, `Draft a gentle reminder for ${j} about invoice 106.`);
     assert.deepEqual(check.pieces[0].changes.map((c) => [c.original, c.token]), [["Juniper Ashgrove", j]]);
     assert.deepEqual(check.reaches.map((r) => r.who), ["SOPHIA"]);
@@ -246,14 +249,14 @@ test("the membrane in a room: held for a check, sent as checked, kept local, and
     assert.ok("changed" in (await rooms.sendHeld(check.id, check.digest)));
     const r = await rooms.sendHeld(check.id, edited.digest);
     assert.ok("sent" in r);
-    const posted = e.comments.at(-1)!;
+    const posted = e.messages.at(-1)!;
     assert.equal(posted.body, `Draft a firm reminder for ${j}'s invoice 106.`, "the engine holds the stand-in only");
     assert.ok(!crossings(money).some((c) => c.what.includes("Juniper")), "and so does the crossings log");
     assert.ok(!raisedFromMembrane(money).some((x) => x.key === `membrane:check:${check.id}`), "the Flow card clears");
     await assert.rejects(() => rooms.sendHeld(check.id, edited.digest), /already dealt with/);
 
     // SOPHIA answers with the stand-in: the room knows who it is, on the operator's screen.
-    e.agentSays(posted.issueId, "a-sophia", `Done: the reminder for ${j} is drafted.`);
+    e.memberSays(posted.taskId, "a-sophia", `Done: the reminder for ${j} is drafted.`);
     let room = await rooms.get(opened.id);
     assert.deepEqual(room.links[j], { real: "Juniper Ashgrove", kind: "who" });
     assert.equal(alarms.length, 0);
@@ -263,18 +266,18 @@ test("the membrane in a room: held for a check, sent as checked, kept local, and
     rooms.keepHeld(keep.id);
     room = await rooms.get(opened.id);
     assert.ok(room.messages.some((m) => m.kind === "note" && m.body === "Juniper prefers a call first."));
-    assert.equal(e.comments.filter((c) => /prefers a call/.test(c.body)).length, 0);
+    assert.equal(e.messages.filter((c) => /prefers a call/.test(c.body)).length, 0);
     const drop = held(await rooms.say(opened.id, { body: "Email juniper.ashgrove@mail.example" }));
     rooms.dropHeld(drop.id);
     assert.equal((await rooms.get(opened.id)).held.length, 0);
 
     // A cloud hire writes a client's real name it was never sent: an alarm, once, and it's paused.
-    e.agentSays(posted.issueId, "a-sophia", "I looked up Juniper Ashgrove online.");
+    e.memberSays(posted.taskId, "a-sophia", "I looked up Juniper Ashgrove online.");
     room = await rooms.get(opened.id);
     const leak = room.messages.find((m) => m.kind === "said" && m.body.includes("looked up"));
     assert.ok(leak && leak.kind === "said" && leak.warnings?.some((w) => w.kind === "real"));
     assert.equal(alarms.length, 1);
-    assert.equal(e.agents.find((a) => a.id === "a-sophia").status, "paused");
+    assert.equal(e.members.find((a) => a.id === "a-sophia").status, "paused", "paused through Nous");
     assert.ok(room.members.find((m) => m.agentId === "a-sophia")!.paused);
     assert.ok(raisedFromMembrane(money).some((x) => x.key === `membrane:alarm:${(leak as { id: string }).id}` && x.urgency === 3));
     await rooms.get(opened.id);
@@ -293,12 +296,12 @@ test("the gate covers every way out: a room's brief, a task's thread, a hire's t
 
     // A room's brief: the project is made only once it's checked, with stand-ins.
     const check = held(await rooms.open({ name: "Marlo's plan review", brief: "Summarise Marlo Vance's goals.", leadAgentId: "a-sophia" }));
-    assert.equal(e.projects.length, 1, "nothing made yet");
+    assert.equal(e.rooms.length, 1, "nothing made yet");
     assert.deepEqual(check.pieces.map((p) => p.label), ["Name", "Brief"]);
     await rooms.sendHeld(check.id, check.digest);
-    const project = e.projects.at(-1)!;
+    const project = e.rooms.at(-1)!;
     assert.match(project.name, /^C-\d{4}'s plan review$/);
-    assert.match(project.description, /^Summarise C-\d{4}'s goals\.$/);
+    assert.match(project.brief, /^Summarise C-\d{4}'s goals\.$/);
     // The operator reads it with the name back: the whole name, since a first name stood in for the person.
     assert.equal((await rooms.list()).find((x) => x.id === project.id)!.name, "Marlo Vance's plan review");
 
@@ -335,7 +338,7 @@ test("the operator has the last word: what goes is theirs to edit, and a real de
     assert.deepEqual(mine.pieces[0].exposed, []);
     assert.deepEqual(mine.links[j], { real: "Juniper Ashgrove", kind: "who" });
     await rooms.sendHeld(a.id, mine.digest);
-    assert.equal(e.comments.at(-1)!.body, `Please draft a kind reminder to ${j} (invoice 106).`);
+    assert.equal(e.messages.at(-1)!.body, `Please draft a kind reminder to ${j} (invoice 106).`);
 
     // They put the real name back: the card points it out, with its stand-in, and approving takes a second yes.
     const b = held(await rooms.say(opened.id, { body: "Juniper Ashgrove asked for a copy." }));
@@ -343,7 +346,7 @@ test("the operator has the last word: what goes is theirs to edit, and a real de
     assert.deepEqual(back.pieces[0].exposed!.map((x) => [x.original, x.token]), [["Juniper Ashgrove", j]]);
     await assert.rejects(() => rooms.sendHeld(b.id, back.digest), /Approve again/);
     await rooms.sendHeld(b.id, back.digest, true);
-    assert.equal(e.comments.at(-1)!.body, "Juniper Ashgrove asked for a copy.", "their call, sent as written");
+    assert.equal(e.messages.at(-1)!.body, "Juniper Ashgrove asked for a copy.", "their call, sent as written");
 
     // Handing it back to the membrane, and denying: each decision is noted, for a local decider to learn from.
     const c = held(await rooms.say(opened.id, { body: "Juniper Ashgrove again." }));
@@ -399,7 +402,7 @@ test("a lineup from the local dispatcher: stand-ins in, the rule checked, the op
   const url = `http://127.0.0.1:${(llm.address() as AddressInfo).port}`;
   let woken = 0;
   try {
-    e.agents.push({ id: "a-ledger", name: "Ledger - Ollama", status: "active" });
+    e.members.push({ id: "a-ledger", name: "Ledger - Ollama", status: "idle" });
     const roster = JSON.parse(readFileSync(join(home, "horos", "roster.json"), "utf8"));
     roster.push({ id: "h-ledger2", harness: "ollama", label: "Ledger - Ollama", seat: { agentId: "a-ledger" } });
     writeFileSync(join(home, "horos", "roster.json"), JSON.stringify(roster));
@@ -407,7 +410,7 @@ test("a lineup from the local dispatcher: stand-ins in, the rule checked, the op
     const rooms = new Rooms(money, { serverUrl: e.base, companyId: CID, practice: false, home, dispatch: { url, wake: async () => { woken++; up = true; } } });
     const check = held(await rooms.open({ name: "Price page", brief: "Three plans. Use Juniper Ashgrove's invoices to see what clients buy.", leadAgentId: "a-sophia" }));
     await rooms.sendHeld(check.id, check.digest);
-    const room = e.projects.at(-1)!;
+    const room = e.rooms.at(-1)!;
 
     // Resting at first: woken once, then asked. It's given stand-ins only.
     const lineup = await rooms.proposeLineup(room.id);
@@ -418,11 +421,11 @@ test("a lineup from the local dispatcher: stand-ins in, the rule checked, the op
 
     // Approving holds the operator to the rule too.
     await assert.rejects(() => rooms.approveLineup(room.id, { parts: [{ ...lineup.parts[1], agentId: "a-sophia" }], proposed: lineup.parts }), /only go to a local hire/);
-    const before = e.issues.length;
+    const before = e.tasks.length;
     const ok = await rooms.approveLineup(room.id, { parts: [lineup.parts[0], { ...lineup.parts[1], title: "Read last quarter's invoices" }], proposed: lineup.parts });
     assert.equal(ok.added, 2);
-    assert.equal(e.issues.length, before + 2);
-    assert.match(e.issues.at(-1)!.description, /stays with a local hire/);
+    assert.equal(e.tasks.length, before + 2);
+    assert.match(e.tasks.at(-1)!.description, /stays with a local hire/);
     rooms.denyLineup(room.id, { proposed: lineup.parts });
     const notes = (money.db.prepare("SELECT detail FROM events WHERE kind = 'lineup_decided' ORDER BY id").all() as Array<{ detail: string }>).map((r) => JSON.parse(r.detail));
     assert.deepEqual(notes.map((n) => [n.decision, n.changed ?? null]), [["approved", 1], ["denied", null]]);
@@ -442,7 +445,7 @@ test("a local hire may hold real records, but not where cloud hires read them", 
   const { home, money } = setup();
   const alarms: string[] = [];
   try {
-    e.agents.push({ id: "a-ledger", name: "Ledger - Ollama", status: "active" });
+    e.members.push({ id: "a-ledger", name: "Ledger - Ollama", status: "idle" });
     const roster = JSON.parse(readFileSync(join(home, "horos", "roster.json"), "utf8"));
     roster.push({ id: "h-ledger3", harness: "ollama", label: "Ledger - Ollama", seat: { agentId: "a-ledger" } });
     writeFileSync(join(home, "horos", "roster.json"), JSON.stringify(roster));
@@ -452,16 +455,16 @@ test("a local hire may hold real records, but not where cloud hires read them", 
     // A room SOPHIA (cloud) leads: Ledger's real name in it is exposed to the cloud.
     const shared = sent(await rooms.open({ name: "Thank-you notes", brief: "", leadAgentId: "a-sophia" }));
     const part = sent(await rooms.addPart(shared.id, { title: "Tally the year", brief: "", agentId: "a-ledger" }));
-    e.agentSays(part.id, "a-ledger", "Top client this year: Juniper Ashgrove.");
+    e.memberSays(part.id, "a-ledger", "Top client this year: Juniper Ashgrove.");
     await rooms.get(shared.id);
     assert.deepEqual(alarms, ["Ledger put a real detail where the cloud can read it"]);
-    assert.equal(e.agents.find((a) => a.id === "a-ledger").status, "active", "a local hire isn't paused for holding real data");
+    assert.equal(e.members.find((a) => a.id === "a-ledger").status, "idle", "a local hire isn't paused for holding real data");
     assert.ok(raisedFromMembrane(money).some((r) => r.urgency === 3 && /works locally/.test(r.context)));
 
     // A room only local hires read: the same message is fine.
     const own = sent(await rooms.open({ name: "Books", brief: "", leadAgentId: "a-ledger" }));
-    const thread = e.issues.find((i) => i.projectId === own.id)!;
-    e.agentSays(thread.id, "a-ledger", "Juniper Ashgrove paid in full.");
+    const thread = e.tasks.find((i) => i.roomId === own.id)!;
+    e.memberSays(thread.id, "a-ledger", "Juniper Ashgrove paid in full.");
     await rooms.get(own.id);
     assert.equal(alarms.length, 1);
   } finally {

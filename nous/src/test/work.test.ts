@@ -39,8 +39,10 @@ test("wakes for the same task merge into one waiting run, carrying the newest re
   assert.equal(work.live(co.id).length, 1, "one run, not three");
   const job = await work.next(hire, 0);
   assert.equal(job?.wakeReason, "issue_commented");
-  assert.equal(job?.env.PAPERCLIP_WAKE_COMMENT_ID, latest.id);
+  assert.equal(job?.env.NOUS_WAKE_MESSAGE_ID, latest.id);
+  assert.equal(job?.env.PAPERCLIP_WAKE_COMMENT_ID, latest.id, "the old name too, for outside workers");
   assert.match(job!.prompt, /Second \(this woke you\)|this woke you\): Second/);
+  assert.match(job!.prompt, /\/v1 with `Authorization: Bearer \$NOUS_RUN_TOKEN`/, "the job teaches Nous's own API");
   work.stop();
 });
 
@@ -69,7 +71,8 @@ test("a run's token speaks for its member only while the run runs", async () => 
   const { engine, work, co, hire } = setup();
   engine.createTask(co.id, { title: "Token", assigneeId: hire.id }, operator);
   const job = await work.next(hire, 0);
-  const token = job!.env.PAPERCLIP_API_KEY;
+  const token = job!.env.NOUS_RUN_TOKEN;
+  assert.equal(job!.env.PAPERCLIP_API_KEY, token);
   assert.deepEqual(work.whoForToken(token), { kind: "member", memberId: hire.id, companyId: co.id, runId: job!.runId });
   work.touch(hire, job!.jobId, "done", { ok: true });
   assert.equal(work.whoForToken(token), null);

@@ -129,10 +129,10 @@ export function CommandLine() {
       const total = late.reduce((a, i) => a + i.balanceCents, 0);
       return say("Ogdoad", `${late.length} invoice${late.length === 1 ? " is" : "s are"} late, ${aud(total)} in all. The oldest is ${late[0].number} from ${late[0].clientName}, ${late[0].daysOverdue} days. Check the bank before chasing.`, "warn");
     }
-    if (!sophia) return say("Ogdoad", "SOPHIA isn't set up yet. Her setup is in the classic view; until then, commands still work here.", "warn");
+    if (!sophia) return say("Ogdoad", "SOPHIA isn't set up yet. Hire her from the Team zone; until then, commands still work here.", "warn");
     try {
       // A comment on her task wakes her, the same way the setup cards do.
-      const r = await api.post<MaybeHeld<unknown>>(`/api/issues/${sophia.taskId}/comments`, { body: said, clientRequestId: crypto.randomUUID() });
+      const r = await api.post<MaybeHeld<unknown>>(`/nous/v1/tasks/${sophia.taskId}/messages`, { body: said, requestId: crypto.randomUUID() });
       if (isHeld(r)) {
         say("Ogdoad", "That names someone, so it's held: check exactly what SOPHIA would get, then send it.", "warn");
         return navigate(`/flow/check/${r.held.id}`);

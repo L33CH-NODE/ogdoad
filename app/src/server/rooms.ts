@@ -1,9 +1,10 @@
 // Project rooms, and the gate everything the operator writes for the team passes through.
 //
-// A room is a project's tasks seen as one live room. The project has a thread of its own (a task Ogdoad
-// opens), and each part of the job is a sub-task of it, with a hire on it. The room shows every thread
-// at once in time order, who is on the project, and who is working on which part right now. Hires talk
-// to each other through the engine: a comment that mentions one wakes it.
+// A room is one of Nous's rooms and its tasks, seen as one live room. The room has a thread of its own
+// (a task Ogdoad opens), and each part of the job is a sub-task of it, with a hire on it. The room
+// shows every thread at once in time order, who is on the project, and who is working on which part
+// right now. Hires talk to each other through Nous: a message that mentions one wakes it. (Inside the
+// app a room is still a "project" and a task an "issue": those are the names its books keep.)
 //
 // The gate: a message, a room's brief, a part's brief, what's typed into a cloud hire's terminal and a
 // new hire's first message all go through the membrane first. Real identities become stand-ins. When
@@ -18,7 +19,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { tokenRe, type Kind } from "../shared/standins.js";
 import { harnessInfo, hireOfAgent, recipientOfAgent, recipientOfHire, recipientsOfComment, recordCrossing, recordDirectCrossing, type Recipient, type Where } from "./crossings.js";
 import { propose, refuseBroken, type Lineup, type ProposedPart, type TeamMember } from "./dispatch/dispatch.js";
-import { engineAuth } from "./engineClient.js";
+import { Nous, type NousMember, type NousMessage, type NousRoom, type NousTask } from "./engineClient.js";
 import { hire as startHire, type HireInput } from "./hire.js";
 import { HttpError, readJson, sendJson } from "./http.js";
 import { Membrane, digestOf, type Change, type Warning } from "./membrane/membrane.js";
@@ -31,7 +32,7 @@ export interface RoomsContext {
   serverUrl: string;
   companyId: string;
   practice: boolean;
-  /** The practice copy on the old engine shares the real team (default: when practising); on its own Nous it has a made-up one. */
+  /** A practice copy that shares the real team (default: when practising). On its own Nous it has a made-up one, and doesn't. */
   sharedTeam?: boolean;
   home?: string;
   /** Horos, for what's typed into a hire's terminal and for hiring. */
@@ -46,14 +47,8 @@ export interface RoomsContext {
   dispatch?: { url: string | null; wake?: () => Promise<void> };
 }
 
-interface EngineProject { id: string; name: string; description?: string | null; status: string; leadAgentId?: string | null; color?: string | null; createdAt: string; updatedAt: string; archivedAt?: string | null }
-interface EngineIssue {
-  id: string; identifier?: string | null; title: string; description?: string | null; status: string; projectId?: string | null; parentId?: string | null;
-  assigneeAgentId?: string | null; assigneeUserId?: string | null; createdByAgentId?: string | null; createdByUserId?: string | null; createdAt: string; updatedAt: string;
-}
-interface EngineComment { id: string; body: string; createdAt: string; authorAgentId?: string | null; authorUserId?: string | null; authorType?: string }
-interface EngineAgent { id: string; name: string; status?: string; role?: string | null; title?: string | null; capabilities?: string | null }
-interface EngineRun { id: string; agentId: string; issueId?: string | null; status: string; startedAt?: string | null }
+/** Only what the room reads of a member, so one it can't find still has a name. */
+type Who = Pick<NousMember, "id" | "name"> & Partial<NousMember>;
 
 export interface Member { agentId: string; name: string; hireId: string | null; harness: string | null; where: Where; paused: boolean }
 export interface Part {
@@ -101,7 +96,8 @@ export interface Check {
   links: Record<string, { real: string; kind: string }>;
 }
 
-interface SayPayload { body: string; projectId?: string | null; partId?: string | null; issueId?: string | null; clientRequestId?: string }
+/** requestId makes a retry one message. Held payloads saved before Nous call it clientRequestId. */
+interface SayPayload { body: string; projectId?: string | null; partId?: string | null; issueId?: string | null; requestId?: string; clientRequestId?: string }
 interface OpenPayload { name: string; brief: string; leadAgentId: string | null }
 interface PartPayload { projectId: string; title: string; brief: string; agentId: string | null }
 interface PromptPayload { hireId: string; text: string; label?: string; harness?: string }
@@ -111,9 +107,6 @@ const OPEN = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"])
 const shortName = (name: string) => name.replace(/ - .*$/, "");
 const mention = (m: { name: string; agentId: string }) => `[@${shortName(m.name)}](agent://${m.agentId})`;
 const LIMIT = { name: 120, title: 240, text: 20_000 } as const;
-
-/** Lists come back bare or wrapped, depending on the route. */
-const items = <T>(v: T[] | { items?: T[] } | null | undefined): T[] => (Array.isArray(v) ? v : v?.items ?? []);
 
 /** What each kind carries that the membrane reads, in order. */
 function readsOf(kind: OutKind, p: any): Array<{ label: string; real: string }> {
@@ -137,35 +130,14 @@ export class Rooms {
   private readonly home: string;
   private readonly membrane: Membrane;
   private readonly outbox: Outbox;
-  private agentList: Promise<EngineAgent[]> | null = null;
+  private readonly nous: Nous;
+  private agentList: Promise<NousMember[]> | null = null;
 
   constructor(private readonly money: Money, private readonly ctx: RoomsContext) {
     this.home = ctx.home ?? OGDOAD_HOME;
     this.membrane = new Membrane(money);
     this.outbox = new Outbox(money);
-  }
-
-  private async engine<T>(path: string, init?: { method: string; body: unknown }): Promise<T> {
-    let r: Response;
-    try {
-      r = await fetch(`${this.ctx.serverUrl}${path}`, {
-        method: init?.method ?? "GET",
-        headers: { accept: "application/json", ...(init ? { "content-type": "application/json" } : {}), ...engineAuth() },
-        body: init ? JSON.stringify(init.body) : undefined,
-        signal: AbortSignal.timeout(8000),
-      });
-    } catch {
-      throw new HttpError(502, "engine_down", "The Ogdoad server didn't answer. Is it running?");
-    }
-    const text = await r.text();
-    if (!r.ok) {
-      let why = "";
-      try {
-        why = String(JSON.parse(text).error ?? "");
-      } catch {}
-      throw new HttpError(r.status === 404 ? 404 : 502, "engine", `The Ogdoad server turned that down${why ? `: ${why}` : ` (${r.status})`}.`);
-    }
-    return (text ? JSON.parse(text) : null) as T;
+    this.nous = new Nous(ctx.serverUrl);
   }
 
   /**
@@ -173,7 +145,7 @@ export class Rooms {
    * named "The room: …" (opened by another copy of Ogdoad, such as the practice copy or a reinstall,
    * whose books never saw it). Found that way, it's remembered, so a room never gets a second thread.
    */
-  private threadIn(projectId: string, issues: EngineIssue[]): string | null {
+  private threadIn(projectId: string, issues: NousTask[]): string | null {
     const row = this.money.db.prepare("SELECT thread_issue_id FROM rooms WHERE project_id = ?").get(projectId) as { thread_issue_id: string } | undefined;
     if (row) return row.thread_issue_id;
     const found = issues.filter((i) => !i.parentId && /^The room: /.test(i.title)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
@@ -182,13 +154,13 @@ export class Rooms {
     return found.id;
   }
 
-  private member(a: EngineAgent): Member {
+  private member(a: Who): Member {
     const h = hireOfAgent(a.id, this.home);
     return { agentId: a.id, name: shortName(a.name), hireId: h?.hireId ?? null, harness: h?.harness ?? null, where: h?.where ?? "unknown", paused: a.status === "paused" };
   }
 
-  private agents(): Promise<EngineAgent[]> {
-    return (this.agentList ??= this.engine<EngineAgent[] | { items: EngineAgent[] }>(`/api/companies/${this.ctx.companyId}/agents`).then(items, () => []));
+  private agents(): Promise<NousMember[]> {
+    return (this.agentList ??= this.nous.members(this.ctx.companyId).catch(() => []));
   }
 
   /** The hires' own names: never mistaken for a client's. */
@@ -196,21 +168,21 @@ export class Rooms {
     return (await this.agents()).map((a) => shortName(a.name));
   }
 
-  private async issuesOf(projectId: string): Promise<EngineIssue[]> {
-    const list = items(await this.engine<EngineIssue[] | { items: EngineIssue[] }>(`/api/companies/${this.ctx.companyId}/issues?projectId=${encodeURIComponent(projectId)}&limit=100`));
-    // A server that ignores the filter must not leak other projects' tasks into a room.
-    return list.filter((i) => !i.projectId || i.projectId === projectId);
+  private async issuesOf(projectId: string): Promise<NousTask[]> {
+    const list = await this.nous.tasks(this.ctx.companyId, { room: projectId, limit: 100 });
+    // A server that ignores the filter must not leak other rooms' tasks into this one.
+    return list.filter((i) => !i.roomId || i.roomId === projectId);
   }
 
-  private async project(projectId: string): Promise<EngineProject> {
-    return this.engine<EngineProject>(`/api/projects/${encodeURIComponent(projectId)}`);
+  private async project(projectId: string): Promise<NousRoom> {
+    return this.nous.room(projectId);
   }
 
-  private summarise(p: EngineProject, issues: EngineIssue[], lastSaid?: string): RoomSummary {
+  private summarise(p: NousRoom, issues: NousTask[], lastSaid?: string): RoomSummary {
     const thread = this.threadIn(p.id, issues);
     const parts = issues.filter((i) => i.id !== thread);
     const lastAt = [p.updatedAt, lastSaid, ...issues.map((i) => i.updatedAt)].filter(Boolean).sort().at(-1)!;
-    const memberIds = [...new Set([p.leadAgentId, ...issues.map((i) => i.assigneeAgentId)].filter((x): x is string => !!x))];
+    const memberIds = [...new Set([p.leadId, ...issues.map((i) => i.assigneeId)].filter((x): x is string => !!x))];
     const memberHireIds = memberIds.map((id) => hireOfAgent(id, this.home)?.hireId).filter((x): x is string => !!x);
     return {
       id: p.id, name: this.membrane.relink(p.name), status: p.status, color: p.color ?? null, lastAt, partCount: parts.length,
@@ -220,7 +192,7 @@ export class Rooms {
 
   /** Every live project as a room, the busiest first. */
   async list(): Promise<RoomSummary[]> {
-    const projects = items(await this.engine<EngineProject[] | { items: EngineProject[] }>(`/api/companies/${this.ctx.companyId}/projects`)).filter((p) => !p.archivedAt);
+    const projects = (await this.nous.rooms(this.ctx.companyId)).filter((p) => !p.archivedAt);
     const rooms = await Promise.all(projects.map(async (p) => this.summarise(p, await this.issuesOf(p.id).catch(() => []))));
     return rooms.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   }
@@ -231,21 +203,21 @@ export class Rooms {
       this.project(projectId),
       this.issuesOf(projectId),
       this.agents(),
-      this.engine<EngineRun[]>(`/api/companies/${this.ctx.companyId}/live-runs`).catch(() => [] as EngineRun[]),
+      this.nous.runs(this.ctx.companyId).catch(() => []),
     ]);
     const threadId = this.threadIn(projectId, issues);
     const recent = [...issues].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 30);
-    const threads = await Promise.all(recent.map(async (i) => ({ issue: i, comments: items(await this.engine<EngineComment[]>(`/api/issues/${i.id}/comments?order=desc&limit=40`).catch((): EngineComment[] => [])) })));
+    const threads = await Promise.all(recent.map(async (i) => ({ issue: i, comments: await this.nous.messages(i.id, 40).catch((): NousMessage[] => []) })));
     const byId = new Map(agents.map((a) => [a.id, a]));
 
     const messages: RoomMessage[] = [];
-    const alarms: Array<{ c: EngineComment; issueId: string; warnings: Warning[] }> = [];
+    const alarms: Array<{ c: NousMessage; issueId: string; warnings: Warning[] }> = [];
     for (const { issue, comments } of threads) {
-      messages.push({ id: `opened-${issue.id}`, at: issue.createdAt, partId: issue.id, kind: "opened", agentId: issue.createdByAgentId ?? null, byYou: !issue.createdByAgentId, title: this.membrane.relink(issue.title) });
+      messages.push({ id: `opened-${issue.id}`, at: issue.createdAt, partId: issue.id, kind: "opened", agentId: issue.authorId, byYou: !issue.authorId, title: this.membrane.relink(issue.title) });
       for (const c of comments) {
-        const fromAgent = !!c.authorAgentId || c.authorType === "agent";
+        const fromAgent = !!c.authorId;
         const { warnings } = this.membrane.back(c.body, { fromTeam: fromAgent });
-        messages.push({ id: c.id, at: c.createdAt, partId: issue.id, kind: "said", from: fromAgent ? "agent" : "you", agentId: c.authorAgentId ?? null, body: c.body, ...(warnings.length ? { warnings } : {}) });
+        messages.push({ id: c.id, at: c.createdAt, partId: issue.id, kind: "said", from: fromAgent ? "agent" : "you", agentId: c.authorId, body: c.body, ...(warnings.length ? { warnings } : {}) });
         if (fromAgent && warnings.some((w) => w.kind === "real")) alarms.push({ c, issueId: issue.id, warnings });
       }
     }
@@ -254,32 +226,32 @@ export class Rooms {
     messages.sort((a, b) => a.at.localeCompare(b.at));
 
     // Who else reads this room: a local hire may hold real records, but not where cloud hires can read them.
-    const readers = [p.leadAgentId, ...issues.map((i) => i.assigneeAgentId)].filter((x): x is string => !!x).map((id) => this.member(byId.get(id) ?? { id, name: "An agent" }));
+    const readers = [p.leadId, ...issues.map((i) => i.assigneeId)].filter((x): x is string => !!x).map((id) => this.member(byId.get(id) ?? { id, name: "An agent" }));
     const cloudReads = readers.some((m) => m.where !== "local");
-    for (const a of alarms) await this.alarm(a.c, a.issueId, projectId, a.c.authorAgentId ? this.member(byId.get(a.c.authorAgentId) ?? { id: a.c.authorAgentId, name: "A hire" }) : null, cloudReads);
+    for (const a of alarms) await this.alarm(a.c, a.issueId, projectId, a.c.authorId ? this.member(byId.get(a.c.authorId) ?? { id: a.c.authorId, name: "A hire" }) : null, cloudReads);
 
-    const involved = new Set<string>([p.leadAgentId, ...issues.map((i) => i.assigneeAgentId), ...messages.map((m) => ("agentId" in m ? m.agentId : null))].filter((x): x is string => !!x));
+    const involved = new Set<string>([p.leadId, ...issues.map((i) => i.assigneeId), ...messages.map((m) => ("agentId" in m ? m.agentId : null))].filter((x): x is string => !!x));
     const issueIds = new Set(issues.map((i) => i.id));
     const lastSaid = messages.at(-1)?.at;
     const shown = messages.slice(-200);
-    const texts = [p.name, p.description ?? "", ...issues.map((i) => i.title), ...shown.map((m) => (m.kind === "said" ? m.body : ""))];
+    const texts = [p.name, p.brief ?? "", ...issues.map((i) => i.title), ...shown.map((m) => (m.kind === "said" ? m.body : ""))];
     // Re-read after any pause above, so the room shows it.
-    const latest = alarms.length ? items(await this.engine<EngineAgent[] | { items: EngineAgent[] }>(`/api/companies/${this.ctx.companyId}/agents`).catch(() => agents)) : agents;
+    const latest = alarms.length ? await this.nous.members(this.ctx.companyId).catch(() => agents) : agents;
     const latestById = new Map(latest.map((a) => [a.id, a]));
     return {
       ...this.summarise(p, issues, lastSaid),
-      description: this.membrane.relink(p.description ?? ""),
-      leadAgentId: p.leadAgentId ?? null,
+      description: this.membrane.relink(p.brief ?? ""),
+      leadAgentId: p.leadId,
       threadId,
       parts: issues
-        .map((i) => ({ id: i.id, identifier: i.identifier ?? null, title: this.membrane.relink(i.title), status: i.status, agentId: i.assigneeAgentId ?? null, yours: !!i.assigneeUserId, thread: i.id === threadId, createdAt: i.createdAt, updatedAt: i.updatedAt }))
+        .map((i) => ({ id: i.id, identifier: i.identifier ?? null, title: this.membrane.relink(i.title), status: i.status, agentId: i.assigneeId, yours: i.forOperator, thread: i.id === threadId, createdAt: i.createdAt, updatedAt: i.updatedAt }))
         .sort((a, b) => Number(b.thread) - Number(a.thread) || a.createdAt.localeCompare(b.createdAt)),
       members: [...involved].map((id) => this.member(latestById.get(id) ?? byId.get(id) ?? { id, name: "An agent" })),
-      everyone: latest.filter((a) => a.status !== "terminated").map((a) => this.member(a)),
+      everyone: latest.filter((a) => a.status !== "let_go").map((a) => this.member(a)),
       messages: shown,
-      running: items(runs)
-        .filter((r) => r.issueId && issueIds.has(r.issueId) && (r.status === "running" || r.status === "queued"))
-        .map((r) => ({ agentId: r.agentId, issueId: r.issueId!, status: r.status, startedAt: r.startedAt ?? null })),
+      running: runs
+        .filter((r) => r.taskId && issueIds.has(r.taskId) && (r.status === "running" || r.status === "queued"))
+        .map((r) => ({ agentId: r.memberId, issueId: r.taskId!, status: r.status, startedAt: r.startedAt })),
       links: this.membrane.lookup(texts.flatMap((t) => [...t.matchAll(tokenRe("gi"))].map((m) => m[0]))),
       held: this.outbox.waiting(projectId).map((h) => ({ id: h.id, kind: h.kind, createdAt: h.createdAt })),
     };
@@ -291,7 +263,7 @@ export class Rooms {
    * the operator's call. From a local hire: it may hold real records by design, but not where cloud hires
    * read them; that's an alarm too (the cloud can read it now), without a pause. Each noted once.
    */
-  private async alarm(c: EngineComment, issueId: string, projectId: string, who: Member | null, cloudReads: boolean): Promise<void> {
+  private async alarm(c: NousMessage, issueId: string, projectId: string, who: Member | null, cloudReads: boolean): Promise<void> {
     if (this.ctx.practice) return;
     if (this.money.db.prepare("SELECT 1 FROM events WHERE kind = 'membrane_alarm' AND subject_id = ?").get(c.id)) return;
     if (who?.where === "local") {
@@ -302,7 +274,7 @@ export class Rooms {
       return;
     }
     let paused = false;
-    if (who?.agentId) paused = await this.engine(`/api/agents/${encodeURIComponent(who.agentId)}/pause`, { method: "POST", body: {} }).then(() => true, () => false);
+    if (who?.agentId) paused = await this.nous.setPaused(who.agentId, true).then(() => true, () => false);
     const name = who?.name ?? "A hire";
     this.money.db.prepare("INSERT INTO events (at, actor, kind, subject_id, detail) VALUES (?, 'ogdoad', 'membrane_alarm', ?, ?)")
       .run(new Date().toISOString(), c.id, JSON.stringify({ projectId, issueId, agentId: who?.agentId ?? null, who: name, what: "a client's real detail", paused }));
@@ -319,7 +291,7 @@ export class Rooms {
       brief.trim(),
       "---",
       `This is the room for the project "${name}". The operator and every hire on the project talk here, and each part of the job is a sub-task of this one.`,
-      "To bring someone in, mention them in a comment, like this: [@Name](agent://their-agent-id). Whoever you mention is woken to read it.",
+      "To bring someone in, mention them in a message, like this: [@Name](agent://their-member-id). Whoever you mention is woken to read it.",
       "Names like C-4821, EMAIL-2210 or ADDR-1180 are stand-ins for real details the operator keeps private. Use them exactly as written, and never ask for the real ones.",
     ].filter(Boolean).join("\n\n");
   }
@@ -329,7 +301,7 @@ export class Rooms {
       brief.trim(),
       "---",
       `This is one part of the project "${name}". Its room is ${room}: post there to talk with the operator and the others.`,
-      others.length ? `The others on this project: ${others.map(mention).join(", ")}. Mention one in a comment to bring them in.` : "",
+      others.length ? `The others on this project: ${others.map(mention).join(", ")}. Mention one in a message to bring them in.` : "",
       "Names like C-4821 are stand-ins for real details the operator keeps private. Use them exactly as written.",
     ].filter(Boolean).join("\n\n");
   }
@@ -399,7 +371,7 @@ export class Rooms {
       return { where: "a new hire's first message", reaches: [{ who: String(p.input?.label ?? "").trim() || "the new hire", via: info.via, where: info.where }] };
     }
     if (p.issueId) {
-      const issue = await this.engine<EngineIssue>(`/api/issues/${encodeURIComponent(p.issueId)}`);
+      const issue = await this.nous.task(p.issueId);
       return { where: `${issue.identifier ? `${issue.identifier}: ` : ""}${this.membrane.relink(issue.title)}`, reaches: await recipientsOfComment(p.issueId, text, this.ctx.serverUrl, this.home) };
     }
     const room = await this.project(p.projectId);
@@ -407,7 +379,7 @@ export class Rooms {
     const part = p.partId ? (await this.issuesOf(p.projectId)).find((i) => i.id === p.partId) : null;
     return {
       where: `the room "${this.membrane.relink(room.name)}"${part ? `, on ${this.membrane.relink(part.title)}` : ""}`,
-      reaches: target ? await recipientsOfComment(target, text, this.ctx.serverUrl, this.home) : room.leadAgentId ? [recipientOfAgent(room.leadAgentId, this.home)] : [],
+      reaches: target ? await recipientsOfComment(target, text, this.ctx.serverUrl, this.home) : room.leadId ? [recipientOfAgent(room.leadId, this.home)] : [],
     };
   }
 
@@ -525,25 +497,19 @@ export class Rooms {
   }
 
   private async deliverOpen(p: OpenPayload, name: string, brief: string): Promise<RoomSummary> {
-    const made = await this.engine<EngineProject>(`/api/companies/${this.ctx.companyId}/projects`, { method: "POST", body: { name, description: brief || null, status: "in_progress", leadAgentId: p.leadAgentId } });
-    const thread = await this.engine<EngineIssue>(`/api/companies/${this.ctx.companyId}/issues`, {
-      method: "POST",
-      body: { title: `The room: ${name}`, description: this.threadBrief(name, brief), projectId: made.id, status: "todo", assigneeAgentId: p.leadAgentId },
-    });
+    const made = await this.nous.createRoom(this.ctx.companyId, { name, brief: brief || null, status: "in_progress", leadId: p.leadAgentId });
+    const thread = await this.nous.createTask(this.ctx.companyId, { title: `The room: ${name}`, description: this.threadBrief(name, brief), roomId: made.id, status: "todo", assigneeId: p.leadAgentId });
     this.money.db.prepare("INSERT INTO rooms (project_id, thread_issue_id, opened_at) VALUES (?, ?, ?)").run(made.id, thread.id, new Date().toISOString());
     this.noteBrief(thread.id, p.leadAgentId, brief || name);
     return this.summarise(made, [thread]);
   }
 
   /** The room's own thread, opened now if the project was started somewhere else. */
-  private async ensureThread(p: EngineProject): Promise<string> {
+  private async ensureThread(p: NousRoom): Promise<string> {
     const known = this.threadIn(p.id, await this.issuesOf(p.id));
     if (known) return known;
     this.refuseInPractice("Start a room's thread");
-    const thread = await this.engine<EngineIssue>(`/api/companies/${this.ctx.companyId}/issues`, {
-      method: "POST",
-      body: { title: `The room: ${p.name}`, description: this.threadBrief(p.name, p.description ?? ""), projectId: p.id, status: "todo", assigneeAgentId: p.leadAgentId ?? null },
-    });
+    const thread = await this.nous.createTask(this.ctx.companyId, { title: `The room: ${p.name}`, description: this.threadBrief(p.name, p.brief ?? ""), roomId: p.id, status: "todo", assigneeId: p.leadId });
     this.money.db.prepare("INSERT INTO rooms (project_id, thread_issue_id, opened_at) VALUES (?, ?, ?)").run(p.id, thread.id, new Date().toISOString());
     return thread.id;
   }
@@ -564,11 +530,10 @@ export class Rooms {
     const threadId = await this.ensureThread(room);
     const issues = await this.issuesOf(p.projectId);
     const thread = issues.find((i) => i.id === threadId);
-    const onIt = new Set([room.leadAgentId, ...issues.map((i) => i.assigneeAgentId)].filter((x): x is string => !!x && x !== p.agentId));
+    const onIt = new Set([room.leadId, ...issues.map((i) => i.assigneeId)].filter((x): x is string => !!x && x !== p.agentId));
     const others = agents.filter((a) => onIt.has(a.id)).map((a) => this.member(a));
-    const made = await this.engine<EngineIssue>(`/api/companies/${this.ctx.companyId}/issues`, {
-      method: "POST",
-      body: { title, description: this.partBrief(room.name, brief, thread?.identifier ?? `"The room: ${room.name}"`, others), projectId: p.projectId, parentId: threadId, status: "todo", assigneeAgentId: p.agentId },
+    const made = await this.nous.createTask(this.ctx.companyId, {
+      title, description: this.partBrief(room.name, brief, thread?.identifier ?? `"The room: ${room.name}"`, others), roomId: p.projectId, parentId: threadId, status: "todo", assigneeId: p.agentId,
     });
     this.noteBrief(made.id, p.agentId, `${title}\n\n${brief}`);
     return { id: made.id, identifier: made.identifier ?? null, title: this.membrane.relink(made.title), status: made.status, agentId: p.agentId, yours: false, thread: false, createdAt: made.createdAt, updatedAt: made.updatedAt };
@@ -578,7 +543,7 @@ export class Rooms {
 
   /** The team as the dispatcher sees it: who each hire is, what it's for, and whether it runs locally. */
   private async teamForDispatch(): Promise<TeamMember[]> {
-    return (await this.agents()).filter((a) => a.status !== "terminated").map((a) => {
+    return (await this.agents()).filter((a) => a.status !== "let_go").map((a) => {
       const h = hireOfAgent(a.id, this.home);
       return { agentId: a.id, name: shortName(a.name), via: h?.via ?? "the Ogdoad server", where: h?.where ?? "unknown", role: a.role ?? "general", title: a.title ?? null, capabilities: a.capabilities ?? null };
     });
@@ -591,7 +556,7 @@ export class Rooms {
   async proposeLineup(projectId: string): Promise<Lineup & { team: TeamMember[] }> {
     const [p, issues, team] = await Promise.all([this.project(projectId), this.issuesOf(projectId), this.teamForDispatch()]);
     const threadId = this.threadIn(projectId, issues);
-    const job = { name: p.name, brief: (p.description ?? "").split(/\n\s*---\s*\n/)[0], existing: issues.filter((i) => i.id !== threadId).map((i) => i.title) };
+    const job = { name: p.name, brief: (p.brief ?? "").split(/\n\s*---\s*\n/)[0], existing: issues.filter((i) => i.id !== threadId).map((i) => i.title) };
     const lineup = await propose(job, team, { url: this.ctx.dispatch?.url ?? null, wake: this.ctx.dispatch?.wake });
     // On the operator's screen, the stand-ins read as who they are.
     return { ...lineup, parts: lineup.parts.map((x) => ({ ...x, title: this.membrane.relink(x.title), brief: this.membrane.relink(x.brief) })), team };
@@ -645,18 +610,18 @@ export class Rooms {
     return this.through("say", projectId, payload, ([text]) => this.deliverSay(payload, text));
   }
 
-  /** Say something on any task (SOPHIA's, a hire's): what the browser posts as a comment comes here. */
-  async sayOn(issueId: string, input: { body?: unknown; clientRequestId?: unknown }): Promise<{ ok: true; issueId: string; comment: unknown } | { held: Check }> {
+  /** Say something on any task (SOPHIA's, a hire's): what the browser posts as a message comes here. */
+  async sayOn(issueId: string, input: { body?: unknown; requestId?: unknown }): Promise<{ ok: true; issueId: string; comment: NousMessage } | { held: Check }> {
     const body = String(input.body ?? "").trim();
     if (!body) throw new HttpError(400, "body", "Nothing to send.");
     if (body.length > LIMIT.text) throw new HttpError(400, "body", "That's too long for one message.");
-    const payload: SayPayload = { body, issueId, clientRequestId: input.clientRequestId ? String(input.clientRequestId) : undefined };
+    const payload: SayPayload = { body, issueId, requestId: input.requestId ? String(input.requestId) : undefined };
     return this.through("say", null, payload, ([text]) => this.deliverSay(payload, text));
   }
 
-  private async deliverSay(p: SayPayload, text: string): Promise<{ ok: true; issueId: string; comment: unknown }> {
+  private async deliverSay(p: SayPayload, text: string): Promise<{ ok: true; issueId: string; comment: NousMessage }> {
     const issueId = p.issueId ?? p.partId ?? (await this.ensureThread(await this.project(p.projectId!)));
-    const comment = await this.engine(`/api/issues/${encodeURIComponent(issueId)}/comments`, { method: "POST", body: { body: text, clientRequestId: p.clientRequestId ?? randomUUID() } });
+    const comment = await this.nous.say(issueId, text, p.requestId ?? p.clientRequestId ?? randomUUID());
     for (const to of await recipientsOfComment(issueId, text, this.ctx.serverUrl, this.home)) {
       recordCrossing(this.money, issueId, "message", Buffer.from(JSON.stringify({ body: text })), to);
     }

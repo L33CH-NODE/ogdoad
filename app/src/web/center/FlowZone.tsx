@@ -79,7 +79,7 @@ export function FlowZone() {
       {now.context ? <span className="muted now-context">{now.context}</span> : null}
       <div className="now-meta">
         <span className="chip quiet">{SOURCE[now.source]}{now.cents ? ` · ${aud(now.cents, { cents: false })}` : ""}</span>
-        {now.ref && !doing ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => openRef(now.ref!)}>Open it{/^https?:/.test(now.ref) ? " (classic view)" : ""}</button> : null}
+        {now.ref && !doing ? <button className="link-btn" style={{ fontSize: 13 }} onClick={() => openRef(now.ref!)}>Open it</button> : null}
       </div>
       <div className="now-acts">
         <button className="btn small" disabled={busy} onClick={() => act(now, "park")} title="Park it (P)">Park <kbd>P</kbd></button>

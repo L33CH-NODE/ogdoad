@@ -2,10 +2,9 @@
 //   horos sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes]
 // Interactive by default; the flags let it run unattended (tests, scripted installs).
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawn as spawnProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -17,24 +16,12 @@ import { renderBrief } from "./brief.js";
 import { candidatesFrom, recommendSophia, type Candidate, type Trust } from "./recommend.js";
 
 const HOROS_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
+/** Nous, Ogdoad's engine: the company, its members and their tasks. */
 const OGDOAD_URL = (process.env.OGDOAD_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, "");
-/** The control center (on Nous, task pages live there, not on the engine). */
+/** The control center, where SOPHIA's task opens. */
 const APP_URL = (process.env.OGDOAD_APP_URL ?? "http://127.0.0.1:3101").replace(/\/+$/, "");
-/** On Nous the wizard signs as the operator; the engine Ogdoad started on trusted this machine. Settled by runWizard. */
-let ON_NOUS = process.env.OGDOAD_ENGINE === "nous";
-/** OGDOAD_ENGINE when it's set; otherwise the engine says what it is (Nous answers /v1/health with its protocol). */
-async function engineIsNous(): Promise<boolean> {
-  const said = process.env.OGDOAD_ENGINE?.trim();
-  if (said) return said === "nous";
-  try {
-    const health = (await (await fetch(`${OGDOAD_URL}/v1/health`, { signal: AbortSignal.timeout(2000) })).json()) as { protocol?: unknown };
-    return String(health.protocol ?? "").startsWith("nous/");
-  } catch {
-    return false;
-  }
-}
+/** The wizard signs as the operator: being on this machine isn't enough for Nous. */
 function nousAuth(): Record<string, string> {
-  if (!ON_NOUS) return {};
   const file = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "operator.token");
   return { authorization: `Bearer ${readFileSync(file, "utf8").trim()}` };
 }
@@ -49,10 +36,9 @@ export interface WizardOptions {
 }
 
 async function ogdoad(method: string, path: string, body?: unknown): Promise<any> {
-  // Local-trusted Ogdoad treats loopback requests as the operator; Origin marks them as same-site.
   const res = await fetch(`${OGDOAD_URL}${path}`, {
     method,
-    headers: { "content-type": "application/json", origin: OGDOAD_URL, ...nousAuth() },
+    headers: { "content-type": "application/json", ...nousAuth() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -71,23 +57,13 @@ async function horos(method: string, path: string, body?: unknown): Promise<any>
   return json;
 }
 
-async function up(url: string): Promise<boolean> {
+/** Nous's state: down (null), or up and whether it's still locked. */
+async function nousHealth(): Promise<{ locked: boolean } | null> {
   try {
-    return (await fetch(url, { signal: AbortSignal.timeout(2000) })).ok;
+    const r = await fetch(`${OGDOAD_URL}/v1/health`, { signal: AbortSignal.timeout(2000) });
+    return r.ok ? { locked: ((await r.json()) as { locked?: boolean }).locked !== false } : null;
   } catch {
-    return false;
-  }
-}
-
-/** The live-agent mailbox key for an agent: created here if the adapter hasn't made it yet. */
-function ensureAgentKey(agentId: string): void {
-  const home = process.env.PAPERCLIP_HOME?.trim() || join(homedir(), ".paperclip");
-  const file = join(home, "live-agent", "keys", `${agentId}.key`);
-  mkdirSync(join(home, "live-agent", "keys"), { recursive: true });
-  try {
-    writeFileSync(file, randomBytes(32).toString("base64url"), { encoding: "utf8", mode: 0o600, flag: "wx" });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    return null;
   }
 }
 
@@ -110,17 +86,19 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
 
   try {
     say("0GD0AD: choosing SOPHIA, your CEO\n");
-    if (!(await up(`${OGDOAD_URL}/api/health`))) throw new Error(`Ogdoad isn't answering at ${OGDOAD_URL}. Start it first (OGDOAD-START).`);
-    ON_NOUS = await engineIsNous();
+    const health = await nousHealth();
+    if (!health) throw new Error(`Ogdoad isn't answering at ${OGDOAD_URL}. Start it first (OGDOAD-START).`);
+    // Nous opens with the key the operator's vault hands it, so the vault comes first.
+    if (health.locked) throw new Error(`Ogdoad is locked. Open ${APP_URL}, make your key (or unlock), then run this again.`);
     await startDetached();
 
     // 1. Company.
-    let company: { id: string; name: string; issuePrefix?: string };
+    let company: { id: string; name: string };
     if (opts.companyId) {
-      company = await ogdoad("GET", `/api/companies/${opts.companyId}`);
+      company = await ogdoad("GET", `/v1/companies/${opts.companyId}`);
     } else {
       const name = opts.companyName ?? (await ask("What's the company called? ", "My Company"));
-      company = await ogdoad("POST", "/api/companies", { name });
+      company = await ogdoad("POST", "/v1/companies", { name });
       say(`Created company "${company.name}".`);
     }
 
@@ -151,26 +129,23 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
       if (trust === "private" && pick.privacy === "cloud") throw new Error(`${pick.name} is a cloud harness, and you chose private.`);
     }
 
-    // 4. SOPHIA's agent record: live-agent adapter, so Ogdoad holds no provider login.
+    // 4. SOPHIA as a member: her harness takes her jobs through a seat, so Ogdoad holds no provider login.
+    // Nous writes her mailbox key itself.
     const sessionName = `SOPHIA - ${company.name}`;
-    const agent = await ogdoad("POST", `/api/companies/${company.id}/agents`, {
+    const agent = await ogdoad("POST", `/v1/companies/${company.id}/members`, {
       name: "SOPHIA",
       role: "ceo",
       title: "CEO",
-      adapterType: "live_agent",
-      adapterConfig: {},
       capabilities: `CEO seat, run by ${pick.name} through Horos.`,
     });
-    // Nous writes each member's mailbox key itself.
-    if (!ON_NOUS) ensureAgentKey(agent.id);
+    const mailbox = `${OGDOAD_URL}/mailbox`;
 
     // 5. Brief and spawn her.
     const seatDir = join(OGDOAD_HOME, "seats", `sophia-${company.id.slice(0, 8)}`);
     mkdirSync(seatDir, { recursive: true });
     const brief = renderBrief({
       companyName: company.name, companyId: company.id, agentId: agent.id, apiUrl: OGDOAD_URL,
-      horosUrl: HOROS_URL, horosTokenFile: TOKEN_FILE, horosCli: HOROS_CLI, trust,
-      nousMailbox: ON_NOUS ? `${OGDOAD_URL}/mailbox` : undefined,
+      horosUrl: HOROS_URL, horosTokenFile: TOKEN_FILE, horosCli: HOROS_CLI, trust, mailbox,
     });
     const briefFile = join(seatDir, "SOPHIA.md");
     writeFileSync(briefFile, brief, "utf8");
@@ -200,21 +175,20 @@ export async function runWizard(opts: WizardOptions): Promise<void> {
     say(`\nSOPHIA is starting on ${pick.name} (hire ${hire.id}).`);
 
     // 6. Seat her, then give her the setup task; the engine wakes her and the job flows through Horos.
-    await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id, ...(ON_NOUS ? { mailbox: `${OGDOAD_URL}/mailbox` } : {}) });
-    const task = await ogdoad("POST", `/api/companies/${company.id}/issues`, {
+    await horos("POST", "/v1/seats", { agentId: agent.id, hireId: hire.id, mailbox });
+    const task = await ogdoad("POST", `/v1/companies/${company.id}/tasks`, {
       title: "Set up the company with SOPHIA",
       description: `SOPHIA interviews the operator with multiple-choice questions about ${company.name} and about how Ogdoad should be set up, then writes a company profile and proposes the first hires.`,
       status: "todo",
       priority: "high",
-      assigneeAgentId: agent.id,
+      assigneeId: agent.id,
     });
 
-    const state = { companyId: company.id, companyName: company.name, agentId: agent.id, hireId: hire.id, harness: pick.id, sessionId, sessionName, seatDir, taskId: task.id, trust };
+    const state = { companyId: company.id, companyName: company.name, agentId: agent.id, hireId: hire.id, harness: pick.id, sessionId, sessionName, seatDir, taskId: task.id, trust, engine: "nous" };
     writeFileSync(join(OGDOAD_HOME, "sophia.json"), JSON.stringify(state, null, 2));
 
-    // 7. Open the UI on SOPHIA's task.
-    const prefix = ON_NOUS ? null : company.issuePrefix ?? (await ogdoad("GET", `/api/companies/${company.id}`)).issuePrefix;
-    const url = ON_NOUS ? `${APP_URL}/team/task/${task.id}` : prefix && task.identifier ? `${OGDOAD_URL}/${prefix}/issues/${task.identifier}` : OGDOAD_URL;
+    // 7. Open the control center on SOPHIA's task.
+    const url = `${APP_URL}/team/task/${task.id}`;
     if (opts.openBrowser !== false) openInBrowser(url);
     say(`\nOgdoad is opening in your browser.`);
     say(`Didn't open? Click here: ${url}`);

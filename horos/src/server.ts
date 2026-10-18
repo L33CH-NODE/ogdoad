@@ -1,6 +1,5 @@
-// Horos's API: localhost only, every call carries the per-install token.
-// Paperclip's local-trusted mode treats any loopback request as the operator, so Horos adds its own
-// check: a process (or a web page) that can reach 127.0.0.1 still can't drive hires without the token.
+// Horos's API: localhost only, every call carries the per-install token. Being on this machine is
+// never enough: a process (or a web page) that can reach 127.0.0.1 still can't drive hires without it.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
@@ -16,7 +15,8 @@ import { ROSTER_FILE, loadRoster, resumeArgsFor, saveRoster, type RosterEntry } 
 import type { HireState } from "./rules.js";
 import { Seat } from "./seat.js";
 
-const DEFAULT_MAILBOX = process.env.LIVE_AGENT_MAILBOX ?? "http://127.0.0.1:3199";
+/** Nous's mailbox, where seats take their members' jobs. */
+const DEFAULT_MAILBOX = process.env.OGDOAD_MAILBOX ?? `${(process.env.OGDOAD_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, "")}/mailbox`;
 
 export interface HorosServerOptions {
   port: number;
@@ -77,7 +77,7 @@ const STATE_WORDS: Partial<Record<HireState, string>> = { working: "working", id
 
 export class Horos {
   readonly hires = new Map<string, Hire>();
-  /** Seats by Paperclip agent id. */
+  /** Seats by member id. */
   readonly seats = new Map<string, Seat>();
   readonly notifier: Notifier;
   private readonly subscribers = new Set<ServerResponse>();
@@ -112,7 +112,7 @@ export class Horos {
     if (n) this.broadcast("notification", n);
   }
 
-  /** Bind a hire to a Paperclip agent on the live-agent adapter, so its jobs flow into the session. */
+  /** Bind a hire to a member of the company, so its jobs flow into the session. */
   bindSeat(agentId: string, hireId: string, mailbox = DEFAULT_MAILBOX): Seat {
     const hire = this.hires.get(hireId) ?? null;
     const entry = this.roster.find((e) => e.id === hireId);

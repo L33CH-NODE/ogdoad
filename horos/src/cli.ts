@@ -21,7 +21,7 @@
 //   horos prompt <id> <text...> [--wait]
 //   horos keys <id> <key...>     (enter, esc, up, down, tab, ctrl+c, or literal text)
 //   horos kill <id>              (lets the hire go: stopped, unseated, dropped from the roster)
-//   horos seat <hireId> --agent <paperclip agent id>   (jobs for that agent flow into the hire)
+//   horos seat <hireId> --agent <member id>   (jobs for that member flow into the hire)
 //   horos seats
 //   horos done <jobId> --agent <agentId> [--summary "..."] [--fail]
 //   horos sophia [--company <id> | --company-name "Name"] [--trust private|balanced|power] [--yes] [--no-browser] [--show]
@@ -76,8 +76,9 @@ async function main(): Promise<void> {
   switch (command) {
     case "serve": {
       // Every notification lands in the feed; the ones that matter now also pop up on the desktop,
-      // and status flips arrive as a digest at most once a minute.
-      const notifier = new Notifier({ file: NOTIFICATIONS_FILE, toast: desktopToast(), pulseDigestMs: 60_000 });
+      // and status flips arrive as a digest at most once a minute. OGDOAD_TOASTS=off keeps the
+      // desktop quiet (a test rig, a machine with no one at it): the feed still has everything.
+      const notifier = new Notifier({ file: NOTIFICATIONS_FILE, toast: process.env.OGDOAD_TOASTS === "off" ? null : desktopToast(), pulseDigestMs: 60_000 });
       const horos = new Horos({ notifier, log: (event, data) => console.log(`${new Date().toISOString()} ${event} ${JSON.stringify(data)}`) });
       const exit = () => {
         server.close(() => process.exit(0));
@@ -212,7 +213,7 @@ async function main(): Promise<void> {
     }
     case "seat": {
       const agentId = flag("agent");
-      if (!argv[1] || !agentId) throw new Error("usage: seat <hireId> --agent <paperclip agent id> [--mailbox URL]");
+      if (!argv[1] || !agentId) throw new Error("usage: seat <hireId> --agent <member id> [--mailbox URL]");
       const seat = await api("POST", "/v1/seats", { hireId: argv[1], agentId, mailbox: flag("mailbox") });
       console.log(`seat bound: agent ${seat.agentId} -> hire ${seat.hireId} (${seat.mailbox})`);
       return;

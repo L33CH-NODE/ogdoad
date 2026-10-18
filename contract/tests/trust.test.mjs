@@ -5,12 +5,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ENGINE, better, freshCompany, ok } from "../client.mjs";
+import { ENGINE, freshCompany, ok } from "../client.mjs";
 
 const bare = (method, path, body) =>
   fetch(`${ENGINE}${path}`, { method, headers: { "content-type": "application/json", origin: ENGINE }, body: body === undefined ? undefined : JSON.stringify(body) });
 
-test("nothing on this machine is the operator without the operator's token", better("the operator signs with a token"), async () => {
+test("nothing on this machine is the operator without the operator's token", async () => {
   const co = await freshCompany("trust");
   const task = await ok("POST", `/api/companies/${co.id}/issues`, { title: "Guarded", status: "todo" });
   for (const [method, path, body] of [

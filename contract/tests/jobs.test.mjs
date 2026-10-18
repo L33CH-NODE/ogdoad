@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { better, call, eventually, freshCompany, liveAgent, nextJob, noJob, ok } from "../client.mjs";
+import { call, eventually, freshCompany, liveAgent, nextJob, noJob, ok } from "../client.mjs";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const co = await freshCompany("jobs");
@@ -156,7 +156,7 @@ test("an approval: asked for by the hire, shown to the operator, decided with a 
 });
 
 // Ogdoad does better: the engine it started on wakes the hire when you approve, not when you reject.
-test("a rejected approval says so, and the hire is told", better("a rejection reaches the hire too"), async () => {
+test("a rejected approval says so, and the hire is told", async () => {
   const { task, job, agent } = await working("Hopeful");
   const asked = await ok("POST", `/api/companies/${co.id}/approvals`, { type: "request_board_approval", requestedByAgentId: agent.id, issueIds: [task.id], payload: { title: "Hire ten people" } }, job.asAgent);
   await close(job, task, "in_review");
@@ -169,7 +169,7 @@ test("a rejected approval says so, and the hire is told", better("a rejection re
 
 // Ogdoad does better: a hire is only asked for, and the operator's yes is what makes the member. The engine
 // Ogdoad started on makes the agent first and leaves it waiting, so a no leaves one behind.
-test("a hire asks for a hire: making one is refused with the way to ask, and the operator's yes makes the member", better("hires are asked for, then made"), async () => {
+test("a hire asks for a hire: making one is refused with the way to ask, and the operator's yes makes the member", async () => {
   const { task, job, agent } = await working("Recruiter");
   const direct = await call("POST", `/api/companies/${co.id}/agents`, { name: "Shortcut", adapterType: "live_agent" }, job.asAgent);
   assert.equal(direct.status, 403);
@@ -194,7 +194,7 @@ test("a hire asks for a hire: making one is refused with the way to ask, and the
 
 // Ogdoad does better here. Rooms, the crossings log and the briefs all say a mention wakes the hire it
 // names; the engine Ogdoad started on treats a mention as context only, so it's expected to fail there.
-test("a mention wakes the hire it names", better("mentions wake (Paperclip's don't)"), async () => {
+test("a mention wakes the hire it names", async () => {
   const { task, job } = await working("Mentioner");
   await close(job, task, "done");
   const other = await liveAgent(co.id, "Named");

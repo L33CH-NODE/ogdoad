@@ -1,7 +1,8 @@
-// Run the engine contract: what Ogdoad, Horos and the agents rely on the engine for, as tests.
-//   node contract/run.mjs              boot the isolated engine, run every test, stop it again
+// Run the engine contract: what Ogdoad, Horos and the agents relied on the engine for, as tests. They
+// speak the routes Ogdoad started with, which Nous's translator keeps for workers outside Horos; Nous's
+// own API (/v1) is tested in nous/ and end to end with the app.
+//   node contract/run.mjs              boot an isolated Nous, run every test, stop it again
 //   node contract/run.mjs --keep       leave it running afterwards (quicker next time)
-//   CONTRACT_ENGINE=nous node contract/run.mjs     against Nous, Ogdoad's own engine
 //   ENGINE_URL=http://... node contract/run.mjs     against an engine already up (nothing booted)
 
 import { spawnSync } from "node:child_process";
@@ -9,7 +10,7 @@ import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ENGINE_URL, KEYS_DIR, KIND, MAILBOX_URL, down, operatorToken, up } from "./engine.mjs";
+import { ENGINE_URL, KEYS_DIR, MAILBOX_URL, down, operatorToken, up } from "./engine.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const given = process.env.ENGINE_URL;
@@ -23,7 +24,6 @@ const run = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...te
   env: {
     ...process.env,
     ENGINE_URL: given ?? ENGINE_URL,
-    CONTRACT_ENGINE: KIND,
     CONTRACT_MAILBOX_URL: process.env.CONTRACT_MAILBOX_URL ?? MAILBOX_URL,
     CONTRACT_KEYS_DIR: process.env.CONTRACT_KEYS_DIR ?? KEYS_DIR,
     CONTRACT_OPERATOR_TOKEN: process.env.CONTRACT_OPERATOR_TOKEN ?? operatorToken(),

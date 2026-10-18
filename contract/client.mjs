@@ -1,18 +1,12 @@
-// Talking to the engine under test, the way Ogdoad does: on this machine, as the operator (a local
-// engine treats a loopback request with its own Origin as the board), or as an agent with its key.
+// Talking to the engine under test, the way Ogdoad did: as the operator (with the operator's token), or
+// as an agent with its key.
 
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-export const ENGINE = (process.env.ENGINE_URL ?? "http://127.0.0.1:3410").replace(/\/+$/, "");
-export const MAILBOX = (process.env.CONTRACT_MAILBOX_URL ?? "http://127.0.0.1:3413").replace(/\/+$/, "");
+export const ENGINE = (process.env.ENGINE_URL ?? "http://127.0.0.1:3420").replace(/\/+$/, "");
+export const MAILBOX = (process.env.CONTRACT_MAILBOX_URL ?? `${ENGINE}/mailbox`).replace(/\/+$/, "");
 const TOKEN = process.env.CONTRACT_OPERATOR_TOKEN;
-
-/**
- * Where Ogdoad's own engine does better, a test is a `todo` on the engine Ogdoad started on (expected to
- * fail there) and a real test on Nous: pass its result as the test's options.
- */
-export const better = (why) => ((process.env.CONTRACT_ENGINE ?? "paperclip") === "nous" ? {} : { todo: `Ogdoad's own engine: ${why}` });
 
 /** How the operator signs a request: the engine's own Origin, and the operator's token where the engine asks for one. */
 export const operatorHeaders = { origin: ENGINE, ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) };
@@ -46,7 +40,7 @@ export async function freshCompany(label) {
   return ok("POST", "/api/companies", { name: `Contract ${label} ${randomUUID().slice(0, 8)}` });
 }
 
-/** An agent hired through the live-agent adapter, the way SOPHIA's wizard does it. */
+/** A member the operator makes, the way SOPHIA's wizard does. */
 export async function liveAgent(companyId, name = "Contract Agent", extra = {}) {
   return ok("POST", `/api/companies/${companyId}/agents`, { name, role: "general", title: name, adapterType: "live_agent", adapterConfig: {}, ...extra });
 }

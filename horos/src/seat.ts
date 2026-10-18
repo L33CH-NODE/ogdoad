@@ -1,11 +1,10 @@
-// A seat binds a Paperclip agent on the live-agent adapter to a Horos hire. The bridge long-polls
-// that agent's mailbox, hands each job to the hire's live session, keeps the lease alive, and
+// A seat binds a member of the company (on Nous) to a Horos hire. The bridge long-polls that
+// member's mailbox, hands each job to the hire's live session, keeps the lease alive, and
 // closes the job when the hire reports back (or, as a fallback, when the hire settles).
 // A kept hire's seat outlives its sessions: while the hire rests, the seat keeps listening, and a
 // new job wakes the hire again. The mailbox key stays with horos; hires only see per-job credentials.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,13 +36,12 @@ interface JobControl {
 /** How long after the hire settles Horos waits for it to close the job itself before closing it. */
 const SELF_CLOSE_GRACE_MS = 45_000;
 
-/** A member's mailbox key: where Nous writes it, or (on the engine Ogdoad started on) under its home. */
+/** A member's mailbox key, where Nous writes it. */
 export function mailboxKeyFor(agentId: string): string {
   if (!/^[0-9a-zA-Z-]{8,64}$/.test(agentId)) throw new Error(`not an agent id: ${agentId}`);
-  const nous = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "keys", `${agentId}.key`);
-  if (existsSync(nous)) return readFileSync(nous, "utf8").trim();
-  const home = process.env.PAPERCLIP_HOME?.trim() || join(homedir(), ".paperclip");
-  return readFileSync(join(home, "live-agent", "keys", `${agentId}.key`), "utf8").trim();
+  const file = join(process.env.OGDOAD_NOUS_HOME?.trim() || join(OGDOAD_HOME, "nous"), "keys", `${agentId}.key`);
+  if (!existsSync(file)) throw new Error(`Nous has no mailbox key for ${agentId}: is it a member of the company?`);
+  return readFileSync(file, "utf8").trim();
 }
 
 class Mailbox {
@@ -266,7 +264,7 @@ export function deliveryNote(job: MailboxJob, promptFile: string, envFile: strin
   return [
     `[Ogdoad job ${job.jobId}] New work for ${job.agentName}${task}${why}.`,
     `Read the job: ${promptFile}`,
-    `This job's run credentials (PAPERCLIP_API_URL, PAPERCLIP_API_KEY, PAPERCLIP_RUN_ID): ${envFile}`,
+    `This job's run credentials (NOUS_API_URL, NOUS_RUN_TOKEN, NOUS_TASK_ID): ${envFile}`,
     `Do the work and reply on the task with those credentials. Then close the job:`,
     `  node "${HOROS_CLI}" done ${job.jobId} --agent ${job.agentId} --summary "<one line>"`,
   ].join(" ");

@@ -449,7 +449,8 @@ export class Horos {
   }
 
   private revive(entry: RosterEntry, fresh: boolean, why: string, opts: { quiet?: boolean } = {}): Hire {
-    const resume = !fresh && entry.resumeArgs !== null;
+    // Only a resume command Horos recorded counts: an entry written by hand may have none at all.
+    const resume = !fresh && Array.isArray(entry.resumeArgs);
     if (fresh) this.renewSession(entry);
     if (entry.dormant) {
       entry.dormant = false;

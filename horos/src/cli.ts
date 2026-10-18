@@ -104,18 +104,21 @@ async function main(): Promise<void> {
       return;
     }
     case "stop": {
+      // Either way, Horos answers health until it's really gone: servers get their own ordered shutdown.
+      const gone = async (minutes: number) => {
+        for (let i = 0; i < minutes * 60; i++) {
+          if (!(await fetch(`${base}/v1/health`).then((r) => r.ok, () => false))) return true;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        return false;
+      };
       if (has("now")) {
         await api("POST", "/v1/shutdown");
-        return console.log("Horos stopped");
+        return console.log((await gone(5)) ? "Horos stopped" : "Still stopping after 5 minutes; check: horos notifications");
       }
       await api("POST", "/v1/shutdown", { graceful: true });
       console.log("Shutting down gracefully: running work finishes, then each hire quits cleanly.");
-      // Horos answers health until the last hire has quit.
-      for (let i = 0; i < 20 * 60; i++) {
-        if (!(await fetch(`${base}/v1/health`).then((r) => r.ok, () => false))) return console.log("Horos stopped");
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      return console.log("Still shutting down after 20 minutes; check: horos notifications");
+      return console.log((await gone(20)) ? "Horos stopped" : "Still shutting down after 20 minutes; check: horos notifications");
     }
     case "notifications": {
       if (has("read")) {

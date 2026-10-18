@@ -2,7 +2,9 @@
 // graceful shutdown without console signals. On Windows a process started in a new process group
 // ignores Ctrl+C, and so do its children, so Ctrl+C can't be relied on to reach a background server.
 // When the stop file appears, the server gets SIGINT from inside, exactly as if Ctrl+C had reached it,
-// and runs its own ordered shutdown (the Ogdoad server drains its runs, then stops Postgres).
+// and runs its own ordered shutdown (Nous stops handing out jobs and closes its store; the app closes
+// the books). It's an event, not a real signal: a server with no SIGINT listener never hears it, and
+// Horos kills it once its patience runs out. So every server Horos keeps listens for SIGINT.
 "use strict";
 
 const fs = require("node:fs");

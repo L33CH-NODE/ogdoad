@@ -173,3 +173,27 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(PORT, HOST, () => console.log(`${new Date().toISOString()} Nous on http://${HOST}:${PORT} (locked until the app hands over the key; home ${HOME})`));
+
+// Horos's stop hook (or Ctrl+C) asks for an orderly stop: no more jobs handed out, the long-polls and
+// live streams closed (they never end by themselves), then the store closed whole, so the next start
+// opens it without recovering anything. A job in a hire's hands keeps its lease and is settled then.
+let stopping = false;
+function stop(): void {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${new Date().toISOString()} stopping`);
+  work?.stop();
+  const done = () => {
+    try {
+      engine?.db.close();
+    } catch {
+      // Already closed.
+    }
+    process.exit(0);
+  };
+  server.close(done);
+  server.closeAllConnections();
+  setTimeout(done, 3000).unref();
+}
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);

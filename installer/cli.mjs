@@ -427,7 +427,7 @@ function current() {
 
 async function status() {
   const state = current();
-  say(`Ogdoad ${state.version ?? "(set up by hand)"}${onOldEngine(state) ? `, on the old engine (Paperclip ${state.engine}): npx ogdoad setup to move onto Nous` : ""}`);
+  say(`Ogdoad ${state.version ?? "(set up by hand)"}${onOldEngine(state) ? `, on the old engine (Paperclip ${state.engine}): npx ogdoad says what moving onto Nous means` : ""}`);
   const nous = await nousState(state);
   say(`  ${"Horos".padEnd(7)} ${(await up(`${local(state.ports.horos)}/v1/health`)) ? "up  " : "down"}  ${local(state.ports.horos)}`);
   say(`  ${"Nous".padEnd(7)} ${nous ? (nous.locked ? "up, waiting for your key" : "up  ") : "down"}  ${local(state.ports.engine)}`);

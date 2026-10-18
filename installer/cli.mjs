@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // `npx ogdoad`: set Ogdoad up on this machine, then run it. Plain Node, no dependencies of its own.
 //   ogdoad                   the first time: set up, start and open. After that: start and open
-//   ogdoad setup [--no-sophia] [--no-open] [--engine-port N] [--app-port N] [--horos-port N] [--mailbox-port N]
-//   ogdoad start             Horos up, and through it the engine and the app
+//   ogdoad setup [--no-sophia] [--no-open] [--engine-port N] [--app-port N] [--horos-port N] [--new-engine]
+//   ogdoad start             Horos up, and through it Nous and the app
 //   ogdoad stop [--now]      everything down (gracefully: work in flight finishes first)
 //   ogdoad status
 //   ogdoad open
@@ -13,10 +13,11 @@
 // What goes where (all under ~/.ogdoad, or OGDOAD_HOME):
 //   install/install.json     what was set up: version, ports, the two servers' roster ids
 //   install/versions/<v>     Ogdoad itself, copied out of npx's cache (npm may clear that)
-//   install/engines/<v>      the engine (Paperclip, pinned), with Ogdoad's patches applied
-//   install/ogdoad, install/engine, install/live-agent
-//                            links to the versions in use. Horos's roster points at these, so an
-//                            upgrade only re-points them while everything is stopped.
+//   install/ogdoad           a link to the version in use. Horos's roster points at it, so an upgrade
+//                            only re-points it while everything is stopped.
+//   nous/                    Nous's encrypted store, its keys and its backups
+//
+// Ogdoad runs on its own engine, Nous, which comes inside this package: nothing else is downloaded.
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -27,14 +28,17 @@ import { fileURLToPath } from "node:url";
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = readJson(join(PKG, "package.json")).version;
-const ENGINE_VERSION = readJson(join(PKG, "runtime", "package.json")).dependencies.paperclipai;
 const HOME = resolve(process.env.OGDOAD_HOME ?? join(homedir(), ".ogdoad"));
+const NOUS_HOME = join(HOME, "nous");
 const INSTALL = join(HOME, "install");
 const STATE_FILE = join(INSTALL, "install.json");
-const LINKS = { ogdoad: join(INSTALL, "ogdoad"), engine: join(INSTALL, "engine"), adapter: join(INSTALL, "live-agent") };
-const DEFAULT_PORTS = { engine: 3100, app: 3101, horos: 3198, mailbox: 3199 };
-const ADAPTER = "paperclip-adapter-live-agent";
-const LABELS = { engine: "Ogdoad server", app: "Ogdoad app" };
+const LINKS = { ogdoad: join(INSTALL, "ogdoad") };
+/** What an install on the engine Ogdoad started on also linked: gone once it's on Nous. */
+const OLD_LINKS = [join(INSTALL, "engine"), join(INSTALL, "live-agent")];
+const DEFAULT_PORTS = { engine: 3100, app: 3101, horos: 3198 };
+const LABELS = { engine: "Nous", app: "Ogdoad app" };
+/** What the engine entry was called before Nous, for finding a hand-made or older install. */
+const OLD_ENGINE_LABEL = "Ogdoad server";
 
 const argv = process.argv.slice(2);
 const command = argv[0] && !argv[0].startsWith("-") ? argv[0] : "up";
@@ -81,7 +85,7 @@ function preflight() {
   if (major < 22 || (major === 22 && minor < 5)) fail(`Ogdoad needs Node 22.5 or newer; this is Node ${process.versions.node}.`);
   // On Windows Horos is started without admin rights instead (startHoros); elsewhere, no root.
   if (process.platform !== "win32" && elevated()) {
-    fail("This is running as root. The engine's database refuses to, and every agent Ogdoad hires would inherit it. Run it as yourself.");
+    fail("This is running as root, and every agent Ogdoad hires would inherit it. Run it as yourself.");
   }
 }
 
@@ -118,8 +122,18 @@ async function waitFor(url, what, minutes) {
   return false;
 }
 
+/** Nous's state: null when it's down; otherwise whether it's still waiting for its key. */
+async function nousState(state) {
+  try {
+    const r = await fetch(`${local(state.ports.engine)}/v1/health`, { signal: AbortSignal.timeout(2000) });
+    return r.ok ? { locked: (await r.json()).locked !== false } : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
-// Where Ogdoad, the adapter and the engine live.
+// Where Ogdoad lives.
 
 /** Ogdoad run by npx lives in a cache npm may clear: copy it (with its dependencies) somewhere that stays. */
 function stableRoot() {
@@ -136,15 +150,6 @@ function stableRoot() {
     renameSync(partial, to);
   }
   return root;
-}
-
-/** A dependency, wherever npm put it: beside Ogdoad (hoisted) or inside it. */
-function findPackage(from, name) {
-  for (let dir = from; ; dir = dirname(dir)) {
-    const candidate = join(dir, "node_modules", name);
-    if (existsSync(join(candidate, "package.json"))) return candidate;
-    if (dirname(dir) === dir) return null;
-  }
 }
 
 /** Point a link (a junction on Windows: no admin rights needed) at a folder. */
@@ -164,30 +169,12 @@ function pointLink(link, target) {
   symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
 }
 
-/** npm itself, run by this same Node (a .cmd shim can't be spawned without a shell on Windows). */
-function npm(args, cwd) {
-  const nodeDir = dirname(process.execPath);
-  const cli = [process.env.npm_execpath, join(nodeDir, "node_modules", "npm", "bin", "npm-cli.js"), join(nodeDir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")].find(
-    (p) => p && /npm-cli\.js$/.test(p) && existsSync(p),
-  );
-  // Whatever npx was asked to do (global, a prefix) isn't meant for this install.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_config_(global|prefix|location)$/i.test(k)));
-  const run = cli
-    ? spawnSync(process.execPath, [cli, ...args], { cwd, env, stdio: "inherit" })
-    : spawnSync("npm", args, { cwd, env, stdio: "inherit", shell: process.platform === "win32" });
-  if (run.status !== 0) fail(`npm ${args.join(" ")} failed (in ${cwd}).`);
-}
-
-function ensureEngine(root) {
-  const dir = join(INSTALL, "engines", ENGINE_VERSION);
-  if (!existsSync(join(dir, "node_modules", "paperclipai", "dist", "index.js"))) {
-    say(`Installing the engine (Paperclip ${ENGINE_VERSION}). The first time takes a few minutes...`);
-    mkdirSync(dir, { recursive: true });
-    writeJson(join(dir, "package.json"), { name: "ogdoad-engine", private: true, dependencies: { paperclipai: ENGINE_VERSION } });
-    npm(["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"], dir);
+function dropLink(link) {
+  try {
+    if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
+  } catch {
+    // not there
   }
-  spawnSync(process.execPath, [join(root, "runtime", "patches", "apply.mjs"), dir], { stdio: "inherit" });
-  return dir;
 }
 
 function pruneOld(parent, keep) {
@@ -203,12 +190,11 @@ function pruneOld(parent, keep) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Horos, and the two servers it keeps: the engine and the app.
+// Horos, and the two servers it keeps: Nous and the app.
 
 function horosEnv(state) {
-  const env = { ...process.env, OGDOAD_HOME: HOME, OGDOAD_HOROS_PORT: String(state.ports.horos) };
-  if (state.ports.mailbox !== DEFAULT_PORTS.mailbox) env.LIVE_AGENT_MAILBOX = local(state.ports.mailbox);
-  if (state.paperclipHome) env.PAPERCLIP_HOME = state.paperclipHome;
+  const env = { ...process.env, OGDOAD_HOME: HOME, OGDOAD_HOROS_PORT: String(state.ports.horos), OGDOAD_URL: local(state.ports.engine), OGDOAD_NOUS_HOME: NOUS_HOME };
+  if (state.ports.app !== DEFAULT_PORTS.app) env.OGDOAD_APP_URL = local(state.ports.app);
   return env;
 }
 
@@ -220,15 +206,15 @@ function horosCli(state, args, extraEnv = {}) {
 
 /**
  * Horos in the background. From an admin terminal on Windows it's started with Administrators made
- * deny-only (runas /trustlevel): the engine's database refuses an admin token, and every hire would
- * inherit it. runas starts it in a fresh environment, so a small script carries Ogdoad's settings over.
+ * deny-only (runas /trustlevel), so no hire inherits admin rights. runas starts it in a fresh
+ * environment, so a small script carries Ogdoad's settings over.
  */
 async function startHoros(state) {
   if (process.platform !== "win32" || !elevated()) return horosCli(state, ["start"]) === 0;
   if (await up(`${local(state.ports.horos)}/v1/health`)) return true;
   say("This terminal has admin rights: starting Ogdoad without them.");
   const env = horosEnv(state);
-  const carried = ["OGDOAD_HOME", "OGDOAD_HOROS_PORT", "LIVE_AGENT_MAILBOX", "PAPERCLIP_HOME"].filter((k) => env[k]);
+  const carried = ["OGDOAD_HOME", "OGDOAD_HOROS_PORT", "OGDOAD_URL", "OGDOAD_APP_URL", "OGDOAD_NOUS_HOME", "OGDOAD_TOASTS"].filter((k) => env[k]);
   const script = join(INSTALL, "start-horos.cmd");
   // UTF-8 for any non-ASCII path, and a batch file's % doubled.
   const bat = (s) => s.replace(/%/g, "%%");
@@ -256,22 +242,15 @@ async function horos(state, method, path, body) {
 }
 
 function serverSpecs(state) {
-  const { engine, app, horos: horosPort, mailbox } = state.ports;
-  const engineEnv = { PAPERCLIP_TELEMETRY_DISABLED: "1", DO_NOT_TRACK: "1", PAPERCLIP_UPDATE_CHECK: "0", PAPERCLIP_NO_BROWSER: "true", PORT: String(engine) };
-  const appEnv = {};
-  if (mailbox !== DEFAULT_PORTS.mailbox) engineEnv.LIVE_AGENT_MAILBOX_PORT = String(mailbox);
+  const { engine, app, horos: horosPort } = state.ports;
+  const appEnv = { OGDOAD_NOUS_HOME: NOUS_HOME };
   if (app !== DEFAULT_PORTS.app) appEnv.OGDOAD_APP_PORT = String(app);
   if (engine !== DEFAULT_PORTS.engine) appEnv.OGDOAD_SERVER_URL = local(engine);
   if (horosPort !== DEFAULT_PORTS.horos) appEnv.OGDOAD_HOROS_URL = local(horosPort);
-  if (state.paperclipHome) {
-    engineEnv.PAPERCLIP_HOME = state.paperclipHome;
-    appEnv.OGDOAD_ENGINE_BACKUPS = join(state.paperclipHome, "instances", "default", "data", "backups");
-  }
   const server = { harness: "generic", command: process.execPath, cwd: HOME, keep: true, role: "server" };
   return {
-    // `onboard --yes` sets the engine up the first time (quick defaults: this machine only, no
-    // sign-in), and from then on keeps the config it finds and runs it.
-    engine: { ...server, label: LABELS.engine, args: [join(LINKS.engine, "node_modules", "paperclipai", "dist", "index.js"), "onboard", "--yes", "--no-install-service"], health: `${local(engine)}/api/health`, env: engineEnv },
+    // Nous answers its health check locked or not: it waits for its key from the operator's vault.
+    engine: { ...server, label: LABELS.engine, args: [join(LINKS.ogdoad, "nous", "dist", "main.js")], health: `${local(engine)}/v1/health`, env: { NOUS_PORT: String(engine), NOUS_HOME } },
     app: { ...server, label: LABELS.app, args: [join(LINKS.ogdoad, "app", "dist", "server", "main.js")], health: `${local(app)}/healthz`, env: appEnv },
   };
 }
@@ -284,28 +263,14 @@ async function ensureServer(state, key, spec) {
   return (await horos(state, "POST", "/v1/hires", spec)).id;
 }
 
-/** The live-agent adapter, so agents are hired through a mailbox and the engine holds no provider logins. */
-async function ensureAdapter(state) {
-  const base = local(state.ports.engine);
-  const headers = { "content-type": "application/json", origin: base };
-  const adapters = await fetch(`${base}/api/adapters`, { headers }).then((r) => r.json(), () => []);
-  if (Array.isArray(adapters) && adapters.some((a) => a.type === "live_agent")) return;
-  const res = await fetch(`${base}/api/adapters/install`, { method: "POST", headers, body: JSON.stringify({ packageName: LINKS.adapter, isLocalPath: true }) });
-  if (!res.ok) fail(`The engine wouldn't take the live-agent adapter: ${res.status} ${(await res.text()).slice(0, 300)}`);
-}
-
 async function bringUp(state) {
   if (!(await startHoros(state))) fail(`Horos didn't start; see ${join(HOME, "horos", "horos.log")}.`);
   const specs = serverSpecs(state);
   state.ids = { ...state.ids };
-  // Looked at before the engine starts: its first start writes this config straight away.
-  const engineConfig = join(state.paperclipHome ?? join(homedir(), ".paperclip"), "instances", "default", "config.json");
-  const starting = existsSync(engineConfig) ? "Starting the engine" : "Starting the engine (the first start creates its database)";
   state.ids.engine = await ensureServer(state, "engine", specs.engine);
-  if (!(await waitFor(specs.engine.health, starting, 10))) {
-    fail(`The engine didn't come up. See its screen: ogdoad horos screen ${state.ids.engine}`);
+  if (!(await waitFor(specs.engine.health, "Starting Nous, the engine", 2))) {
+    fail(`Nous didn't come up. See its screen: ogdoad horos screen ${state.ids.engine}`);
   }
-  await ensureAdapter(state);
   state.ids.app = await ensureServer(state, "app", specs.app);
   if (!(await waitFor(specs.app.health, "Starting the app", 2))) fail(`The app didn't come up. See its screen: ogdoad horos screen ${state.ids.app}`);
   writeJson(STATE_FILE, state);
@@ -317,7 +282,7 @@ async function bringUp(state) {
 /** Ogdoad set up by hand on this machine (its servers already on Horos's roster, no install record). */
 function setUpByHand() {
   const roster = readJson(join(HOME, "horos", "roster.json"), []);
-  return Array.isArray(roster) && roster.some((e) => e.label === LABELS.app || e.label === LABELS.engine);
+  return Array.isArray(roster) && roster.some((e) => [LABELS.app, LABELS.engine, OLD_ENGINE_LABEL].includes(e.label));
 }
 
 function portsFromFlags() {
@@ -332,6 +297,28 @@ function portsFromFlags() {
   return ports;
 }
 
+/** An install from before Nous: its engine was Paperclip, and its team lives in that engine's data. */
+const onOldEngine = (state) => !!state?.engine && state.engine !== "nous";
+
+/**
+ * Moving an install from before Nous onto it, when the operator asked (--new-engine). Everything is
+ * stopped; the old engine's entry and the hires seated on it leave Horos's roster (their sessions and
+ * the old engine's data are left as they are); SOPHIA's record is kept aside, so she's chosen again on
+ * Nous. The operator's books (Money, Work, dashboards) carry on untouched.
+ */
+function leaveOldEngine(before) {
+  horosCli(before, ["stop"]);
+  const file = join(HOME, "horos", "roster.json");
+  const roster = readJson(file, []);
+  const gone = roster.filter((e) => e.id === before.ids?.engine || e.label === OLD_ENGINE_LABEL || e.seat);
+  writeJson(file, roster.filter((e) => !gone.includes(e)));
+  for (const e of gone) say(`  off the roster: ${e.label ?? e.id}`);
+  const sophia = join(HOME, "sophia.json");
+  if (existsSync(sophia)) renameSync(sophia, join(HOME, "sophia.before-nous.json"));
+  for (const link of OLD_LINKS) dropLink(link);
+  pruneOld(join(INSTALL, "engines"), []);
+}
+
 async function setup() {
   preflight();
   const before = readJson(STATE_FILE, null);
@@ -340,8 +327,17 @@ async function setup() {
     say("`ogdoad status` shows what's running.");
     return null;
   }
-  // A copy: `before` keeps the versions being upgraded from, for the prune at the end.
-  const state = before ? { ...before } : { ports: portsFromFlags(), paperclipHome: process.env.PAPERCLIP_HOME ? resolve(process.env.PAPERCLIP_HOME) : null, ids: {} };
+  if (onOldEngine(before) && !has("new-engine")) {
+    fail([
+      `This Ogdoad (${before.version}) runs on the engine it started on, Paperclip ${before.engine}. Ogdoad ${VERSION} runs on its own engine, Nous.`,
+      "Your books (Money, Work, dashboards) carry over as they are. The team's tasks and talk stay in the old engine's data, untouched.",
+      "  To move onto Nous with a fresh team (you'll choose SOPHIA again): npx ogdoad setup --new-engine",
+      "  To bring the old tasks across too, see \"Moving in\" in docs/NOUS.md first.",
+      "  To stay where you are: npx ogdoad@0.1",
+    ].join("\n"));
+  }
+  // A copy: `before` keeps the version being upgraded from, for the prune at the end.
+  const state = before ? { ...before } : { ports: portsFromFlags(), ids: {} };
   if (!before) {
     for (const [key, port] of Object.entries(state.ports)) {
       if (!(await portFree(port))) fail(`Port ${port} (${key}) is taken. Choose another with --${key}-port.`);
@@ -349,46 +345,29 @@ async function setup() {
   }
 
   const root = stableRoot();
-  const found = findPackage(root, ADAPTER) ?? (process.env.OGDOAD_LIVE_AGENT ? resolve(process.env.OGDOAD_LIVE_AGENT) : null);
-  if (!found || !existsSync(join(found, "package.json"))) fail(`The live-agent adapter (${ADAPTER}) isn't installed alongside Ogdoad.`);
-  const engineDir = ensureEngine(root);
+  if (!existsSync(join(root, "nous", "dist", "main.js"))) fail(`This copy of Ogdoad has no Nous in it (${join(root, "nous", "dist")}). Reinstall it: npx ogdoad@${VERSION}`);
 
-  const upgrading = before && (before.version !== VERSION || before.engine !== ENGINE_VERSION);
-  if (upgrading && (await up(`${local(state.ports.horos)}/v1/health`))) {
+  const upgrading = before && (before.version !== VERSION || onOldEngine(before));
+  if (onOldEngine(before)) {
+    say(`Moving Ogdoad onto Nous: stopping it first (work in flight finishes)...`);
+    leaveOldEngine(before);
+    delete state.ids.engine;
+    delete state.welcomed;
+    delete state.paperclipHome;
+    delete state.ports.mailbox;
+  } else if (upgrading && (await up(`${local(state.ports.horos)}/v1/health`))) {
     say(`Upgrading Ogdoad ${before.version} to ${VERSION}: stopping it first (work in flight finishes)...`);
     horosCli(state, ["stop"]);
   }
   pointLink(LINKS.ogdoad, root);
-  pointLink(LINKS.engine, engineDir);
-  pointLink(LINKS.adapter, found);
   // Recorded before anything starts, so a run that fails partway is picked up by the next one.
-  Object.assign(state, { version: VERSION, engine: ENGINE_VERSION, at: new Date().toISOString() });
+  Object.assign(state, { version: VERSION, engine: "nous", at: new Date().toISOString() });
   writeJson(STATE_FILE, state);
 
   await bringUp(state);
   if (upgrading && before.version !== VERSION) pruneOld(join(INSTALL, "versions"), [VERSION, before.version]);
-  if (upgrading && before.engine !== ENGINE_VERSION) pruneOld(join(INSTALL, "engines"), [ENGINE_VERSION, before.engine]);
   if (!before) say(`\nOgdoad ${VERSION} is set up.`);
   return state;
-}
-
-/** The first time through: choose SOPHIA, the CEO. Offered until it's been done or declined. */
-function welcome(state) {
-  if (state.welcomed || existsSync(join(HOME, "sophia.json"))) return;
-  if (!has("no-sophia")) {
-    if (!process.stdin.isTTY) return;
-    say("");
-    if (horosCli(state, ["sophia", "--no-browser"], { OGDOAD_URL: local(state.ports.engine) }) !== 0) say("\nSOPHIA can be chosen any time: ogdoad sophia");
-  }
-  state.welcomed = true;
-  writeJson(STATE_FILE, state);
-}
-
-function current() {
-  const state = readJson(STATE_FILE, null);
-  if (state) return state;
-  if (setUpByHand()) return { ports: { ...DEFAULT_PORTS }, byHand: true };
-  fail("Ogdoad isn't set up here yet. Run: npx ogdoad");
 }
 
 function openInBrowser(url) {
@@ -406,15 +385,53 @@ function opened(state) {
   if (!has("no-open")) openInBrowser(url);
 }
 
+/**
+ * The first time through: choose SOPHIA, the CEO. Offered until it's been done or declined. Nous opens
+ * with the key the operator's vault hands it, so the key is made first, in the browser; the chooser
+ * starts here once it is. True when the browser was opened along the way.
+ */
+async function welcome(state) {
+  if (state.welcomed || existsSync(join(HOME, "sophia.json"))) return false;
+  if (has("no-sophia")) {
+    state.welcomed = true;
+    writeJson(STATE_FILE, state);
+    return false;
+  }
+  if (!process.stdin.isTTY) return false;
+  let browser = false;
+  if ((await nousState(state))?.locked) {
+    opened(state);
+    browser = true;
+    say("Make your key in the browser: a password, and a recovery phrase to write down. Everything Ogdoad keeps is encrypted with it.");
+    say("SOPHIA's chooser starts here once it's made.");
+    const until = Date.now() + 20 * 60_000;
+    while ((await nousState(state))?.locked !== false && Date.now() < until) await sleep(2000);
+    if ((await nousState(state))?.locked !== false) {
+      say("\nSOPHIA can be chosen any time once your key is made: ogdoad sophia");
+      return browser;
+    }
+  }
+  say("");
+  if (horosCli(state, ["sophia", "--no-browser"]) !== 0) say("\nSOPHIA can be chosen any time: ogdoad sophia");
+  state.welcomed = true;
+  writeJson(STATE_FILE, state);
+  return browser;
+}
+
+function current() {
+  const state = readJson(STATE_FILE, null);
+  if (state) return state;
+  if (setUpByHand()) return { ports: { ...DEFAULT_PORTS }, byHand: true };
+  fail("Ogdoad isn't set up here yet. Run: npx ogdoad");
+}
+
 async function status() {
   const state = current();
-  say(`Ogdoad ${state.version ?? "(set up by hand)"}${state.engine ? `, engine Paperclip ${state.engine}` : ""}`);
-  const rows = [
-    ["Horos", `${local(state.ports.horos)}/v1/health`, local(state.ports.horos)],
-    ["engine", `${local(state.ports.engine)}/api/health`, local(state.ports.engine)],
-    ["app", `${local(state.ports.app)}/healthz`, local(state.ports.app)],
-  ];
-  for (const [name, health, url] of rows) say(`  ${name.padEnd(7)} ${(await up(health)) ? "up  " : "down"}  ${url}`);
+  say(`Ogdoad ${state.version ?? "(set up by hand)"}${onOldEngine(state) ? `, on the old engine (Paperclip ${state.engine}): npx ogdoad setup to move onto Nous` : ""}`);
+  const nous = await nousState(state);
+  say(`  ${"Horos".padEnd(7)} ${(await up(`${local(state.ports.horos)}/v1/health`)) ? "up  " : "down"}  ${local(state.ports.horos)}`);
+  say(`  ${"Nous".padEnd(7)} ${nous ? (nous.locked ? "up, waiting for your key" : "up  ") : "down"}  ${local(state.ports.engine)}`);
+  say(`  ${"app".padEnd(7)} ${(await up(`${local(state.ports.app)}/healthz`)) ? "up  " : "down"}  ${local(state.ports.app)}`);
 }
 
 async function main() {
@@ -424,19 +441,20 @@ async function main() {
     case "setup": {
       const before = readJson(STATE_FILE, null);
       let state = before;
-      if (command === "setup" || !before || before.version !== VERSION || before.engine !== ENGINE_VERSION) {
+      if (command === "setup" || !before || before.version !== VERSION || onOldEngine(before)) {
         state = await setup();
         if (!state) return;
       } else {
         preflight();
         await bringUp(state);
       }
-      welcome(state);
-      return opened(state);
+      if (!(await welcome(state))) opened(state);
+      return;
     }
     case "start": {
       const state = current();
       if (state.byHand) fail("Ogdoad on this machine was set up by hand; start it the way you usually do.");
+      if (onOldEngine(state)) fail("This install is on the old engine. Run npx ogdoad setup to move onto Nous.");
       preflight();
       await bringUp(state);
       return say(`Ogdoad is up: ${local(state.ports.app)}`);
@@ -451,8 +469,7 @@ async function main() {
     case "open":
       return opened(current());
     case "sophia": {
-      const state = current();
-      process.exitCode = horosCli(state, ["sophia", ...rest], { OGDOAD_URL: local(state.ports.engine) });
+      process.exitCode = horosCli(current(), ["sophia", ...rest]);
       return;
     }
     case "horos":

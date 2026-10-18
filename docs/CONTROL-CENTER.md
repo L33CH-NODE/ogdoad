@@ -52,7 +52,7 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
 - **As built (2026-10-10):**
   - Raised work is keyed by what it's about (`money:`, `bank:`, `work:`, `team:`), updates in place, and closes itself once it's dealt with. A source that can't be read clears nothing.
   - The team's part is the Ogdoad server's attention feed (a hire's question card, approvals, failed runs, budget and error alerts) plus the tasks assigned to the operator. The app checks it every 20 s while a page is open.
-  - **A hire's question card is answered inside Flow** (`/flow/ask/:issue/:interaction`), through the same route the classic UI uses. Everything else from the team opens in the classic view for now.
+  - **A hire's question card is answered inside Flow** (`/flow/ask/:issue/:interaction`), through Nous's own route for it (`/nous/v1/cards/:id/answer`). Everything else from the team opens in the classic view for now.
   - Some work clears only by doing it: a question, an approval, a note, a bill. Its main button goes there, and Done is refused. Done on an incident means "it was reported".
   - **Approvals are decided in Flow** too (`/flow/approve/:id`): what's asked, its details, a note, Approve or Turn it down.
   - **A hire's permission prompt is answered in Flow** (`/flow/watch/:id`, the watch). It shows what the hire wants to do as its screen says it, sorted by risk, with what the operator's policy would do: **Allow once** or **Deny**. Deleting, sending out, spending, investing, secrets and starting agents always wait for the operator, and a "yes" to them takes a second yes.
@@ -76,7 +76,7 @@ Kanban columns turn work into inventory. Flow shows the operator what to do now,
   - Real names and details from the books, and anything with the shape of one, become stand-ins like `C-4821`. The engine and the cloud only ever get the stand-ins.
   - A message that named someone (or hints at who) waits as a check card, where it was written and in Flow. The operator has the last word: click any marked piece to decide it, edit what goes outright, then **Approve** or **Deny**. A real detail written back goes only on a second yes. A hint line under the box says what will be stood in while you type.
   - The team's stand-ins read as real names on the operator's screen only, and every hire's message is checked on the way back. A client's real detail in a cloud hire's message pauses that hire and raises an alarm.
-- **Left for the classic view:** agent settings and budgets.
+- **Not here yet:** agent settings and budgets (Nous has no budgets; the trust ladder comes first).
 
 ## Artifacts: what got made
 

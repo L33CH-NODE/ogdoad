@@ -67,8 +67,8 @@ Frontier intelligence without handing over the business.
 
 ## Core
 
-- **Own codebase.** Paperclip v2026.1005.0 lives in `core/` as a snapshot, credited in `NOTICE`; every change is listed in `core/OGDOAD_CHANGES.md`.
-- **No logins, ever.** Seats are handed to the operator's own harnesses (live-agent mailbox now, Horos next). See `HOROS.md`.
+- **Own codebase, own engine.** Ogdoad started on a snapshot of Paperclip v2026.1005.0 (`core/`, credited in `NOTICE`). Since 0.2.0 it runs on its own engine, Nous, and the snapshot has left the repo. See `NOUS.md`.
+- **No logins, ever.** Seats are handed to the operator's own harnesses, each seated by Horos on its member's mailbox in Nous. See `HOROS.md`.
 - **Local EI drives by default.** When the operator wants more power, they hand a role to the CLI of their favourite EI.
 - **First launch: choose SOPHIA, the CEO.** She is briefed automatically, the UI opens itself, and she runs a multiple-choice setup interview. See `FIRST-LAUNCH.md`.
 - **SOPHIA can reshape the UI.** Live appearance changes (skin, text size, font, tokens) apply instantly, and code changes show via hot reload. Only the server-side human gates are protected.

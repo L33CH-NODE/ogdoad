@@ -1,6 +1,6 @@
 # Money
 
-Ogdoad's own invoicing, replacing the operator's old invoicing site. It's built-in, not a Paperclip plugin. Everything lives in one SQLite file on the operator's machine (`~/.ogdoad/money/money.db`), with issued PDFs beside it. That makes it Tier 0 by design: nothing about clients or money leaves the machine.
+Ogdoad's own invoicing, replacing the operator's old invoicing site. It's built in, not a plugin. Everything lives in one SQLite file on the operator's machine (`~/.ogdoad/money/money.db`), with issued PDFs beside it. That makes it Tier 0 by design: nothing about clients or money leaves the machine.
 
 ## Using it
 
@@ -11,7 +11,7 @@ Ogdoad's own invoicing, replacing the operator's old invoicing site. It's built-
 
 ## Where it runs
 
-- **The Ogdoad app server** (`app/`, port 3101) serves the new UI and Ogdoad's own APIs, including `/ogdoad/money/*`. It proxies `/api/*` to the Ogdoad server (3100) and `/horos/*` to Horos, adding Horos's token so the browser never holds it. Horos runs the app server as a server, after the Ogdoad server.
+- **The Ogdoad app server** (`app/`, port 3101) serves the new UI and Ogdoad's own APIs, including `/ogdoad/money/*`. It proxies `/nous/v1/*` to Nous, the Ogdoad server (3100), and `/horos/*` to Horos, adding each one's token so the browser never holds either. Horos runs the app server as a server, after the Ogdoad server.
 - **SQLite through `node:sqlite`.** No extra database. Dashboard recipes are written in SQLite SQL, so money panels can query the same file directly (read-only).
 - **Phase 1 is operator-only.** No agent reaches Money yet. The app server listens on 127.0.0.1 and, like the rest of local-trusted Ogdoad, trusts this machine. Phase 2 adds real sessions and the director key; agents come in phase 4.
 

@@ -6,14 +6,19 @@ Ogdoad is an independent project. It is not affiliated with or endorsed by Paper
 ----------------------------------------------------------------------------
 Paperclip
 ----------------------------------------------------------------------------
-The directory core/ contains the source of Paperclip v2026.1005.0
-(https://github.com/paperclipai/paperclip, commit 467125faf), imported as a
-snapshot and modified by the Ogdoad project. Paperclip is:
+Ogdoad started on Paperclip (https://github.com/paperclipai/paperclip) as its
+engine. Its own engine, Nous (nous/), is Ogdoad's own code, written from what
+Ogdoad needs and inspired by Paperclip; it contains no Paperclip code.
+
+Until 0.2.0 the directory core/ held the source of Paperclip v2026.1005.0
+(commit 467125faf), imported as a snapshot and modified by the Ogdoad project.
+It remains in this repository's history, under its own notice. Paperclip is:
 
   Copyright (c) 2025 Paperclip AI
-  Licensed under the MIT License (see core/LICENSE)
+  Licensed under the MIT License
 
-Ogdoad's changes to core/ are listed in core/OGDOAD_CHANGES.md.
+Nous's translator answers the routes Ogdoad used on Paperclip (its own
+implementation of that interface), so workers built for them keep working.
 
 ----------------------------------------------------------------------------
 Herdr (reserved)

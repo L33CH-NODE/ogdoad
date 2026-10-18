@@ -1,6 +1,6 @@
 {
   "name": "ogdoad",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "0GD0AD: a local-first control center for running a business with AI agents. Hire any harness, keep your data local, and make every call that matters.",
   "license": "MIT",
   "author": "L33CH-NODE",
@@ -28,14 +28,15 @@
     "horos/package.json",
     "horos/dist/",
     "horos/hooks/",
-    "runtime/package.json",
-    "runtime/patches/",
+    "nous/package.json",
+    "nous/dist/",
     "models/",
     "README.md",
     "LICENSE",
     "NOTICE",
     "!app/dist/server/test/",
     "!horos/dist/test/",
+    "!nous/dist/test/",
     "!**/*.map"
   ],
   "engines": {
@@ -43,7 +44,7 @@
   },
   "scripts": {
     "check:private": "node scripts/check-private.mjs",
-    "build": "node -e \"for (const d of ['app/dist', 'horos/dist']) require('fs').rmSync(d, { recursive: true, force: true })\" && npm --prefix app run build && npm --prefix horos run build",
+    "build": "node -e \"for (const d of ['app/dist', 'horos/dist', 'nous/dist']) require('fs').rmSync(d, { recursive: true, force: true })\" && npm --prefix app run build && npm --prefix horos run build && npm --prefix nous run build",
     "prepack": "npm run build",
     "postpack": "node scripts/check-private.mjs --package",
     "contract": "node contract/run.mjs"
@@ -57,7 +58,7 @@
     "@xterm/headless": "6.0.0",
     "better-sqlite3-multiple-ciphers": "^13.0.3",
     "node-pty": "1.1.0",
-    "paperclip-adapter-live-agent": "^0.1.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "ws": "^8.18.3"
   }
 }

@@ -17,11 +17,13 @@ CONTRACT_ENGINE=nous npm run contract             # against Nous, Ogdoad's own e
 ENGINE_URL=http://127.0.0.1:3410 npm run contract   # against an engine that's already up
 ```
 
-`contract/engine.mjs` boots the engine with Ogdoad's own installer into homes and ports of its own: the temp folder `ogdoad-contract`, and ports 3410 (engine), 3411 (app), 3412 (Horos) and 3413 (mailbox). It never touches a live install. The first boot downloads the engine, which takes a few minutes; after that it's quick.
+`contract/engine.mjs` boots Nous from `nous/dist` into a home and port of its own (the temp folder `ogdoad-contract`, port 3420) and unlocks it with a test key. It never touches a live install.
 
-The tests act as each kind of client. As the operator, they call from this machine with the engine's own Origin. As a hire, they take a job from its mailbox and use the run credentials it carries.
+The tests act as each kind of client. As the operator, they sign with the operator's token. As a hire, they take a job from its mailbox and use the run credentials it carries.
 
-Today the suite runs **26 tests. On Paperclip 23 pass, and 3 are improvements it doesn't have** (`todo` there). **On Nous all 26 pass**, in about a second, against about forty on Paperclip.
+The suite runs **27 tests, all green on Nous**, in about a second. On Paperclip, 23 of the first 26 passed, and 3 were improvements it didn't have.
+
+> **Since 0.2.0 Ogdoad itself speaks Nous's own API, `/v1`** ([NOUS.md](NOUS.md)). What follows records what it relied on the engine it started on for. Nous's translator still answers all of it, for workers built for those routes, and this suite is that translator's test.
 
 ## Who uses the engine, and for what
 
@@ -104,7 +106,9 @@ A job is `{jobId, protocol, runId, agentId, agentName, companyId, taskId, wakeRe
 - `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID` and `PAPERCLIP_TASK_ID`;
 - `PAPERCLIP_WAKE_REASON`, and when they apply, `PAPERCLIP_WAKE_COMMENT_ID`, `PAPERCLIP_APPROVAL_ID` and `PAPERCLIP_APPROVAL_STATUS`.
 
-Each agent's key is a file at `<engine home>/live-agent/keys/<agentId>.key`.
+On Nous the same env also carries its own names (`NOUS_RUN_TOKEN` and the rest, see [NOUS.md](NOUS.md)), which the briefs teach.
+
+Each agent's key is a file at `<engine home>/live-agent/keys/<agentId>.key` (on Nous, `~/.ogdoad/nous/keys/<memberId>.key`).
 
 ### The hires
 
@@ -200,4 +204,4 @@ Any of these can come back if Ogdoad needs it.
 2. **Ogdoad's engine, Nous** ([NOUS.md](NOUS.md)), **on the practice copy.** A part of the app on SQLCipher, answering the same routes, until the contract passes against it. That's all 25, the two improvements included.
 3. **Jobs straight to Horos.** Wake-ups, runs and leases, with the mailbox kept for outside workers.
 4. **Moving in.** An import from the old engine through its own API, every count checked, and the old data left untouched as a backup.
-5. **The switch.** `core/` and `runtime/` leave the repo, the installer stops downloading an engine, and the README says "inspired by Paperclip".
+5. **Done (0.2.0): the switch.** `core/` and `runtime/` have left the repo, the installer sets Nous up from inside the package, and the README says "inspired by Paperclip". The suite runs against Nous only now: 27 tests, all green. Its routes are the old engine's, which Nous's translator keeps for workers outside Horos; Ogdoad itself speaks `/v1`.

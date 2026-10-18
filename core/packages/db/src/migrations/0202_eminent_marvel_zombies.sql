@@ -1,1 +1,0 @@
-ALTER TABLE "external_objects" ADD COLUMN "refresh_token" uuid;

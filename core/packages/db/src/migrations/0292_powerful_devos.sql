@@ -1,1 +1,0 @@
-ALTER TABLE "company_skill_source_entries" ADD COLUMN IF NOT EXISTS "inspection" jsonb;

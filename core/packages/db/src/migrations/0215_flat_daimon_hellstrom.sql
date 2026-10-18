@@ -1,1 +1,0 @@
-ALTER TABLE "adapter_auth_sessions" ADD COLUMN "promotion_expires_at" timestamp with time zone;
